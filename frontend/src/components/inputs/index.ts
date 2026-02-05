@@ -1,0 +1,5 @@
+export { SingleChoice } from './SingleChoice'
+export { MultiChoice } from './MultiChoice'
+export { PainScale } from './PainScale'
+export { BodyMap } from './BodyMap'
+export { TextInput, NumberInput } from './TextInput'

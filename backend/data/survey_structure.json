@@ -1,0 +1,393 @@
+{
+  "id": 1,
+  "name": "Предварительный опрос пациента",
+  "version": "1.0",
+  "description": "Анкета для сбора анамнеза перед приёмом врача",
+  "start_node": "welcome",
+  "branch_mapping": {
+    "respiratory": "respiratory_details",
+    "cardio": "cardio_details",
+    "gastro": "gastro_details"
+  },
+  "nodes": [
+    {
+      "id": "welcome",
+      "type": "info_screen",
+      "question_text": "Здравствуйте!",
+      "description": "Пожалуйста, ответьте на несколько вопросов. Это поможет врачу подготовиться к приему и уделить больше времени осмотру, а не заполнению карт.",
+      "required": false,
+      "logic": [
+        {
+          "default": true,
+          "next_node": "consent"
+        }
+      ]
+    },
+    {
+      "id": "consent",
+      "type": "consent_screen",
+      "question_text": "Согласие на обработку данных",
+      "description": "Я даю согласие на обработку персональных данных и передачу сведений о состоянии здоровья в медицинскую организацию (в соответствии с 152-ФЗ).",
+      "required": true,
+      "logic": [
+        {
+          "default": true,
+          "next_node": "main_trigger"
+        }
+      ]
+    },
+    {
+      "id": "main_trigger",
+      "type": "single_choice",
+      "question_text": "Что послужило основной причиной записи к врачу сегодня?",
+      "required": true,
+      "options": [
+        {
+          "id": "pain",
+          "text": "Беспокоит боль (острая или хроническая)",
+          "value": "pain",
+          "icon": "activity"
+        },
+        {
+          "id": "discomfort",
+          "text": "Общее недомогание / Дискомфорт (без острой боли)",
+          "value": "discomfort",
+          "icon": "thermometer"
+        },
+        {
+          "id": "checkup",
+          "text": "Плановый осмотр / Справка / Анализы",
+          "value": "checkup",
+          "icon": "clipboard-check"
+        }
+      ],
+      "logic": [
+        {
+          "condition": "selected == 'pain'",
+          "next_node": "pain_details"
+        },
+        {
+          "condition": "selected == 'discomfort'",
+          "next_node": "systems_screening"
+        },
+        {
+          "condition": "selected == 'checkup'",
+          "next_node": "systems_screening"
+        },
+        {
+          "default": true,
+          "next_node": "systems_screening"
+        }
+      ]
+    },
+    {
+      "id": "pain_details",
+      "type": "body_map",
+      "question_text": "Укажите, где болит и насколько сильно?",
+      "description": "Выберите область и оцените интенсивность боли",
+      "required": true,
+      "options": [
+        {
+          "id": "head",
+          "text": "Голова",
+          "value": "head"
+        },
+        {
+          "id": "throat",
+          "text": "Горло",
+          "value": "throat"
+        },
+        {
+          "id": "chest",
+          "text": "Грудная клетка",
+          "value": "chest"
+        },
+        {
+          "id": "abdomen",
+          "text": "Живот",
+          "value": "abdomen"
+        },
+        {
+          "id": "back",
+          "text": "Поясница",
+          "value": "back"
+        },
+        {
+          "id": "joints",
+          "text": "Суставы / Конечности",
+          "value": "joints"
+        }
+      ],
+      "min_value": 1,
+      "max_value": 10,
+      "logic": [
+        {
+          "default": true,
+          "next_node": "systems_screening"
+        }
+      ]
+    },
+    {
+      "id": "systems_screening",
+      "type": "multi_choice",
+      "question_text": "Отметьте, замечали ли вы у себя за последний месяц следующие симптомы?",
+      "description": "Можно выбрать несколько вариантов",
+      "required": true,
+      "options": [
+        {
+          "id": "respiratory",
+          "text": "Кашель, мокрота, одышка",
+          "value": "respiratory",
+          "icon": "wind"
+        },
+        {
+          "id": "cardio",
+          "text": "Боли в сердце, сердцебиение, отеки ног",
+          "value": "cardio",
+          "icon": "heart"
+        },
+        {
+          "id": "gastro",
+          "text": "Боли в животе, тошнота, изжога, проблемы со стулом",
+          "value": "gastro",
+          "icon": "utensils"
+        },
+        {
+          "id": "neuro",
+          "text": "Головные боли, головокружение, плохой сон",
+          "value": "neuro",
+          "icon": "brain"
+        },
+        {
+          "id": "urinary",
+          "text": "Боли в пояснице, проблемы с мочеиспусканием",
+          "value": "urinary",
+          "icon": "droplet"
+        },
+        {
+          "id": "none",
+          "text": "Ничего из перечисленного",
+          "value": "none",
+          "icon": "check-circle"
+        }
+      ],
+      "logic": [
+        {
+          "condition": "selected contains 'respiratory'",
+          "next_node": "respiratory_details"
+        },
+        {
+          "condition": "selected contains 'cardio'",
+          "next_node": "cardio_details"
+        },
+        {
+          "condition": "selected contains 'gastro'",
+          "next_node": "gastro_details"
+        },
+        {
+          "default": true,
+          "next_node": "risk_factors"
+        }
+      ]
+    },
+    {
+      "id": "respiratory_details",
+      "type": "multi_choice_with_input",
+      "question_text": "Уточните характер симптомов дыхательной системы:",
+      "required": true,
+      "options": [
+        {
+          "id": "dry_cough",
+          "text": "Кашель сухой",
+          "value": "dry_cough"
+        },
+        {
+          "id": "wet_cough",
+          "text": "Кашель с мокротой",
+          "value": "wet_cough"
+        },
+        {
+          "id": "dyspnea_walking",
+          "text": "Одышка при ходьбе",
+          "value": "dyspnea_walking"
+        },
+        {
+          "id": "asthma_attacks",
+          "text": "Приступы удушья",
+          "value": "asthma_attacks"
+        }
+      ],
+      "additional_fields": [
+        {
+          "id": "smoking_years",
+          "type": "number",
+          "label": "Стаж курения (лет)",
+          "placeholder": "0 если не курите",
+          "min": 0,
+          "max": 100
+        }
+      ],
+      "logic": [
+        {
+          "condition": "systems_screening.selected contains 'cardio'",
+          "next_node": "cardio_details"
+        },
+        {
+          "condition": "systems_screening.selected contains 'gastro'",
+          "next_node": "gastro_details"
+        },
+        {
+          "default": true,
+          "next_node": "risk_factors"
+        }
+      ]
+    },
+    {
+      "id": "cardio_details",
+      "type": "single_choice",
+      "question_text": "Когда симптомы проявляются сильнее всего?",
+      "required": true,
+      "options": [
+        {
+          "id": "exercise",
+          "text": "При физической нагрузке",
+          "value": "exercise"
+        },
+        {
+          "id": "rest",
+          "text": "В покое / Ночью",
+          "value": "rest"
+        },
+        {
+          "id": "constant",
+          "text": "Постоянно",
+          "value": "constant"
+        }
+      ],
+      "additional_fields": [
+        {
+          "id": "edema",
+          "type": "single_choice",
+          "label": "Есть ли отёки?",
+          "options": [
+            {"id": "none", "text": "Нет"},
+            {"id": "legs", "text": "На ногах"},
+            {"id": "face", "text": "На лице"}
+          ]
+        }
+      ],
+      "logic": [
+        {
+          "condition": "systems_screening.selected contains 'gastro'",
+          "next_node": "gastro_details"
+        },
+        {
+          "default": true,
+          "next_node": "risk_factors"
+        }
+      ]
+    },
+    {
+      "id": "gastro_details",
+      "type": "multi_choice",
+      "question_text": "Есть ли связь болей с приемом пищи и характер стула?",
+      "required": true,
+      "options": [
+        {
+          "id": "hungry_pain",
+          "text": "Боли \"голодные\" (натощак) или ночные",
+          "value": "hungry_pain"
+        },
+        {
+          "id": "after_meal_pain",
+          "text": "Боли после еды",
+          "value": "after_meal_pain"
+        },
+        {
+          "id": "constipation",
+          "text": "Запоры (стул твёрдый/редкий)",
+          "value": "constipation"
+        },
+        {
+          "id": "diarrhea",
+          "text": "Диарея (стул жидкий/частый)",
+          "value": "diarrhea"
+        },
+        {
+          "id": "nausea",
+          "text": "Тошнота / Рвота",
+          "value": "nausea"
+        }
+      ],
+      "logic": [
+        {
+          "default": true,
+          "next_node": "risk_factors"
+        }
+      ]
+    },
+    {
+      "id": "risk_factors",
+      "type": "multi_choice",
+      "question_text": "Есть ли особенности здоровья, о которых важно знать?",
+      "description": "Выберите все подходящие варианты",
+      "required": true,
+      "options": [
+        {
+          "id": "allergy",
+          "text": "Аллергия на лекарства или продукты",
+          "value": "allergy",
+          "icon": "alert-triangle"
+        },
+        {
+          "id": "diabetes",
+          "text": "Сахарный диабет у меня или родителей",
+          "value": "diabetes",
+          "icon": "droplet"
+        },
+        {
+          "id": "oncology",
+          "text": "Онкология у кровных родственников",
+          "value": "oncology",
+          "icon": "alert-circle"
+        },
+        {
+          "id": "cardiovascular",
+          "text": "Инфаркты/Инсульты у родителей до 60 лет",
+          "value": "cardiovascular",
+          "icon": "heart"
+        },
+        {
+          "id": "none",
+          "text": "Нет особенностей",
+          "value": "none",
+          "icon": "check-circle"
+        }
+      ],
+      "additional_fields": [
+        {
+          "id": "allergy_details",
+          "type": "text",
+          "label": "Укажите на что аллергия",
+          "placeholder": "Например: пенициллин, орехи",
+          "show_if": "selected contains 'allergy'"
+        }
+      ],
+      "logic": [
+        {
+          "default": true,
+          "next_node": "finish"
+        }
+      ]
+    },
+    {
+      "id": "finish",
+      "type": "info_screen",
+      "question_text": "Спасибо!",
+      "description": "Анкета заполнена. Данные переданы врачу, он изучит их до начала приема.",
+      "required": false,
+      "is_final": true,
+      "logic": []
+    }
+  ]
+}

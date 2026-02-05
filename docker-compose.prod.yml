@@ -1,0 +1,138 @@
+# ============================================
+# 🏥 Опросник пациента - Docker Compose (Prod)
+# ============================================
+# Запуск: docker compose -f docker-compose.prod.yml up -d
+
+services:
+  # --------------------------------------------
+  # 🌐 Nginx (Reverse Proxy + SSL)
+  # --------------------------------------------
+  nginx:
+    image: nginx:alpine
+    container_name: opros-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+      - ./certbot/www:/var/www/certbot:ro
+      - frontend_build:/usr/share/nginx/html:ro
+    depends_on:
+      - backend
+    networks:
+      - opros-network
+    command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
+
+  # --------------------------------------------
+  # 🔒 Certbot (SSL Certificates)
+  # --------------------------------------------
+  certbot:
+    image: certbot/certbot
+    container_name: opros-certbot
+    restart: unless-stopped
+    volumes:
+      - ./certbot/conf:/etc/letsencrypt
+      - ./certbot/www:/var/www/certbot
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+  # --------------------------------------------
+  # 🐍 Backend (FastAPI)
+  # --------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: opros-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=production
+      - DEBUG=false
+    expose:
+      - "8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - opros-network
+    command: gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000
+
+  # --------------------------------------------
+  # ⚛️ Frontend Builder (только для сборки)
+  # --------------------------------------------
+  frontend-builder:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    container_name: opros-frontend-builder
+    volumes:
+      - frontend_build:/app/dist
+    environment:
+      - VITE_API_URL=/api/v1
+
+  # --------------------------------------------
+  # 🐘 PostgreSQL
+  # --------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: opros-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    networks:
+      - opros-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --------------------------------------------
+  # 🔴 Redis
+  # --------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: opros-redis
+    restart: unless-stopped
+    expose:
+      - "6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - opros-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-}
+
+# --------------------------------------------
+# 📦 Volumes
+# --------------------------------------------
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  frontend_build:
+    driver: local
+
+# --------------------------------------------
+# 🌐 Networks
+# --------------------------------------------
+networks:
+  opros-network:
+    driver: bridge

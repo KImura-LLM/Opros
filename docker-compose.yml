@@ -1,0 +1,110 @@
+# ============================================
+# 🏥 Опросник пациента - Docker Compose (Dev)
+# ============================================
+# Запуск: docker compose up -d
+
+services:
+  # --------------------------------------------
+  # 🐍 Backend (FastAPI)
+  # --------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: opros-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=development
+    volumes:
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - opros-network
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # --------------------------------------------
+  # ⚛️ Frontend (Vite Dev Server)
+  # --------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: opros-frontend
+    restart: unless-stopped
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:8000/api/v1
+    networks:
+      - opros-network
+    command: npm run dev -- --host 0.0.0.0
+
+  # --------------------------------------------
+  # 🐘 PostgreSQL
+  # --------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: opros-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-opros_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-opros_password}
+      POSTGRES_DB: ${POSTGRES_DB:-opros_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - opros-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-opros_user} -d ${POSTGRES_DB:-opros_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --------------------------------------------
+  # 🔴 Redis
+  # --------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: opros-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - opros-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: redis-server --appendonly yes
+
+# --------------------------------------------
+# 📦 Volumes
+# --------------------------------------------
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+# --------------------------------------------
+# 🌐 Networks
+# --------------------------------------------
+networks:
+  opros-network:
+    driver: bridge

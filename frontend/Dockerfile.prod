@@ -1,0 +1,30 @@
+# ============================================
+# Frontend Dockerfile (Production - Build)
+# ============================================
+
+FROM node:20-alpine as builder
+
+WORKDIR /app
+
+# Копирование package files
+COPY package*.json ./
+
+# Установка зависимостей
+RUN npm ci
+
+# Копирование исходного кода
+COPY . .
+
+# Сборка production билда
+RUN npm run build
+
+# ============================================
+# Production stage - только статика
+# ============================================
+FROM alpine:latest
+
+# Копирование собранных файлов
+COPY --from=builder /app/dist /app/dist
+
+# Команда - просто держим контейнер для volume
+CMD ["sh", "-c", "cp -r /app/dist/* /output/ 2>/dev/null || true && tail -f /dev/null"]

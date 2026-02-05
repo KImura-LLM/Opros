@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ admin.title }}</title>
+    
+    <!-- Tabler CSS -->
+    <link rel="stylesheet" href="{{ url_for('admin:statics', path='css/tabler.min.css') }}">
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="{{ url_for('admin:statics', path='css/fontawesome.min.css') }}">
+    <!-- Select2 -->
+    <link rel="stylesheet" href="{{ url_for('admin:statics', path='css/select2.min.css') }}">
+    <!-- Flatpickr -->
+    <link rel="stylesheet" href="{{ url_for('admin:statics', path='css/flatpickr.min.css') }}">
+    <!-- Main CSS -->
+    <link rel="stylesheet" href="{{ url_for('admin:statics', path='css/main.css') }}">
+    
+    <style>
+        /* ============================================
+           🎨 Тёмная тема для медицинского опросника
+           ============================================ */
+        
+        :root {
+            --bg-dark: #050505;
+            --bg-card: #0d0d0d;
+            --bg-card-hover: #151515;
+            --bg-sidebar: #0a0a0a;
+            --border-color: #222;
+            --border-hover: #00ff80;
+            --text-primary: #ffffff;
+            --text-secondary: #aaa;
+            --text-muted: #666;
+            --accent-green: #00ff80;
+            --accent-blue: #4dabf7;
+            --accent-red: #ff6b6b;
+            --accent-yellow: #ffd43b;
+            --accent-purple: #a78bfa;
+        }
+
+        /* Global Reset */
+        body, html {
+            background-color: var(--bg-dark) !important;
+            color: var(--text-primary) !important;
+            font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        }
+
+        /* Wrapper */
+        .wrapper, .page-wrapper, .container-fluid, .container-xl {
+            background-color: var(--bg-dark) !important;
+        }
+
+        /* ============================================
+           Sidebar / Navbar
+           ============================================ */
+        .navbar-vertical, .navbar, aside, .sidebar {
+            background-color: var(--bg-sidebar) !important;
+            border-right: 1px solid var(--border-color) !important;
+        }
+
+        .navbar-brand, .navbar-brand-autodark {
+            color: var(--text-primary) !important;
+        }
+
+        .nav-item, .nav-link {
+            color: var(--text-secondary) !important;
+            transition: all 0.2s ease;
+        }
+
+        .nav-link:hover, .nav-item:hover .nav-link {
+            color: var(--accent-green) !important;
+            background-color: rgba(0, 255, 128, 0.05) !important;
+        }
+
+        .nav-link.active, .nav-item.active .nav-link {
+            color: var(--accent-green) !important;
+            background-color: rgba(0, 255, 128, 0.1) !important;
+            border-left: 3px solid var(--accent-green) !important;
+        }
+
+        .navbar-vertical .navbar-nav .nav-link {
+            padding: 12px 16px !important;
+            margin: 2px 8px !important;
+            border-radius: 8px !important;
+        }
+
+        /* ============================================
+           Page Header / Breadcrumbs
+           ============================================ */
+        .page-header, .page-pretitle, .page-title {
+            background-color: transparent !important;
+            color: var(--text-primary) !important;
+        }
+
+        .breadcrumb {
+            background-color: transparent !important;
+        }
+
+        .breadcrumb-item, .breadcrumb-item a {
+            color: var(--text-secondary) !important;
+        }
+
+        .breadcrumb-item.active {
+            color: var(--accent-green) !important;
+        }
+
+        /* ============================================
+           Cards
+           ============================================ */
+        .card {
+            background: linear-gradient(145deg, var(--bg-card), #0a0a0a) !important;
+            border: 1px solid var(--border-color) !important;
+            border-radius: 12px !important;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+        }
+
+        .card-header {
+            background-color: rgba(255, 255, 255, 0.02) !important;
+            border-bottom: 1px solid var(--border-color) !important;
+            color: var(--text-primary) !important;
+        }
+
+        .card-title, .card-header h3, .card-header h4 {
+            color: var(--text-primary) !important;
+        }
+
+        .card-body {
+            background-color: transparent !important;
+            color: var(--text-secondary) !important;
+        }
+
+        .card-footer {
+            background-color: rgba(255, 255, 255, 0.02) !important;
+            border-top: 1px solid var(--border-color) !important;
+        }
+
+        /* ============================================
+           Tables
+           ============================================ */
+        .table {
+            color: var(--text-primary) !important;
+            background-color: transparent !important;
+        }
+
+        .table thead th {
+            background-color: rgba(255, 255, 255, 0.03) !important;
+            color: var(--text-secondary) !important;
+            border-bottom: 2px solid var(--border-color) !important;
+            font-weight: 600 !important;
+            text-transform: uppercase !important;
+            font-size: 0.75rem !important;
+            letter-spacing: 0.5px !important;
+        }
+
+        .table thead th a {
+            color: var(--text-secondary) !important;
+        }
+
+        .table thead th a:hover {
+            color: var(--accent-green) !important;
+        }
+
+        .table tbody tr {
+            background-color: transparent !important;
+            border-bottom: 1px solid var(--border-color) !important;
+            transition: all 0.2s ease !important;
+        }
+
+        .table tbody tr:hover {
+            background-color: rgba(0, 255, 128, 0.03) !important;
+            border-color: var(--accent-green) !important;
+        }
+
+        .table tbody td {
+            color: var(--text-primary) !important;
+            padding: 14px 12px !important;
+            vertical-align: middle !important;
+        }
+
+        .table-striped tbody tr:nth-of-type(odd) {
+            background-color: rgba(255, 255, 255, 0.02) !important;
+        }
+
+        /* ============================================
+           Buttons
+           ============================================ */
+        .btn-primary {
+            background-color: var(--accent-green) !important;
+            border-color: var(--accent-green) !important;
+            color: #000 !important;
+            font-weight: 600 !important;
+        }
+
+        .btn-primary:hover {
+            background-color: #00cc66 !important;
+            border-color: #00cc66 !important;
+            box-shadow: 0 4px 12px rgba(0, 255, 128, 0.3) !important;
+        }
+
+        .btn-secondary, .btn-outline-secondary {
+            background-color: rgba(255, 255, 255, 0.05) !important;
+            border-color: var(--border-color) !important;
+            color: var(--text-secondary) !important;
+        }
+
+        .btn-secondary:hover, .btn-outline-secondary:hover {
+            background-color: rgba(255, 255, 255, 0.1) !important;
+            border-color: var(--text-secondary) !important;
+            color: var(--text-primary) !important;
+        }
+
+        .btn-danger {
+            background-color: var(--accent-red) !important;
+            border-color: var(--accent-red) !important;
+        }
+
+        .btn-success {
+            background-color: var(--accent-green) !important;
+            border-color: var(--accent-green) !important;
+            color: #000 !important;
+        }
+
+        .btn-warning {
+            background-color: var(--accent-yellow) !important;
+            border-color: var(--accent-yellow) !important;
+            color: #000 !important;
+        }
+
+        .btn-info {
+            background-color: var(--accent-blue) !important;
+            border-color: var(--accent-blue) !important;
+        }
+
+        /* Action Icons */
+        .btn-icon, .btn-sm {
+            transition: all 0.2s ease !important;
+        }
+
+        .btn-icon:hover, a[href*="details"]:hover, a[href*="edit"]:hover {
+            transform: scale(1.1) !important;
+        }
+
+        /* ============================================
+           Forms
+           ============================================ */
+        .form-control, .form-select, input, select, textarea {
+            background-color: #ffffff !important;
+            border: 1px solid var(--border-color) !important;
+            color: #000000 !important;
+        }
+
+        .form-control:focus, .form-select:focus, input:focus, select:focus, textarea:focus {
+            border-color: var(--accent-green) !important;
+            box-shadow: 0 0 0 3px rgba(0, 255, 128, 0.1) !important;
+            background-color: #ffffff !important;
+            color: #000000 !important;
+        }
+
+        .form-control::placeholder {
+            color: #888888 !important;
+        }
+
+        .form-label, label {
+            color: var(--text-secondary) !important;
+            font-weight: 500 !important;
+        }
+
+        .form-check-input {
+            background-color: var(--bg-card) !important;
+            border-color: var(--border-color) !important;
+        }
+
+        .form-check-input:checked {
+            background-color: var(--accent-green) !important;
+            border-color: var(--accent-green) !important;
+        }
+
+        /* Select2 */
+        .select2-container--default .select2-selection--single,
+        .select2-container--default .select2-selection--multiple {
+            background-color: var(--bg-card) !important;
+            border-color: var(--border-color) !important;
+            color: var(--text-primary) !important;
+        }
+
+        .select2-container--default .select2-results__option {
+            background-color: var(--bg-card) !important;
+            color: var(--text-primary) !important;
+        }
+
+        .select2-container--default .select2-results__option--highlighted {
+            background-color: var(--accent-green) !important;
+            color: #000 !important;
+        }
+
+        .select2-dropdown {
+            background-color: var(--bg-card) !important;
+            border-color: var(--border-color) !important;
+        }
+
+        /* ============================================
+           Status Badges
+           ============================================ */
+        .badge {
+            font-weight: 600 !important;
+            padding: 6px 12px !important;
+            border-radius: 20px !important;
+        }
+
+        .badge-success, .bg-success {
+            background-color: rgba(0, 255, 128, 0.15) !important;
+            color: var(--accent-green) !important;
+        }
+
+        .badge-danger, .bg-danger {
+            background-color: rgba(255, 107, 107, 0.15) !important;
+            color: var(--accent-red) !important;
+        }
+
+        .badge-warning, .bg-warning {
+            background-color: rgba(255, 212, 59, 0.15) !important;
+            color: var(--accent-yellow) !important;
+        }
+
+        .badge-info, .bg-info {
+            background-color: rgba(77, 171, 247, 0.15) !important;
+            color: var(--accent-blue) !important;
+        }
+
+        .badge-primary, .bg-primary {
+            background-color: rgba(0, 255, 128, 0.15) !important;
+            color: var(--accent-green) !important;
+        }
+
+        .badge-secondary, .bg-secondary {
+            background-color: rgba(255, 255, 255, 0.1) !important;
+            color: var(--text-secondary) !important;
+        }
+
+        /* Status Icons */
+        .fa-check, .fa-check-circle {
+            color: var(--accent-green) !important;
+        }
+
+        .fa-times, .fa-times-circle {
+            color: var(--accent-red) !important;
+        }
+
+        .fa-clock, .fa-spinner {
+            color: var(--accent-yellow) !important;
+        }
+
+        /* ============================================
+           Pagination
+           ============================================ */
+        .pagination .page-item .page-link {
+            background-color: var(--bg-card) !important;
+            border-color: var(--border-color) !important;
+            color: var(--text-secondary) !important;
+        }
+
+        .pagination .page-item:hover .page-link {
+            background-color: rgba(0, 255, 128, 0.1) !important;
+            border-color: var(--accent-green) !important;
+            color: var(--accent-green) !important;
+        }
+
+        .pagination .page-item.active .page-link {
+            background-color: var(--accent-green) !important;
+            border-color: var(--accent-green) !important;
+            color: #000 !important;
+        }
+
+        .pagination .page-item.disabled .page-link {
+            background-color: rgba(255, 255, 255, 0.03) !important;
+            color: var(--text-muted) !important;
+        }
+
+        /* ============================================
+           Alerts / Notifications
+           ============================================ */
+        .alert {
+            border-radius: 10px !important;
+            border: 1px solid !important;
+        }
+
+        .alert-success {
+            background-color: rgba(0, 255, 128, 0.1) !important;
+            border-color: var(--accent-green) !important;
+            color: var(--accent-green) !important;
+        }
+
+        .alert-danger {
+            background-color: rgba(255, 107, 107, 0.1) !important;
+            border-color: var(--accent-red) !important;
+            color: var(--accent-red) !important;
+        }
+
+        .alert-warning {
+            background-color: rgba(255, 212, 59, 0.1) !important;
+            border-color: var(--accent-yellow) !important;
+            color: var(--accent-yellow) !important;
+        }
+
+        .alert-info {
+            background-color: rgba(77, 171, 247, 0.1) !important;
+            border-color: var(--accent-blue) !important;
+            color: var(--accent-blue) !important;
+        }
+
+        /* ============================================
+           Modal
+           ============================================ */
+        .modal-content {
+            background-color: var(--bg-card) !important;
+            border: 1px solid var(--border-color) !important;
+            border-radius: 12px !important;
+        }
+
+        .modal-header {
+            border-bottom-color: var(--border-color) !important;
+        }
+
+        .modal-footer {
+            border-top-color: var(--border-color) !important;
+        }
+
+        .modal-title {
+            color: var(--text-primary) !important;
+        }
+
+        /* ============================================
+           Dropdown
+           ============================================ */
+        .dropdown-menu {
+            background-color: var(--bg-card) !important;
+            border: 1px solid var(--border-color) !important;
+            border-radius: 8px !important;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5) !important;
+        }
+
+        .dropdown-item {
+            color: var(--text-secondary) !important;
+        }
+
+        .dropdown-item:hover {
+            background-color: rgba(0, 255, 128, 0.1) !important;
+            color: var(--accent-green) !important;
+        }
+
+        .dropdown-divider {
+            border-color: var(--border-color) !important;
+        }
+
+        /* ============================================
+           Links
+           ============================================ */
+        a {
+            color: var(--accent-blue) !important;
+            text-decoration: none !important;
+            transition: color 0.2s ease !important;
+        }
+
+        a:hover {
+            color: var(--accent-green) !important;
+        }
+
+        /* ============================================
+           Text Utilities
+           ============================================ */
+        .text-muted {
+            color: var(--text-muted) !important;
+        }
+
+        .text-secondary {
+            color: var(--text-secondary) !important;
+        }
+
+        h1, h2, h3, h4, h5, h6 {
+            color: var(--text-primary) !important;
+        }
+
+        /* ============================================
+           Scrollbar
+           ============================================ */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: var(--bg-dark);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-muted);
+        }
+
+        /* ============================================
+           Additional Overrides
+           ============================================ */
+        .page-body {
+            background-color: var(--bg-dark) !important;
+        }
+
+        .container-xl {
+            padding: 20px !important;
+        }
+
+        hr {
+            border-color: var(--border-color) !important;
+        }
+
+        code, pre {
+            background-color: var(--bg-card) !important;
+            color: var(--accent-green) !important;
+            border-radius: 4px;
+        }
+
+        /* Action column icons styling */
+        td a svg, td a i {
+            transition: all 0.2s ease !important;
+        }
+
+        td a:hover svg, td a:hover i {
+            color: var(--accent-green) !important;
+            transform: scale(1.2) !important;
+        }
+
+        /* Checkbox styling */
+        input[type="checkbox"] {
+            accent-color: var(--accent-green) !important;
+        }
+
+        /* Empty state */
+        .empty {
+            background-color: var(--bg-card) !important;
+            border-radius: 12px !important;
+        }
+
+        .empty-title {
+            color: var(--text-primary) !important;
+        }
+
+        .empty-subtitle {
+            color: var(--text-secondary) !important;
+        }
+
+        /* JSON display */
+        .json-display, pre.json {
+            background-color: var(--bg-card) !important;
+            color: var(--text-primary) !important;
+            border: 1px solid var(--border-color) !important;
+            border-radius: 8px !important;
+            padding: 16px !important;
+        }
+
+        /* Detail view */
+        .detail-view dt {
+            color: var(--text-secondary) !important;
+            font-weight: 600 !important;
+        }
+
+        .detail-view dd {
+            color: var(--text-primary) !important;
+        }
+
+        /* Datagrid */
+        .datagrid-title {
+            color: var(--text-secondary) !important;
+        }
+
+        .datagrid-content {
+            color: var(--text-primary) !important;
+        }
+    </style>
+</head>
+<body class="antialiased">
+    <div class="wrapper">
+        <!-- Sidebar -->
+        <aside class="navbar navbar-vertical navbar-expand-lg navbar-dark">
+            <div class="container-fluid">
+                <!-- Brand -->
+                <h1 class="navbar-brand navbar-brand-autodark">
+                    <a href="{{ url_for('admin:index') }}">
+                        <h3 style="margin: 0; color: #fff;">{{ admin.title }}</h3>
+                    </a>
+                </h1>
+                
+                <!-- Navigation -->
+                <nav class="navbar-nav flex-column" id="navbar-menu">
+                    <ul class="navbar-nav">
+                        <li class="nav-item">
+                            <a class="nav-link {% if '/admin/survey-config' in request.url.path %}active{% endif %}" 
+                               href="{{ url_for('admin:list', identity='survey-config') }}">
+                                <span class="nav-link-icon d-md-none d-lg-inline-block">
+                                    <i class="fa-solid fa-clipboard-list"></i>
+                                </span>
+                                <span class="nav-link-title">Опросники</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link {% if '/admin/survey-session' in request.url.path %}active{% endif %}" 
+                               href="{{ url_for('admin:list', identity='survey-session') }}">
+                                <span class="nav-link-icon d-md-none d-lg-inline-block">
+                                    <i class="fa-solid fa-user-clock"></i>
+                                </span>
+                                <span class="nav-link-title">Сессии опросов</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link {% if '/admin/survey-answer' in request.url.path %}active{% endif %}" 
+                               href="{{ url_for('admin:list', identity='survey-answer') }}">
+                                <span class="nav-link-icon d-md-none d-lg-inline-block">
+                                    <i class="fa-solid fa-comments"></i>
+                                </span>
+                                <span class="nav-link-title">Ответы</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link {% if '/admin/audit-log' in request.url.path %}active{% endif %}" 
+                               href="{{ url_for('admin:list', identity='audit-log') }}">
+                                <span class="nav-link-icon d-md-none d-lg-inline-block">
+                                    <i class="fa-solid fa-shield-halved"></i>
+                                </span>
+                                <span class="nav-link-title">Логи аудита</span>
+                            </a>
+                        </li>
+                    </ul>
+                </nav>
+                
+                <!-- Logout -->
+                <a class="nav-link" href="{{ url_for('admin:logout') }}" style="margin-top: auto; padding: 12px 16px; color: #ff6b6b !important;">
+                    <span class="nav-link-icon"><i class="fa-solid fa-sign-out-alt"></i></span>
+                    <span class="nav-link-title">Logout</span>
+                </a>
+            </div>
+        </aside>
+        
+        <!-- Main Content -->
+        <div class="page-wrapper">
+            <div class="container-xl">
+                <!-- Page Content -->
+                {% block content %}{% endblock %}
+            </div>
+        </div>
+    </div>
+    
+    <!-- Scripts -->
+    <script src="{{ url_for('admin:statics', path='js/jquery.min.js') }}"></script>
+    <script src="{{ url_for('admin:statics', path='js/popper.min.js') }}"></script>
+    <script src="{{ url_for('admin:statics', path='js/bootstrap.min.js') }}"></script>
+    <script src="{{ url_for('admin:statics', path='js/tabler.min.js') }}"></script>
+    <script src="{{ url_for('admin:statics', path='js/select2.full.min.js') }}"></script>
+    <script src="{{ url_for('admin:statics', path='js/flatpickr.min.js') }}"></script>
+    <script src="{{ url_for('admin:statics', path='js/main.js') }}"></script>
+    
+    {% block tail_js %}{% endblock %}
+</body>
+</html>

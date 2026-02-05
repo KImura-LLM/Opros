@@ -1,0 +1,177 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<style>
+    /* Dashboard Header */
+    .dashboard-header {
+        margin-bottom: 2.5rem;
+        padding: 1.5rem 0;
+    }
+    .dashboard-header h1 {
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 0.5rem;
+    }
+
+    /* Grid Layout */
+    .tiles-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 1.5rem;
+        padding-bottom: 2rem;
+    }
+
+    /* Card/Tile Styles */
+    .dashboard-tile {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        background: linear-gradient(145deg, #121212, #0d0d0d);
+        border: 1px solid #222;
+        border-radius: 16px;
+        padding: 24px;
+        min-height: 200px;
+        text-decoration: none !important;
+        color: #fff !important;
+        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+        position: relative;
+        overflow: hidden;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    }
+
+    /* Hover Effects */
+    .dashboard-tile:hover {
+        transform: translateY(-5px);
+        border-color: #00ff80;
+        box-shadow: 0 10px 30px rgba(0, 255, 128, 0.15);
+        color: #fff !important;
+        text-decoration: none !important;
+    }
+    
+    .dashboard-tile::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: radial-gradient(circle at center, rgba(0,255,128,0.1) 0%, transparent 70%);
+        opacity: 0;
+        transition: opacity 0.3s ease;
+        pointer-events: none;
+    }
+    .dashboard-tile:hover::after {
+        opacity: 1;
+    }
+
+    /* Icon Container */
+    .tile-icon-wrapper {
+        width: 60px;
+        height: 60px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 12px;
+        background-color: rgba(255,255,255,0.05);
+        margin-bottom: 1.5rem;
+        transition: background-color 0.3s ease;
+    }
+    
+    .dashboard-tile:hover .tile-icon-wrapper {
+        background-color: rgba(0, 255, 128, 0.1);
+    }
+
+    .tile-icon {
+        font-size: 1.75rem;
+        color: #bbb !important;
+        transition: color 0.3s ease;
+    }
+
+    .dashboard-tile:hover .tile-icon {
+        color: #00ff80 !important;
+    }
+
+    /* Text Styles */
+    .tile-title {
+        font-size: 1.6rem;
+        font-weight: 700;
+        display: block;
+        margin-bottom: 0.5rem;
+        color: #fff !important;
+    }
+    .tile-desc {
+        font-size: 0.95rem;
+        color: #777 !important;
+        line-height: 1.4;
+    }
+
+    /* Stat Badges for visual flair (optional mock data style) */
+    .stat-badge {
+        position: absolute;
+        top: 24px;
+        right: 24px;
+        background-color: rgba(0, 255, 128, 0.1);
+        color: #00ff80 !important;
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        opacity: 0.8;
+    }
+</style>
+
+<div class="dashboard-header">
+    <h1>Панель управления</h1>
+    <p class="text-muted">Администрирование медицинского опросника</p>
+</div>
+
+<div class="tiles-grid">
+    <!-- Опросники -->
+    <a href="{{ url_for('admin:list', identity='survey-config') }}" class="dashboard-tile">
+        <span class="stat-badge">Config</span>
+        <div>
+            <div class="tile-icon-wrapper">
+                <i class="fa-solid fa-clipboard-list tile-icon"></i>
+            </div>
+            <span class="tile-title">Опросники</span>
+        </div>
+        <span class="tile-desc">Управление версиями и структурой JSON-графов вопросов.</span>
+    </a>
+
+    <!-- Сессии -->
+    <a href="{{ url_for('admin:list', identity='survey-session') }}" class="dashboard-tile">
+        <span class="stat-badge">Live</span>
+        <div>
+            <div class="tile-icon-wrapper">
+                <i class="fa-solid fa-user-clock tile-icon"></i>
+            </div>
+            <span class="tile-title">Сессии</span>
+        </div>
+        <span class="tile-desc">Мониторинг активных и завершённых прохождений пациентов.</span>
+    </a>
+
+    <!-- Ответы -->
+    <a href="{{ url_for('admin:list', identity='survey-answer') }}" class="dashboard-tile">
+        <span class="stat-badge">Data</span>
+        <div>
+            <div class="tile-icon-wrapper">
+                <i class="fa-solid fa-comments tile-icon"></i>
+            </div>
+            <span class="tile-title">Ответы</span>
+        </div>
+        <span class="tile-desc">База данных всех ответов, полученных от пользователей.</span>
+    </a>
+
+    <!-- Аудит/Безопасность -->
+    <a href="{{ url_for('admin:list', identity='audit-log') }}" class="dashboard-tile">
+        <span class="stat-badge security">Log</span>
+        <div>
+            <div class="tile-icon-wrapper">
+                <i class="fa-solid fa-shield-halved tile-icon"></i>
+            </div>
+            <span class="tile-title">Аудит</span>
+        </div>
+        <span class="tile-desc">Логи безопасности, входов и системных событий.</span>
+    </a>
+</div>
+{% endblock %}
