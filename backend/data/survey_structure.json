@@ -3,39 +3,13 @@
   "name": "Предварительный опрос пациента",
   "version": "1.0",
   "description": "Анкета для сбора анамнеза перед приёмом врача",
-  "start_node": "welcome",
+  "start_node": "main_trigger",
   "branch_mapping": {
     "respiratory": "respiratory_details",
     "cardio": "cardio_details",
     "gastro": "gastro_details"
   },
   "nodes": [
-    {
-      "id": "welcome",
-      "type": "info_screen",
-      "question_text": "Здравствуйте!",
-      "description": "Пожалуйста, ответьте на несколько вопросов. Это поможет врачу подготовиться к приему и уделить больше времени осмотру, а не заполнению карт.",
-      "required": false,
-      "logic": [
-        {
-          "default": true,
-          "next_node": "consent"
-        }
-      ]
-    },
-    {
-      "id": "consent",
-      "type": "consent_screen",
-      "question_text": "Согласие на обработку данных",
-      "description": "Я даю согласие на обработку персональных данных и передачу сведений о состоянии здоровья в медицинскую организацию (в соответствии с 152-ФЗ).",
-      "required": true,
-      "logic": [
-        {
-          "default": true,
-          "next_node": "main_trigger"
-        }
-      ]
-    },
     {
       "id": "main_trigger",
       "type": "single_choice",

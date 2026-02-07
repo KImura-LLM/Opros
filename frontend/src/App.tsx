@@ -7,6 +7,7 @@ import HomePage from '@/pages/HomePage'
 import SurveyPage from '@/pages/SurveyPage'
 import CompletePage from '@/pages/CompletePage'
 import ErrorPage from '@/pages/ErrorPage'
+import EditorPage from '@/pages/EditorPage'
 
 function App() {
   const location = useLocation()
@@ -19,6 +20,9 @@ function App() {
           <Route path="/survey" element={<SurveyPage />} />
           <Route path="/complete" element={<CompletePage />} />
           <Route path="/error" element={<ErrorPage />} />
+          
+          {/* Редактор опросника (для админ-панели) */}
+          <Route path="/editor/:surveyId" element={<EditorPage />} />
         </Routes>
       </AnimatePresence>
     </div>

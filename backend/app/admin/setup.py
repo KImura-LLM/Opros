@@ -51,13 +51,17 @@ class SurveyConfigAdmin(ModelView, model=SurveyConfig):
     name = "Опросник"
     name_plural = "Опросники"
     icon = "fa-solid fa-clipboard-list"
-    
-    column_list = [
+
+    column_details_list = [
         SurveyConfig.id,
         SurveyConfig.name,
         SurveyConfig.version,
+        SurveyConfig.description,
         SurveyConfig.is_active,
+        "visual_structure",  # Кастомное поле
+        SurveyConfig.json_config,
         SurveyConfig.created_at,
+        SurveyConfig.updated_at,
     ]
     
     column_searchable_list = [SurveyConfig.name]
@@ -82,6 +86,261 @@ class SurveyConfigAdmin(ModelView, model=SurveyConfig):
     can_edit = True
     can_delete = True
     can_view_details = True
+    
+    # Добавляем кастомное поле для кнопки редактора
+    column_list = [
+        SurveyConfig.id,
+        SurveyConfig.name,
+        SurveyConfig.version,
+        SurveyConfig.is_active,
+        SurveyConfig.created_at,
+        "edit_link",  # Кастомная колонка для кнопки редактора
+    ]
+    
+    # Форматтер для списка
+    @staticmethod
+    def _edit_link_formatter(model, prop):
+        """Рендеринг кнопки редактора."""
+        from markupsafe import Markup
+        # Используем FRONTEND_URL из настроек
+        editor_url = f"{settings.FRONTEND_URL}/editor/{model.id}"
+        
+        return Markup(f'''
+            <a href="{editor_url}" 
+               target="_blank"
+               style="
+                   display: inline-flex;
+                   align-items: center;
+                   gap: 6px;
+                   padding: 6px 12px;
+                   background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+                   color: white;
+                   border-radius: 6px;
+                   font-size: 12px;
+                   font-weight: 500;
+                   text-decoration: none;
+                   transition: all 0.2s;
+                   box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
+               "
+               onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 8px rgba(59, 130, 246, 0.4)';"
+               onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(59, 130, 246, 0.3)';"
+            >
+                <i class="fa-solid fa-diagram-project"></i>
+                Редактор
+            </a>
+        ''')
+    
+    column_formatters = {
+        "edit_link": _edit_link_formatter.__func__,
+    }
+    
+    column_labels = {
+        "edit_link": "Визуальный редактор",
+    }
+
+    def visual_structure(model, prop):
+        """Рендеринг визуальной структуры опросника."""
+        from markupsafe import Markup
+        
+        config = model.json_config
+        nodes = {n['id']: n for n in config.get('nodes', [])}
+        start = config.get('start_node')
+        
+        html = ['<div style="font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, Helvetica, Arial, sans-serif; line-height: 1.5; background: #fff; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0; max-width: 100%; overflow-x: auto;">']
+        html.append(f'<h3 style="margin-top:0; margin-bottom:15px; color:#1e293b;">Карта опросника (v{model.version})</h3>')
+
+        STYLES = {
+            'type': 'display: inline-block; padding: 2px 8px; font-size: 0.75em; border-radius: 9999px; background: #f1f5f9; color: #475569; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;',
+            'question': 'font-weight: 600; color: #0f172a; margin-left: 8px;',
+            'logic-container': 'margin-left: 20px; padding-left: 15px; border-left: 2px solid #e2e8f0; margin-top: 8px;',
+            'branch': 'color: #64748b; font-size: 0.9em; margin-top: 6px; display: flex; align-items: flex-start;',
+            'condition-tag': 'color: #059669; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; background: #d1fae5; padding: 1px 6px; border-radius: 4px; font-size: 0.9em;',
+            'default-tag': 'color: #6366f1; font-style: italic; background: #e0e7ff; padding: 1px 6px; border-radius: 4px; font-size: 0.9em;',
+            'id': 'color: #94a3b8; font-size: 0.8em; font-family: monospace; margin-left: auto;',
+            'final': 'display: inline-block; padding: 2px 8px; font-size: 0.75em; border-radius: 9999px; background: #fff7ed; color: #c2410c; border: 1px solid #ffedd5; font-weight: 600;'
+        }
+
+        ICONS = {
+            'info_screen': 'ℹ️',
+            'single_choice': '🔘',
+            'multi_choice': '☑️',
+            'multi_choice_with_input': '📝',
+            'scale_1_10': '📏',
+            'body_map': '🧘',
+            'text_input': '✍️',
+            'number_input': '1️⃣2️⃣',
+        }
+
+    def visual_structure(model, prop):
+        """Рендеринг визуальной структуры опросника."""
+        from markupsafe import Markup
+        import re
+        
+        config = model.json_config
+        nodes = {n['id']: n for n in config.get('nodes', [])}
+        start = config.get('start_node')
+        
+        # Helper to find option text by value
+        def get_option_text(node, value):
+            if not node or not node.get('options'): return value
+            val_str = str(value).replace("'", "").strip()
+            for opt in node['options']:
+                if str(opt.get('value')) == val_str:
+                    return opt.get('text')
+            return value
+
+        # Helper to parse condition
+        def pretty_condition(cond, parent_node):
+            if not cond: return ""
+            # Try to extract value from "selected == 'val'"
+            match = re.search(r"selected\s*==\s*'([^']+)'", cond)
+            if match:
+                val = match.group(1)
+                return get_option_text(parent_node, val)
+            
+            match_in = re.search(r"selected\s+contains\s+'([^']+)'", cond)
+            if match_in:
+                val = match_in.group(1)
+                text = get_option_text(parent_node, val)
+                return f"Содержит: {text}"
+                
+            return cond.replace("selected", "Выбор").replace("==", "=").replace("'", "")
+
+        html = ['<div style="font-family: \'Segoe UI\', Roboto, sans-serif; line-height: 1.6; font-size: 16px; background: #fff; padding: 25px; border-radius: 8px; border: 1px solid #e2e8f0; color: #333;">']
+        html.append(f'<h3 style="margin-top:0; margin-bottom:20px; font-size: 1.6em; color:#1e293b; border-bottom: 2px solid #f1f5f9; padding-bottom: 10px;">{model.name} <span style="font-weight:normal; font-size:0.7em; color:#94a3b8">v{model.version}</span></h3>')
+
+        STYLES = {
+            'question': 'font-weight: 600; font-size: 1.25em; color: #1e293b; margin-bottom: 6px;',
+            'description': 'font-size: 0.95em; color: #64748b; margin-bottom: 10px; font-style: italic;',
+            'options': 'margin-left: 0; color: #475569; font-size: 1em; display: grid; gap: 4px;',
+            'option-item': 'display: flex; align-items: center; gap: 8px;',
+            'option-bullet': 'width: 6px; height: 6px; border-radius: 50%; background: #94a3b8;',
+            
+            'logic-container': 'margin-left: 14px; padding-left: 24px; border-left: 3px solid #cbd5e1; margin-top: 15px;',
+            'branch': 'margin-top: 15px;',
+            'arrow-line': 'color: #94a3b8; font-weight: bold; font-size: 1.2em; display: inline-block;',
+            'arrow-label': 'background: #f1f5f9; padding: 6px 14px; border-radius: 6px; font-size: 0.9em; color: #334155; display: inline-block; margin-bottom: 8px; font-weight: 500; border: 1px solid #e2e8f0;',
+            
+            'final': 'display: inline-block; padding: 6px 16px; border-radius: 6px; background: #dcfce7; color: #166534; font-weight: 600; border: 1px solid #bbf7d0; font-size: 0.9em;',
+            'loop': 'color: #d97706; font-style: italic; background: #fffbeb; padding: 4px 10px; border-radius: 6px; border: 1px solid #fde68a;',
+            'node-box': 'background: white; padding: 16px; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 2px 4px rgba(0,0,0,0.02); margin-bottom: 12px;'
+        }
+
+        # Icons map (purely decoration)
+        ICONS = {
+            'info_screen': 'ℹ️',
+            'consent_screen': '✅',
+            'is_final': '🏁'
+        }
+
+        def render_node_recursive(node_id, visited, depth=0):
+            if depth > 50: return '<div style="color:red">...</div>'
+            
+            node = nodes.get(node_id)
+            if not node: return ''
+
+            # Container
+            out = f'<div style="{STYLES["node-box"]}">'
+            
+            # Question
+            icon = ICONS.get(node.get('type'), '')
+            title = node.get('question_text', 'Без вопроса')
+            out += f'<div style="{STYLES["question"]}">{title}</div>'
+            
+            # Description
+            if node.get('description'):
+                 out += f'<div style="{STYLES["description"]}">{node.get("description")}</div>'
+            
+            # Options (only if not branching immediately by them, but usually good to show)
+            if node.get('options'):
+                out += f'<div style="{STYLES["options"]}">'
+                for opt in node['options']:
+                     out += f'<div style="{STYLES["option-item"]}"><div style="{STYLES["option-bullet"]}"></div>{opt.get("text")}</div>'
+                out += '</div>'
+
+            # End of node content
+            out += '</div>'
+
+            # Logic / Children
+            
+            # Check for Final or Loop
+            if node.get('is_final'):
+                 out += f'<div style="margin-left: 20px; margin-bottom: 20px;"><span style="{STYLES["final"]}">🏁 Завершение опроса</span></div>'
+                 return out
+            
+            if node_id in visited:
+                 out += f'<div style="margin-left: 20px; margin-bottom: 10px;"><span style="{STYLES["loop"]}">⟳ Возврат к вопросу "{title}"</span></div>'
+                 return out
+
+            new_visited = visited | {node_id}
+            logic = node.get('logic', [])
+            
+            if logic:
+                out += f'<div style="{STYLES["logic-container"]}">'
+                
+                # Группировка правил по следующему узлу (next_node)
+                grouped_logic = {} # {next_node: [rules]}
+                # Важно сохранить порядок появления групп, чтобы визуализация соответствовала логике
+                ordered_next_nodes = [] 
+                
+                for rule in logic:
+                    nn = rule.get('next_node')
+                    if nn not in grouped_logic:
+                        grouped_logic[nn] = []
+                        ordered_next_nodes.append(nn)
+                    grouped_logic[nn].append(rule)
+
+                for next_node in ordered_next_nodes:
+                    rules = grouped_logic[next_node]
+                    
+                    # Формируем объединенную подпись
+                    labels = []
+                    has_default = False
+                    
+                    for rule in rules:
+                        is_default = rule.get('default', False)
+                        cond = rule.get('condition')
+                        
+                        if is_default:
+                            has_default = True
+                        else:
+                            labels.append(pretty_condition(cond, node))
+                    
+                    if has_default:
+                        # Если это единственное правило и оно default - просто "Далее"
+                        # Если есть другие условия, ведущие сюда, но есть и default - "В остальных случаях"
+                        if len(rules) == 1 and len(logic) == 1:
+                            labels.append("Далее")
+                        else:
+                            labels.append("В остальных случаях")
+                    
+                    # Объединяем метки
+                    if not labels: labels = ["Далее"] 
+                    combined_label = " <span style='opacity:0.6'>или</span> ".join(labels)
+
+                    out += f'<div style="{STYLES["branch"]}">'
+                    # Стрелка с подписью
+                    out += f'<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;"><span style="{STYLES["arrow-line"]}">↳</span> <span style="{STYLES["arrow-label"]}">{combined_label}</span></div>'
+                    out += render_node_recursive(next_node, new_visited, depth + 1)
+                    out += '</div>'
+
+                out += '</div>'
+            
+            return out
+
+        if start:
+            html.append(render_node_recursive(start, set()))
+        else:
+            html.append('<div style="color:red">Start node not defined</div>')
+        
+        html.append('</div>')
+        return Markup("".join(html))
+    
+    # Регистрируем форматтер для деталей
+    column_formatters_detail = {
+        "visual_structure": visual_structure
+    }
+
 
 
 class SurveySessionAdmin(ModelView, model=SurveySession):

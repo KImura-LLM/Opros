@@ -272,9 +272,23 @@ async def submit_answer(
     await redis.save_survey_progress(str(session.id), progress)
     
     # Расчёт прогресса в процентах
-    total_nodes = len(config.json_config.get("nodes", []))
-    completed = len(progress["answers"])
-    progress_percent = min(100, (completed / max(total_nodes, 1)) * 100)
+    # Используем эвристику, так как точную длину пути в ветвящемся опросе предсказать сложно
+    is_finished = False
+    if next_node:
+        next_node_obj = engine.get_node(next_node)
+        if next_node_obj and next_node_obj.get("is_final"):
+            is_finished = True
+    elif next_node is None:
+        is_finished = True
+
+    if is_finished:
+        progress_percent = 100.0
+    else:
+        # Предполагаем среднюю длину опроса в 10 вопросов для более реалистичного прогресс-бара
+        # Реальное число узлов в JSON намного больше длины любого конкретного пути
+        ESTIMATED_PATH_LENGTH = 10
+        completed = len(progress["answers"])
+        progress_percent = min(95.0, (completed / ESTIMATED_PATH_LENGTH) * 100)
     
     return SurveyAnswerResponse(
         success=True,

@@ -7,7 +7,7 @@
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, survey
+from app.api.v1.endpoints import auth, survey, survey_editor
 
 api_router = APIRouter()
 
@@ -23,4 +23,11 @@ api_router.include_router(
     survey.router,
     prefix="/survey",
     tags=["Опрос"],
+)
+
+# Роутер редактора опросника (для админ-панели)
+api_router.include_router(
+    survey_editor.router,
+    prefix="/editor",
+    tags=["Редактор опросника"],
 )

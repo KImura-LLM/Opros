@@ -305,8 +305,8 @@ const SurveyPage: React.FC = () => {
       case 'number_input':
         return (
           <NumberInput
-            value={(currentAnswer.value as number) || null}
-            onChange={(value) => setCurrentAnswer({ value })}
+            value={(currentAnswer.value as number) ?? null}
+            onChange={(value) => setCurrentAnswer({ value: value ?? undefined })}
             placeholder={currentNode.placeholder}
             min={currentNode.min_value}
             max={currentNode.max_value}

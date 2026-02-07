@@ -34,7 +34,6 @@ export interface SurveyNode {
   id: string
   type:
     | 'info_screen'
-    | 'consent_screen'
     | 'single_choice'
     | 'multi_choice'
     | 'multi_choice_with_input'

@@ -118,5 +118,6 @@ async def generate_token(
     return {
         "token": token,
         "url": f"{settings.FRONTEND_URL}/?token={token}",
+        "link": f"http://localhost:5173/?token={token}",
         "expires_in_hours": settings.JWT_EXPIRATION_HOURS,
     }

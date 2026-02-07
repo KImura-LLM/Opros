@@ -184,6 +184,18 @@
         /* ============================================
            Buttons
            ============================================ */
+        .btn, .btn-default, button {
+            background-color: #2d2d2d !important;
+            border-color: var(--border-color) !important;
+            color: var(--text-primary) !important;
+        }
+
+        .btn:hover, .btn-default:hover, button:hover {
+            background-color: #3a3a3a !important;
+            border-color: var(--accent-green) !important;
+            color: var(--accent-green) !important;
+        }
+
         .btn-primary {
             background-color: var(--accent-green) !important;
             border-color: var(--accent-green) !important;
@@ -198,13 +210,13 @@
         }
 
         .btn-secondary, .btn-outline-secondary {
-            background-color: rgba(255, 255, 255, 0.05) !important;
+            background-color: #2d2d2d !important;
             border-color: var(--border-color) !important;
             color: var(--text-secondary) !important;
         }
 
         .btn-secondary:hover, .btn-outline-secondary:hover {
-            background-color: rgba(255, 255, 255, 0.1) !important;
+            background-color: #3a3a3a !important;
             border-color: var(--text-secondary) !important;
             color: var(--text-primary) !important;
         }
@@ -231,6 +243,18 @@
             border-color: var(--accent-blue) !important;
         }
 
+        .btn-light {
+            background-color: #2d2d2d !important;
+            border-color: var(--border-color) !important;
+            color: var(--text-primary) !important;
+        }
+
+        .btn-light:hover {
+            background-color: #3a3a3a !important;
+            border-color: var(--accent-green) !important;
+            color: var(--accent-green) !important;
+        }
+
         /* Action Icons */
         .btn-icon, .btn-sm {
             transition: all 0.2s ease !important;
@@ -244,16 +268,16 @@
            Forms
            ============================================ */
         .form-control, .form-select, input, select, textarea {
-            background-color: #ffffff !important;
+            background-color: #2d2d2d !important;
             border: 1px solid var(--border-color) !important;
-            color: #000000 !important;
+            color: #ffffff !important;
         }
 
         .form-control:focus, .form-select:focus, input:focus, select:focus, textarea:focus {
             border-color: var(--accent-green) !important;
             box-shadow: 0 0 0 3px rgba(0, 255, 128, 0.1) !important;
-            background-color: #ffffff !important;
-            color: #000000 !important;
+            background-color: #3a3a3a !important;
+            color: #ffffff !important;
         }
 
         .form-control::placeholder {
@@ -465,6 +489,18 @@
             color: var(--accent-green) !important;
         }
 
+        /* Link buttons (styled as buttons) */
+        a.btn, a.page-link {
+            background-color: #2d2d2d !important;
+            border-color: var(--border-color) !important;
+            color: var(--text-primary) !important;
+        }
+
+        a.btn:hover, a.page-link:hover {
+            background-color: #3a3a3a !important;
+            color: var(--accent-green) !important;
+        }
+
         /* ============================================
            Text Utilities
            ============================================ */
@@ -629,6 +665,42 @@
                                     <i class="fa-solid fa-shield-halved"></i>
                                 </span>
                                 <span class="nav-link-title">Логи аудита</span>
+                            </a>
+                        </li>
+                        
+                        <!-- Разделитель -->
+                        <li class="nav-item" style="margin: 16px 8px; border-top: 1px solid #333; padding-top: 16px;">
+                            <span style="color: #666; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; padding: 0 16px;">
+                                Инструменты
+                            </span>
+                        </li>
+                        
+                        <!-- API Links -->
+                        <li class="nav-item">
+                            <a class="nav-link" href="/docs" target="_blank" rel="noopener noreferrer">
+                                <span class="nav-link-icon d-md-none d-lg-inline-block">
+                                    <i class="fa-solid fa-book"></i>
+                                </span>
+                                <span class="nav-link-title">API Docs (Swagger)</span>
+                                <i class="fa-solid fa-external-link-alt" style="font-size: 0.65rem; margin-left: 6px; opacity: 0.5;"></i>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/redoc" target="_blank" rel="noopener noreferrer">
+                                <span class="nav-link-icon d-md-none d-lg-inline-block">
+                                    <i class="fa-solid fa-file-code"></i>
+                                </span>
+                                <span class="nav-link-title">API Docs (ReDoc)</span>
+                                <i class="fa-solid fa-external-link-alt" style="font-size: 0.65rem; margin-left: 6px; opacity: 0.5;"></i>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/api/v1" target="_blank" rel="noopener noreferrer">
+                                <span class="nav-link-icon d-md-none d-lg-inline-block">
+                                    <i class="fa-solid fa-server"></i>
+                                </span>
+                                <span class="nav-link-title">Backend API</span>
+                                <i class="fa-solid fa-external-link-alt" style="font-size: 0.65rem; margin-left: 6px; opacity: 0.5;"></i>
                             </a>
                         </li>
                     </ul>
