@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Аналитика — Опросник</title>
+
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+
+    <style>
+        /* ============================================
+           Базовые стили (повторяют тёмную тему layout)
+           ============================================ */
+        :root {
+            --bg-dark: #050505;
+            --bg-card: #0d0d0d;
+            --bg-sidebar: #0a0a0a;
+            --border-color: #222;
+            --text-primary: #ffffff;
+            --text-secondary: #aaa;
+            --text-muted: #666;
+            --accent-green: #00ff80;
+            --accent-blue: #4dabf7;
+            --accent-red: #ff6b6b;
+            --accent-yellow: #ffd43b;
+            --accent-purple: #a78bfa;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: var(--bg-dark);
+            color: var(--text-primary);
+            font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            display: flex;
+            min-height: 100vh;
+        }
+
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: var(--bg-dark); }
+        ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+        /* ============================================
+           Sidebar (повторяет навигацию layout.html)
+           ============================================ */
+        .sidebar {
+            width: 260px;
+            min-height: 100vh;
+            background: var(--bg-sidebar);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            padding: 20px 0;
+            position: fixed;
+            top: 0; left: 0;
+            overflow-y: auto;
+        }
+        .sidebar-brand {
+            padding: 0 20px 20px;
+            border-bottom: 1px solid var(--border-color);
+            margin-bottom: 12px;
+        }
+        .sidebar-brand a {
+            color: #fff;
+            text-decoration: none;
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+        .sidebar-nav {
+            list-style: none;
+            padding: 0 8px;
+            flex: 1;
+        }
+        .sidebar-nav li a {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 11px 16px;
+            margin: 2px 0;
+            color: var(--text-secondary);
+            text-decoration: none;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+        .sidebar-nav li a:hover {
+            color: var(--accent-green);
+            background: rgba(0,255,128,0.05);
+        }
+        .sidebar-nav li a.active {
+            color: var(--accent-green);
+            background: rgba(0,255,128,0.1);
+            border-left: 3px solid var(--accent-green);
+        }
+        .sidebar-nav li a i { width: 20px; text-align: center; }
+        .sidebar-section {
+            color: #555;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 16px 16px 6px;
+            margin-top: 8px;
+            border-top: 1px solid #1a1a1a;
+        }
+        .sidebar-logout {
+            margin-top: auto;
+            padding: 12px 24px;
+        }
+        .sidebar-logout a {
+            color: var(--accent-red);
+            text-decoration: none;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .sidebar-logout a:hover { opacity: 0.8; }
+        .ext-icon { font-size: 0.6rem; opacity: 0.4; margin-left: 4px; }
+
+        /* ============================================
+           Основная область
+           ============================================ */
+        .main-content {
+            margin-left: 260px;
+            flex: 1;
+            padding: 30px 40px;
+            min-height: 100vh;
+        }
+
+        /* ============================================
+           Дашборд — компоненты
+           ============================================ */
+        .analytics-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin-bottom: 2rem;
+        }
+        .analytics-header h1 {
+            font-weight: 700;
+            color: #fff;
+            margin: 0;
+            font-size: 1.6rem;
+        }
+        .analytics-header p {
+            color: #666;
+            margin: 4px 0 0 0;
+            font-size: 0.9rem;
+        }
+
+        /* Фильтр дат */
+        .date-filter {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .date-filter label {
+            color: #888;
+            font-size: 0.85rem;
+            font-weight: 500;
+        }
+        .date-filter input[type="date"] {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            color: #fff;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            outline: none;
+            font-family: inherit;
+        }
+        .date-filter input[type="date"]:focus {
+            border-color: var(--accent-green);
+            box-shadow: 0 0 0 2px rgba(0,255,128,0.15);
+        }
+        .btn-apply {
+            background: var(--accent-green);
+            color: #000;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+        .btn-apply:hover {
+            background: #00cc66;
+            box-shadow: 0 4px 12px rgba(0,255,128,0.3);
+        }
+
+        /* Сетка блоков */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        /* Карточка */
+        .stat-card {
+            background: linear-gradient(145deg, #121212, #0d0d0d);
+            border: 1px solid #222;
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            position: relative;
+            overflow: hidden;
+        }
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 3px;
+            background: linear-gradient(90deg, #00ff80, #4dabf7);
+            opacity: 0.6;
+        }
+        .stat-card h3 {
+            color: #fff;
+            font-size: 1rem;
+            font-weight: 600;
+            margin: 0 0 6px 0;
+        }
+        .stat-card .card-subtitle {
+            color: #666;
+            font-size: 0.8rem;
+            margin-bottom: 16px;
+        }
+        .stat-card.full-width { grid-column: 1 / -1; }
+
+        /* Мини-статы */
+        .mini-stats {
+            display: flex;
+            gap: 16px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        .mini-stat {
+            display: flex;
+            flex-direction: column;
+            background: rgba(255,255,255,0.03);
+            padding: 12px 18px;
+            border-radius: 10px;
+            border: 1px solid #1a1a1a;
+            min-width: 100px;
+        }
+        .mini-stat .value {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--accent-green);
+            line-height: 1;
+        }
+        .mini-stat .label {
+            font-size: 0.75rem;
+            color: #888;
+            margin-top: 4px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .mini-stat.accent-blue .value { color: var(--accent-blue); }
+        .mini-stat.accent-yellow .value { color: var(--accent-yellow); }
+        .mini-stat.accent-red .value { color: var(--accent-red); }
+        .mini-stat.accent-purple .value { color: var(--accent-purple); }
+
+        /* Canvas графиков */
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-height: 300px;
+        }
+
+        /* Кнопка "показать все" */
+        .btn-expand {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(0,255,128,0.08);
+            color: var(--accent-green);
+            border: 1px solid rgba(0,255,128,0.2);
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 0.82rem;
+            font-weight: 500;
+            cursor: pointer;
+            margin-top: 16px;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+        .btn-expand:hover {
+            background: rgba(0,255,128,0.15);
+            border-color: var(--accent-green);
+        }
+
+        /* Таблица всех ответов */
+        .all-answers-table {
+            display: none;
+            margin-top: 16px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .all-answers-table.open { display: block; }
+        .all-answers-table table { width: 100%; border-collapse: collapse; }
+        .all-answers-table th {
+            text-align: left;
+            color: #888;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            padding: 8px 12px;
+            border-bottom: 1px solid #222;
+            position: sticky;
+            top: 0;
+            background: #121212;
+        }
+        .all-answers-table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #1a1a1a;
+            color: #ccc;
+            font-size: 0.88rem;
+        }
+        .all-answers-table tr:hover td { background: rgba(0,255,128,0.03); }
+        .all-answers-table .bar-cell { width: 120px; }
+        .mini-bar {
+            height: 6px;
+            background: var(--accent-green);
+            border-radius: 3px;
+            transition: width 0.5s ease;
+        }
+
+        /* Обратная связь — заглушка */
+        .feedback-placeholder {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 180px;
+            color: #555;
+            text-align: center;
+        }
+        .feedback-placeholder i {
+            font-size: 2.5rem;
+            margin-bottom: 12px;
+            color: #333;
+        }
+        .feedback-placeholder p { margin: 0; font-size: 0.9rem; }
+        .badge-soon {
+            display: inline-block;
+            background: rgba(167,139,250,0.15);
+            color: var(--accent-purple);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-top: 10px;
+        }
+
+        /* Воронка */
+        .funnel-list { list-style: none; padding: 0; margin: 0; }
+        .funnel-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 0;
+            border-bottom: 1px solid #1a1a1a;
+        }
+        .funnel-item:last-child { border-bottom: none; }
+        .funnel-bar-wrap {
+            flex: 1;
+            height: 8px;
+            background: #1a1a1a;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .funnel-bar {
+            height: 100%;
+            border-radius: 4px;
+            background: linear-gradient(90deg, #00ff80, #4dabf7);
+            transition: width 0.6s ease;
+        }
+        .funnel-label {
+            flex: 0 0 40%;
+            color: #bbb;
+            font-size: 0.85rem;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .funnel-count {
+            flex: 0 0 50px;
+            text-align: right;
+            color: var(--accent-green);
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        /* Назад */
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            color: #888;
+            font-size: 0.85rem;
+            margin-bottom: 10px;
+            text-decoration: none;
+        }
+        .back-link:hover { color: var(--accent-green); }
+
+        /* Статусы */
+        .status-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+        .status-chip {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(255,255,255,0.04);
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            color: #aaa;
+        }
+        .status-chip .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+        .dot-completed { background: var(--accent-green); }
+        .dot-in-progress { background: var(--accent-yellow); }
+        .dot-abandoned { background: var(--accent-red); }
+
+        /* Загрузка */
+        .loading-overlay {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 60px;
+            color: #555;
+            font-size: 0.9rem;
+            gap: 10px;
+        }
+        .spinner {
+            width: 20px; height: 20px;
+            border: 2px solid #333;
+            border-top-color: var(--accent-green);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        @media (max-width: 768px) {
+            .sidebar { display: none; }
+            .main-content { margin-left: 0; padding: 20px; }
+            .stats-grid { grid-template-columns: 1fr; }
+            .funnel-label { flex: 0 0 35%; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Sidebar -->
+    <aside class="sidebar">
+        <div class="sidebar-brand">
+            <a href="/admin">Опросник — Админ</a>
+        </div>
+        <ul class="sidebar-nav">
+            <li><a href="/admin/survey-config/list"><i class="fa-solid fa-clipboard-list"></i> Опросники</a></li>
+            <li><a href="/admin/survey-session/list"><i class="fa-solid fa-user-clock"></i> Сессии опросов</a></li>
+            <li><a href="/admin/survey-answer/list"><i class="fa-solid fa-comments"></i> Ответы</a></li>
+            <li><a href="/admin/audit-log/list"><i class="fa-solid fa-shield-halved"></i> Логи аудита</a></li>
+            <li><a href="/admin/analytics" class="active"><i class="fa-solid fa-chart-line"></i> Аналитика</a></li>
+            <li><div class="sidebar-section">Инструменты</div></li>
+            <li><a href="/docs" target="_blank"><i class="fa-solid fa-book"></i> API Docs <i class="fa-solid fa-external-link-alt ext-icon"></i></a></li>
+            <li><a href="/redoc" target="_blank"><i class="fa-solid fa-file-code"></i> ReDoc <i class="fa-solid fa-external-link-alt ext-icon"></i></a></li>
+        </ul>
+        <div class="sidebar-logout">
+            <a href="/admin/logout"><i class="fa-solid fa-sign-out-alt"></i> Выйти</a>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <a href="/admin" class="back-link">
+            <i class="fa-solid fa-arrow-left"></i> Назад к панели управления
+        </a>
+
+        <div class="analytics-header">
+            <div>
+                <h1>📊 Аналитика опросов</h1>
+                <p>Статистика прохождений и поведения пациентов</p>
+            </div>
+            <form class="date-filter" id="dateFilterForm">
+                <label>От</label>
+                <input type="date" name="date_from" id="dateFrom" value="">
+                <label>До</label>
+                <input type="date" name="date_to" id="dateTo" value="">
+                <button type="submit" class="btn-apply">Применить</button>
+            </form>
+        </div>
+
+        <!-- Мини-статы -->
+        <div class="mini-stats" id="miniStats">
+            <div class="mini-stat">
+                <span class="value" id="totalCompleted">—</span>
+                <span class="label">Завершено (период)</span>
+            </div>
+            <div class="mini-stat accent-blue">
+                <span class="value" id="todayCount">—</span>
+                <span class="label">Сегодня</span>
+            </div>
+            <div class="mini-stat accent-purple">
+                <span class="value" id="avgTime">—</span>
+                <span class="label">Среднее время (мин)</span>
+            </div>
+        </div>
+
+        <!-- Ряд статусов -->
+        <div class="status-row" id="statusRow"></div>
+
+        <!-- Загрузка -->
+        <div class="loading-overlay" id="loadingOverlay">
+            <div class="spinner"></div>
+            Загрузка данных...
+        </div>
+
+        <!-- Блоки статистики -->
+        <div class="stats-grid" id="statsGrid" style="display:none;">
+
+            <!-- БЛОК 1: График опросов -->
+            <div class="stat-card full-width">
+                <h3>📈 Динамика пройденных опросов</h3>
+                <div class="card-subtitle">Число завершённых опросов по дням</div>
+                <div class="chart-container">
+                    <canvas id="completedChart"></canvas>
+                </div>
+            </div>
+
+            <!-- БЛОК 2: Топ-10 ответов -->
+            <div class="stat-card full-width">
+                <h3>🏆 Частота выбора вариантов ответов</h3>
+                <div class="card-subtitle">Топ-10 самых популярных вариантов</div>
+                <div class="chart-container" style="max-height:400px;">
+                    <canvas id="topAnswersChart"></canvas>
+                </div>
+                <button class="btn-expand" id="btnExpandAnswers" onclick="toggleAllAnswers()">
+                    <i class="fa-solid fa-expand"></i> Показать все ответы
+                </button>
+                <div class="all-answers-table" id="allAnswersTable">
+                    <table>
+                        <thead>
+                            <tr><th>#</th><th>Вопрос → Ответ</th><th>Кол-во</th><th class="bar-cell"></th></tr>
+                        </thead>
+                        <tbody id="allAnswersBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- БЛОК 3: Обратная связь (заглушка) -->
+            <div class="stat-card">
+                <h3>💬 Обратная связь</h3>
+                <div class="card-subtitle">Отзывы пациентов о прохождении</div>
+                <div class="feedback-placeholder">
+                    <i class="fa-solid fa-comment-dots"></i>
+                    <p>Здесь будут отображаться<br>отзывы и оценки пациентов</p>
+                    <span class="badge-soon">Скоро</span>
+                </div>
+            </div>
+
+            <!-- БЛОК 4: Воронка прохождения -->
+            <div class="stat-card">
+                <h3>🔻 Воронка прохождения</h3>
+                <div class="card-subtitle">На каком вопросе пациенты останавливаются</div>
+                <ul class="funnel-list" id="funnelList">
+                    <li class="funnel-item" style="color:#555;">Загрузка...</li>
+                </ul>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+    // ============================================
+    // Загрузка и рендеринг дашборда аналитики
+    // ============================================
+
+    var completedChartInstance = null;
+    var topAnswersChartInstance = null;
+
+    // Инициализация дат из URL
+    (function initDates() {
+        var params = new URLSearchParams(window.location.search);
+        var df = params.get('date_from');
+        var dt = params.get('date_to');
+        if (df) document.getElementById('dateFrom').value = df;
+        if (dt) document.getElementById('dateTo').value = dt;
+    })();
+
+    // Форма фильтра
+    document.getElementById('dateFilterForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        var from = document.getElementById('dateFrom').value;
+        var to = document.getElementById('dateTo').value;
+        var url = '/admin/analytics';
+        var params = [];
+        if (from) params.push('date_from=' + from);
+        if (to) params.push('date_to=' + to);
+        if (params.length) url += '?' + params.join('&');
+        window.location.href = url;
+    });
+
+    // Загрузка данных с API
+    async function loadDashboard() {
+        var params = new URLSearchParams(window.location.search);
+        var apiUrl = '/api/v1/analytics/dashboard';
+        if (params.toString()) apiUrl += '?' + params.toString();
+
+        try {
+            var resp = await fetch(apiUrl);
+            if (!resp.ok) throw new Error('HTTP ' + resp.status);
+            var data = await resp.json();
+
+            document.getElementById('loadingOverlay').style.display = 'none';
+            document.getElementById('statsGrid').style.display = '';
+            renderDashboard(data);
+        } catch (err) {
+            console.error('Ошибка загрузки аналитики:', err);
+            document.getElementById('loadingOverlay').innerHTML =
+                '<span style="color:#ff6b6b;">Ошибка загрузки данных. Проверьте подключение к серверу.</span>';
+        }
+    }
+
+    function renderDashboard(data) {
+        // Мини-статы
+        document.getElementById('totalCompleted').textContent = data.chart.total;
+        document.getElementById('todayCount').textContent = data.chart.today;
+        document.getElementById('avgTime').textContent = data.chart.avg_minutes || '—';
+
+        // Статусы
+        var statusRow = document.getElementById('statusRow');
+        var statusLabels = {
+            'completed': ['Завершён', 'dot-completed'],
+            'in_progress': ['В процессе', 'dot-in-progress'],
+            'abandoned': ['Брошен', 'dot-abandoned'],
+        };
+        statusRow.innerHTML = '';
+        for (var key in statusLabels) {
+            var label = statusLabels[key][0];
+            var cls = statusLabels[key][1];
+            var cnt = (data.statuses && data.statuses[key]) || 0;
+            statusRow.innerHTML += '<div class="status-chip"><span class="dot ' + cls + '"></span>' + label + ': <strong>' + cnt + '</strong></div>';
+        }
+
+        renderCompletedChart(data.chart.labels, data.chart.values);
+        renderTopAnswersChart(data.top_answers);
+        renderAllAnswersTable(data.all_answers);
+        renderFunnel(data.funnel);
+    }
+
+    function renderCompletedChart(labels, values) {
+        var ctx = document.getElementById('completedChart').getContext('2d');
+        if (completedChartInstance) completedChartInstance.destroy();
+
+        completedChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Завершённые опросы',
+                    data: values,
+                    borderColor: '#00ff80',
+                    backgroundColor: 'rgba(0,255,128,0.08)',
+                    fill: true,
+                    tension: 0.35,
+                    pointRadius: 5,
+                    pointBackgroundColor: '#00ff80',
+                    pointBorderColor: '#0d0d0d',
+                    pointBorderWidth: 2,
+                    pointHoverRadius: 7,
+                    borderWidth: 2.5,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: '#1a1a1a',
+                        titleColor: '#fff',
+                        bodyColor: '#00ff80',
+                        borderColor: '#333',
+                        borderWidth: 1,
+                        padding: 12,
+                        cornerRadius: 8,
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(255,255,255,0.04)' },
+                        ticks: { color: '#666', font: { size: 12 } },
+                    },
+                    y: {
+                        beginAtZero: true,
+                        grid: { color: 'rgba(255,255,255,0.04)' },
+                        ticks: { color: '#666', font: { size: 12 }, stepSize: 1 },
+                    }
+                }
+            }
+        });
+    }
+
+    function renderTopAnswersChart(topAnswers) {
+        var ctx = document.getElementById('topAnswersChart').getContext('2d');
+        if (topAnswersChartInstance) topAnswersChartInstance.destroy();
+
+        if (!topAnswers || topAnswers.length === 0) {
+            ctx.canvas.parentElement.innerHTML = '<div style="text-align:center;color:#555;padding:40px;">Нет данных</div>';
+            return;
+        }
+
+        var labels = topAnswers.map(function(a) {
+            return a.label.length > 55 ? a.label.substring(0, 52) + '…' : a.label;
+        });
+        var values = topAnswers.map(function(a) { return a.count; });
+
+        var colors = [
+            '#00ff80','#00e673','#00cc66','#00b359','#00994d',
+            '#4dabf7','#339af0','#228be6','#1c7ed6','#1971c2'
+        ];
+
+        topAnswersChartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Количество',
+                    data: values,
+                    backgroundColor: colors.slice(0, values.length),
+                    borderRadius: 6,
+                    borderSkipped: false,
+                    barThickness: 28,
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: '#1a1a1a',
+                        titleColor: '#fff',
+                        bodyColor: '#00ff80',
+                        borderColor: '#333',
+                        borderWidth: 1,
+                        padding: 12,
+                        cornerRadius: 8,
+                        callbacks: {
+                            title: function(ctx) {
+                                return topAnswers[ctx[0].dataIndex].label;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        grid: { color: 'rgba(255,255,255,0.04)' },
+                        ticks: { color: '#666', font: { size: 11 }, stepSize: 1 },
+                    },
+                    y: {
+                        grid: { display: false },
+                        ticks: { color: '#aaa', font: { size: 12 }, padding: 8 },
+                    }
+                }
+            }
+        });
+    }
+
+    function renderAllAnswersTable(allAnswers) {
+        var tbody = document.getElementById('allAnswersBody');
+        if (!allAnswers || allAnswers.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="color:#555;text-align:center;">Нет данных</td></tr>';
+            return;
+        }
+        var maxCount = allAnswers[0].count;
+        tbody.innerHTML = allAnswers.map(function(a, i) {
+            var pct = Math.round((a.count / maxCount) * 100);
+            return '<tr>' +
+                '<td style="color:#555;width:40px;">' + (i+1) + '</td>' +
+                '<td>' + escapeHtml(a.label) + '</td>' +
+                '<td style="color:#00ff80;font-weight:600;width:60px;text-align:right;">' + a.count + '</td>' +
+                '<td class="bar-cell"><div class="mini-bar" style="width:'+pct+'%;"></div></td>' +
+                '</tr>';
+        }).join('');
+    }
+
+    function escapeHtml(text) {
+        var d = document.createElement('div');
+        d.appendChild(document.createTextNode(text));
+        return d.innerHTML;
+    }
+
+    function toggleAllAnswers() {
+        var table = document.getElementById('allAnswersTable');
+        var btn = document.getElementById('btnExpandAnswers');
+        table.classList.toggle('open');
+        btn.innerHTML = table.classList.contains('open')
+            ? '<i class="fa-solid fa-compress"></i> Свернуть'
+            : '<i class="fa-solid fa-expand"></i> Показать все ответы';
+    }
+
+    function renderFunnel(funnelData) {
+        var list = document.getElementById('funnelList');
+        if (!funnelData || funnelData.length === 0) {
+            list.innerHTML = '<li class="funnel-item" style="color:#555;">Нет данных</li>';
+            return;
+        }
+        var maxCount = funnelData[0].count;
+        list.innerHTML = funnelData.map(function(item) {
+            var pct = Math.round((item.count / maxCount) * 100);
+            var label = item.label.length > 45 ? item.label.substring(0, 42) + '…' : item.label;
+            return '<li class="funnel-item" title="' + escapeHtml(item.label) + '">' +
+                '<span class="funnel-label">' + escapeHtml(label) + '</span>' +
+                '<div class="funnel-bar-wrap"><div class="funnel-bar" style="width:'+pct+'%"></div></div>' +
+                '<span class="funnel-count">' + item.count + '</span>' +
+                '</li>';
+        }).join('');
+    }
+
+    document.addEventListener('DOMContentLoaded', loadDashboard);
+    </script>
+</body>
+</html>

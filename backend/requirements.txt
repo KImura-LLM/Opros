@@ -27,6 +27,10 @@ passlib[bcrypt]==1.7.4
 # HTTP клиент (для Битрикс24)
 httpx==0.26.0
 
+# PDF Generation  
+weasyprint==59.0  # Стабильная версия, совместимая с pydyf
+pydyf==0.10.0  # Фиксируем старую версию для совместимости с weasyprint
+
 # Admin панель
 sqladmin==0.16.0
 itsdangerous==2.1.2

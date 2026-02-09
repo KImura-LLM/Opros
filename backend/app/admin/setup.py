@@ -359,6 +359,7 @@ class SurveySessionAdmin(ModelView, model=SurveySession):
         SurveySession.consent_given,
         SurveySession.started_at,
         SurveySession.completed_at,
+        "report_actions",  # Кастомная колонка для кнопок
     ]
     
     column_searchable_list = [SurveySession.lead_id, SurveySession.patient_name]
@@ -375,6 +376,177 @@ class SurveySessionAdmin(ModelView, model=SurveySession):
             "completed": "✅ Завершён",
             "abandoned": "❌ Брошен",
         }.get(m.status, m.status),
+    }
+    
+    # Форматтер для кнопок экспорта
+    @staticmethod
+    def _report_actions_formatter(model, prop):
+        """Рендеринг кнопок экспорта отчёта."""
+        from markupsafe import Markup
+        
+        # Показываем кнопки только для завершённых сессий
+        if model.status != "completed":
+            return Markup('<span style="color: #94a3b8; font-size: 12px;">Сессия не завершена</span>')
+        
+        # Используем BACKEND_URL из настроек или локальный адрес
+        base_url = f"/api/v1/reports/{model.id}"
+        
+        return Markup(f'''
+            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                <a href="{base_url}/preview" 
+                   target="_blank"
+                   style="
+                       display: inline-flex;
+                       align-items: center;
+                       gap: 4px;
+                       padding: 5px 10px;
+                       background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+                       color: white;
+                       border-radius: 4px;
+                       font-size: 11px;
+                       font-weight: 500;
+                       text-decoration: none;
+                       transition: all 0.2s;
+                       box-shadow: 0 1px 3px rgba(59, 130, 246, 0.3);
+                   "
+                   onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 3px 6px rgba(59, 130, 246, 0.4)';"
+                   onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 1px 3px rgba(59, 130, 246, 0.3)';"
+                   title="Открыть предпросмотр отчёта"
+                >
+                    <i class="fa-solid fa-eye"></i>
+                    Просмотр
+                </a>
+                
+                <a href="{base_url}/export/pdf" 
+                   download
+                   style="
+                       display: inline-flex;
+                       align-items: center;
+                       gap: 4px;
+                       padding: 5px 10px;
+                       background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+                       color: white;
+                       border-radius: 4px;
+                       font-size: 11px;
+                       font-weight: 500;
+                       text-decoration: none;
+                       transition: all 0.2s;
+                       box-shadow: 0 1px 3px rgba(220, 38, 38, 0.3);
+                   "
+                   onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 3px 6px rgba(220, 38, 38, 0.4)';"
+                   onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 1px 3px rgba(220, 38, 38, 0.3)';"
+                   title="Скачать отчёт в формате PDF"
+                >
+                    <i class="fa-solid fa-file-pdf"></i>
+                    PDF
+                </a>
+                
+                <a href="{base_url}/export/txt" 
+                   download
+                   style="
+                       display: inline-flex;
+                       align-items: center;
+                       gap: 4px;
+                       padding: 5px 10px;
+                       background: linear-gradient(135deg, #059669 0%, #047857 100%);
+                       color: white;
+                       border-radius: 4px;
+                       font-size: 11px;
+                       font-weight: 500;
+                       text-decoration: none;
+                       transition: all 0.2s;
+                       box-shadow: 0 1px 3px rgba(5, 150, 105, 0.3);
+                   "
+                   onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 3px 6px rgba(5, 150, 105, 0.4)';"
+                   onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 1px 3px rgba(5, 150, 105, 0.3)';"
+                   title="Скачать отчёт в текстовом формате"
+                >
+                    <i class="fa-solid fa-file-lines"></i>
+                    TXT
+                </a>
+            </div>
+        ''')
+    
+    column_formatters = {
+        SurveySession.status: lambda m, a: {
+            "in_progress": "🔄 В процессе",
+            "completed": "✅ Завершён",
+            "abandoned": "❌ Брошен",
+        }.get(m.status, m.status),
+        "report_actions": _report_actions_formatter.__func__,
+    }
+    
+    column_labels = {
+        "report_actions": "Отчёты",
+    }
+    
+    # Добавляем предпросмотр в детали
+    column_details_list = [
+        SurveySession.id,
+        SurveySession.lead_id,
+        SurveySession.patient_name,
+        SurveySession.status,
+        SurveySession.consent_given,
+        SurveySession.started_at,
+        SurveySession.completed_at,
+        "report_preview",  # Кастомное поле для предпросмотра
+    ]
+    
+    # Форматтер для предпросмотра в деталях
+    @staticmethod
+    def _report_preview_formatter(model, prop):
+        """Рендеринг встроенного предпросмотра отчёта."""
+        from markupsafe import Markup
+        
+        if model.status != "completed":
+            return Markup('<div style="padding: 20px; background: #fef2f2; border-radius: 8px; color: #991b1b;"><p>Предпросмотр отчёта доступен только для завершённых сессий.</p></div>')
+        
+        preview_url = f"/api/v1/reports/{model.id}/preview"
+        
+        return Markup(f'''
+            <div style="background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                    <h3 style="margin: 0; color: #1e293b; font-size: 18px;">📋 Предпросмотр отчёта</h3>
+                    <a href="{preview_url}" 
+                       target="_blank"
+                       style="
+                           display: inline-flex;
+                           align-items: center;
+                           gap: 6px;
+                           padding: 8px 16px;
+                           background: #3b82f6;
+                           color: white;
+                           border-radius: 6px;
+                           font-size: 13px;
+                           font-weight: 500;
+                           text-decoration: none;
+                       "
+                    >
+                        <i class="fa-solid fa-external-link-alt"></i>
+                        Открыть в новом окне
+                    </a>
+                </div>
+                <iframe 
+                    src="{preview_url}" 
+                    style="
+                        width: 100%; 
+                        height: 800px; 
+                        border: 2px solid #cbd5e1; 
+                        border-radius: 6px;
+                        background: white;
+                    "
+                    frameborder="0"
+                ></iframe>
+            </div>
+        ''')
+    
+    column_formatters_detail = {
+        "report_preview": _report_preview_formatter.__func__,
+    }
+    
+    column_labels = {
+        **column_labels,
+        "report_preview": "Отчёт",
     }
     
     # Только просмотр
@@ -444,15 +616,38 @@ def setup_admin(app):
     Args:
         app: FastAPI application
     """
+    from fastapi import Request
+    from fastapi.responses import HTMLResponse
+    from starlette.templating import Jinja2Templates as _Jinja2Templates
+
     authentication_backend = AdminAuth(secret_key=settings.SECRET_KEY)
     
+    templates_dir = str(Path(__file__).parent / "templates")
+
+    # --- Кастомная страница аналитики ---
+    # ВАЖНО: регистрируем ДО создания Admin(), иначе SQLAdmin перехватит /admin/*
+    _analytics_tpl = _Jinja2Templates(directory=templates_dir)
+
+    @app.get("/admin/analytics", response_class=HTMLResponse, include_in_schema=False)
+    async def admin_analytics_page(request: Request):
+        """Страница дашборда аналитики в админ-панели."""
+        if not request.session.get("admin_authenticated"):
+            from starlette.responses import RedirectResponse as RR
+            return RR(url="/admin/login", status_code=302)
+
+        return _analytics_tpl.TemplateResponse(
+            "analytics.html",
+            {"request": request},
+        )
+
+    # --- Инициализация SQLAdmin ---
     admin = Admin(
         app,
         engine,
         authentication_backend=authentication_backend,
         title="Опросник - Админ",
         base_url="/admin",
-        templates_dir=str(Path(__file__).parent / "templates")
+        templates_dir=templates_dir
     )
     
     # Регистрация моделей

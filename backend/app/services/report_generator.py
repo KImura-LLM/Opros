@@ -79,6 +79,286 @@ class ReportGenerator:
         
         return "<br><br>".join(report_parts)
     
+    def generate_readable_html_report(
+        self,
+        patient_name: Optional[str],
+        answers: Dict[str, Any],
+    ) -> str:
+        """
+        Генерация читаемого HTML-отчёта для просмотра и экспорта.
+        Отформатирован с CSS стилями для удобного чтения.
+        
+        Args:
+            patient_name: Имя пациента
+            answers: Словарь ответов {node_id: answer_data}
+            
+        Returns:
+            Полный HTML-документ с встроенными стилями
+        """
+        # Генерируем содержимое
+        content_parts = []
+        
+        # Заголовок
+        name = patient_name or "Не указано"
+        date = datetime.now().strftime("%d.%m.%Y %H:%M")
+        
+        content_parts.append(f"""
+        <div class="header">
+            <h1>📋 АНКЕТА ПАЦИЕНТА</h1>
+            <p class="subtitle">Предварительный опрос</p>
+            <div class="patient-info">
+                <div><strong>Пациент:</strong> {name}</div>
+                <div><strong>Дата:</strong> {date}</div>
+            </div>
+        </div>
+        """)
+        
+        # Основная жалоба
+        main_complaint = self._generate_readable_main_complaint(answers)
+        if main_complaint:
+            content_parts.append(f'<div class="section">{main_complaint}</div>')
+        
+        # Детализация боли
+        pain_details = self._generate_readable_pain_details(answers)
+        if pain_details:
+            content_parts.append(f'<div class="section">{pain_details}</div>')
+        
+        # Скрининг систем
+        systems_screening = self._generate_readable_systems_screening(answers)
+        if systems_screening:
+            content_parts.append(f'<div class="section">{systems_screening}</div>')
+        
+        # Факторы риска
+        risk_factors = self._generate_readable_risk_factors(answers)
+        if risk_factors:
+            content_parts.append(f'<div class="section">{risk_factors}</div>')
+        
+        # Системный анализ
+        alerts = self._generate_readable_alerts(answers)
+        if alerts:
+            content_parts.append(f'<div class="section alert-section">{alerts}</div>')
+        
+        # Собираем полный HTML документ
+        html = f"""
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Анкета пациента - {name}</title>
+    <style>
+        * {{
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+        
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f5f5;
+            padding: 20px;
+        }}
+        
+        .container {{
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }}
+        
+        .header {{
+            border-bottom: 3px solid #2563eb;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }}
+        
+        .header h1 {{
+            font-size: 28px;
+            color: #1e293b;
+            margin-bottom: 8px;
+        }}
+        
+        .subtitle {{
+            font-size: 16px;
+            color: #64748b;
+            margin-bottom: 15px;
+        }}
+        
+        .patient-info {{
+            display: flex;
+            gap: 30px;
+            font-size: 15px;
+            color: #334155;
+        }}
+        
+        .section {{
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8fafc;
+            border-radius: 8px;
+            border-left: 4px solid #3b82f6;
+        }}
+        
+        .section h2 {{
+            font-size: 20px;
+            color: #1e293b;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }}
+        
+        .section h3 {{
+            font-size: 17px;
+            color: #334155;
+            margin-top: 15px;
+            margin-bottom: 10px;
+        }}
+        
+        .section p {{
+            margin-bottom: 8px;
+            color: #475569;
+        }}
+        
+        .section ul {{
+            margin-left: 20px;
+            margin-top: 10px;
+        }}
+        
+        .section li {{
+            margin-bottom: 6px;
+            color: #475569;
+        }}
+        
+        .alert-section {{
+            background: #fef2f2;
+            border-left-color: #dc2626;
+        }}
+        
+        .alert-section h2 {{
+            color: #991b1b;
+        }}
+        
+        .alert-item {{
+            background: white;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 6px;
+            border-left: 3px solid #f59e0b;
+        }}
+        
+        .intensity-badge {{
+            display: inline-block;
+            padding: 4px 12px;
+            background: #fee2e2;
+            color: #991b1b;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 14px;
+        }}
+        
+        .risk-badge {{
+            display: inline-block;
+            padding: 4px 12px;
+            background: #fef3c7;
+            color: #92400e;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 14px;
+            margin-left: 8px;
+        }}
+        
+        @media print {{
+            body {{
+                background: white;
+                padding: 0;
+            }}
+            .container {{
+                box-shadow: none;
+                padding: 20px;
+            }}
+        }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        {"".join(content_parts)}
+    </div>
+</body>
+</html>
+        """
+        
+        return html
+    
+    def generate_text_report(
+        self,
+        patient_name: Optional[str],
+        answers: Dict[str, Any],
+    ) -> str:
+        """
+        Генерация текстового отчёта для экспорта в TXT.
+        
+        Args:
+            patient_name: Имя пациента
+            answers: Словарь ответов {node_id: answer_data}
+            
+        Returns:
+            Текстовая строка отчёта
+        """
+        lines = []
+        
+        # Заголовок
+        name = patient_name or "Не указано"
+        date = datetime.now().strftime("%d.%m.%Y %H:%M")
+        
+        lines.append("=" * 70)
+        lines.append("📋 АНКЕТА ПАЦИЕНТА (Предварительный опрос)")
+        lines.append("=" * 70)
+        lines.append(f"Пациент: {name}")
+        lines.append(f"Дата: {date}")
+        lines.append("=" * 70)
+        lines.append("")
+        
+        # Основная жалоба
+        main_complaint = self._generate_text_main_complaint(answers)
+        if main_complaint:
+            lines.append(main_complaint)
+            lines.append("")
+        
+        # Детализация боли
+        pain_details = self._generate_text_pain_details(answers)
+        if pain_details:
+            lines.append(pain_details)
+            lines.append("")
+        
+        # Скрининг систем
+        systems_screening = self._generate_text_systems_screening(answers)
+        if systems_screening:
+            lines.append(systems_screening)
+            lines.append("")
+        
+        # Факторы риска
+        risk_factors = self._generate_text_risk_factors(answers)
+        if risk_factors:
+            lines.append(risk_factors)
+            lines.append("")
+        
+        # Системный анализ
+        alerts = self._generate_text_alerts(answers)
+        if alerts:
+            lines.append(alerts)
+            lines.append("")
+        
+        lines.append("=" * 70)
+        lines.append("Конец отчёта")
+        lines.append("=" * 70)
+        
+        return "\n".join(lines)
+    
     def _generate_header(self, patient_name: Optional[str]) -> str:
         """Генерация заголовка отчёта."""
         name = patient_name or "Не указано"
@@ -373,3 +653,511 @@ class ReportGenerator:
             )
         
         return None
+    
+    # ============================================
+    # Методы для читаемого HTML формата
+    # ============================================
+    
+    def _generate_readable_main_complaint(self, answers: Dict[str, Any]) -> Optional[str]:
+        """Генерация блока основной жалобы для читаемого формата."""
+        main_trigger = answers.get("main_trigger", {})
+        selected = main_trigger.get("selected")
+        
+        if not selected:
+            return None
+        
+        complaints_map = {
+            "pain": "Беспокоит боль",
+            "discomfort": "Общее недомогание / Дискомфорт",
+            "checkup": "Плановый осмотр / Справка / Анализы",
+        }
+        
+        complaint_text = complaints_map.get(selected, selected)
+        
+        return f"<h2>📌 Основная причина обращения</h2><p><strong>{complaint_text}</strong></p>"
+    
+    def _generate_readable_pain_details(self, answers: Dict[str, Any]) -> Optional[str]:
+        """Генерация блока детализации боли для читаемого формата."""
+        pain_data = answers.get("pain_details", {})
+        
+        if not pain_data:
+            return None
+        
+        parts = ["<h2>🩺 Характеристика боли</h2>"]
+        
+        # Локализация
+        locations = pain_data.get("locations", [])
+        if locations:
+            locations_map = {
+                "head": "Голова",
+                "throat": "Горло",
+                "chest": "Грудная клетка",
+                "abdomen": "Живот",
+                "back": "Поясница",
+                "joints": "Суставы/Конечности",
+            }
+            loc_names = [locations_map.get(loc, loc) for loc in locations]
+            parts.append(f"<p><strong>Локализация:</strong> {', '.join(loc_names)}</p>")
+        
+        # Интенсивность
+        intensity = pain_data.get("intensity")
+        if intensity:
+            parts.append(f'<p><strong>Интенсивность:</strong> <span class="intensity-badge">{intensity}/10</span></p>')
+        
+        return "".join(parts)
+    
+    def _generate_readable_systems_screening(self, answers: Dict[str, Any]) -> Optional[str]:
+        """Генерация блока скрининга систем для читаемого формата."""
+        screening = answers.get("systems_screening", {})
+        selected_systems = screening.get("selected", [])
+        
+        if not selected_systems or "none" in selected_systems:
+            return None
+        
+        parts = ["<h2>🔍 Скрининг систем организма</h2>"]
+        parts.append("<p><em>Выявленные отклонения (только положительные находки):</em></p>")
+        
+        # Дыхательная система
+        if "respiratory" in selected_systems:
+            respiratory_details = answers.get("respiratory_details", {})
+            resp_selected = respiratory_details.get("selected", [])
+            
+            if resp_selected:
+                parts.append("<h3>🫁 Дыхательная система</h3><ul>")
+                symptoms_map = {
+                    "dry_cough": "Кашель сухой",
+                    "wet_cough": "Кашель с мокротой",
+                    "dyspnea_walking": "Одышка при ходьбе",
+                    "asthma_attacks": "Приступы удушья",
+                }
+                for symptom in resp_selected:
+                    if symptom in symptoms_map:
+                        parts.append(f"<li>{symptoms_map[symptom]}</li>")
+                
+                smoking_years = respiratory_details.get("smoking_years")
+                if smoking_years and smoking_years > 0:
+                    parts.append(f'<li>🚬 Стаж курения: <strong>{smoking_years} лет</strong></li>')
+                
+                parts.append("</ul>")
+        
+        # Сердечно-сосудистая система
+        if "cardio" in selected_systems:
+            cardio_details = answers.get("cardio_details", {})
+            cardio_selected = cardio_details.get("selected")
+            
+            if cardio_selected:
+                parts.append("<h3>❤️ Сердечно-сосудистая система</h3><ul>")
+                timing_map = {
+                    "exercise": "Симптомы при физической нагрузке",
+                    "rest": "Симптомы в покое / Ночью",
+                    "constant": "Симптомы постоянно",
+                }
+                if cardio_selected in timing_map:
+                    parts.append(f"<li>{timing_map[cardio_selected]}</li>")
+                
+                edema = cardio_details.get("edema")
+                if edema and edema != "none":
+                    edema_map = {"legs": "Отёки на ногах", "face": "Отёки на лице"}
+                    parts.append(f"<li>{edema_map.get(edema, edema)}</li>")
+                
+                parts.append("</ul>")
+        
+        # Пищеварительная система
+        if "gastro" in selected_systems:
+            gastro_details = answers.get("gastro_details", {})
+            gastro_selected = gastro_details.get("selected", [])
+            
+            if gastro_selected:
+                parts.append("<h3>🍽️ Пищеварительная система</h3><ul>")
+                symptoms_map = {
+                    "hungry_pain": "Боли 'голодные' или ночные",
+                    "after_meal_pain": "Боли после еды",
+                    "constipation": "Запоры",
+                    "diarrhea": "Диарея",
+                    "nausea": "Тошнота/Рвота",
+                }
+                for symptom in gastro_selected:
+                    if symptom in symptoms_map:
+                        parts.append(f"<li>{symptoms_map[symptom]}</li>")
+                
+                parts.append("</ul>")
+        
+        # Неврология
+        if "neuro" in selected_systems:
+            parts.append("<h3>🧠 Неврология</h3><ul>")
+            parts.append("<li>Головные боли, головокружение, нарушения сна</li>")
+            parts.append("</ul>")
+        
+        # Мочевыделительная система
+        if "urinary" in selected_systems:
+            parts.append("<h3>💧 Мочевыделительная система</h3><ul>")
+            parts.append("<li>Боли в пояснице, проблемы с мочеиспусканием</li>")
+            parts.append("</ul>")
+        
+        return "".join(parts)
+    
+    def _generate_readable_risk_factors(self, answers: Dict[str, Any]) -> Optional[str]:
+        """Генерация блока факторов риска для читаемого формата."""
+        risk_data = answers.get("risk_factors", {})
+        selected = risk_data.get("selected", [])
+        
+        if not selected or "none" in selected:
+            return None
+        
+        parts = ["<h2>💊 Факторы риска (Anamnesis Vitae)</h2><ul>"]
+        
+        factors_map = {
+            "allergy": "⚠️ Аллергия на лекарства или продукты",
+            "diabetes": "Сахарный диабет (личный или семейный анамнез)",
+            "oncology": "🧬 Онкология у кровных родственников",
+            "cardiovascular": "Инфаркты/Инсульты у родителей до 60 лет",
+        }
+        
+        for factor in selected:
+            if factor in factors_map:
+                parts.append(f"<li><strong>{factors_map[factor]}</strong></li>")
+        
+        parts.append("</ul>")
+        
+        # Детали аллергии
+        allergy_details = risk_data.get("allergy_details")
+        if allergy_details:
+            parts.append(f"<p><em>Детали аллергии: {allergy_details}</em></p>")
+        
+        return "".join(parts)
+    
+    def _generate_readable_alerts(self, answers: Dict[str, Any]) -> Optional[str]:
+        """Генерация блока системных алертов для читаемого формата."""
+        alerts = []
+        
+        # Анализ на ХОБЛ
+        copd_alert = self._check_copd_risk_readable(answers)
+        if copd_alert:
+            alerts.append(copd_alert)
+        
+        # Анализ на кардио-риск
+        cardio_alert = self._check_cardio_risk_readable(answers)
+        if cardio_alert:
+            alerts.append(cardio_alert)
+        
+        # Анализ на гастро
+        gastro_alert = self._check_gastro_risk_readable(answers)
+        if gastro_alert:
+            alerts.append(gastro_alert)
+        
+        # Онконастороженность
+        onco_alert = self._check_onco_risk_readable(answers)
+        if onco_alert:
+            alerts.append(onco_alert)
+        
+        if not alerts:
+            return None
+        
+        parts = ["<h2>🚨 Системный анализ для врача</h2>"]
+        parts.append("<p><em>Автоматически выявленные риски и рекомендации:</em></p>")
+        parts.extend(alerts)
+        
+        return "".join(parts)
+    
+    def _check_copd_risk_readable(self, answers: Dict[str, Any]) -> Optional[str]:
+        """Проверка риска ХОБЛ для читаемого формата."""
+        screening = answers.get("systems_screening", {})
+        selected_systems = screening.get("selected", [])
+        
+        respiratory_details = answers.get("respiratory_details", {})
+        smoking_years = respiratory_details.get("smoking_years", 0)
+        resp_symptoms = respiratory_details.get("selected", [])
+        
+        has_respiratory = "respiratory" in selected_systems or any(
+            s in resp_symptoms for s in ["wet_cough", "dry_cough", "dyspnea_walking"]
+        )
+        
+        if has_respiratory and smoking_years and smoking_years > 0:
+            return f"""
+            <div class="alert-item">
+                <p><strong>⚠️ Подозрение на ХОБЛ</strong></p>
+                <p>Стаж курения {smoking_years} лет + респираторные симптомы.</p>
+                <p><strong>Рекомендовано:</strong> Спирометрия, консультация пульмонолога</p>
+            </div>
+            """
+        
+        return None
+    
+    def _check_cardio_risk_readable(self, answers: Dict[str, Any]) -> Optional[str]:
+        """Проверка кардио-риска для читаемого формата."""
+        screening = answers.get("systems_screening", {})
+        selected_systems = screening.get("selected", [])
+        
+        if "cardio" not in selected_systems:
+            return None
+        
+        cardio_details = answers.get("cardio_details", {})
+        timing = cardio_details.get("selected")
+        edema = cardio_details.get("edema")
+        
+        risk_factors = answers.get("risk_factors", {})
+        has_family_cardio = "cardiovascular" in risk_factors.get("selected", [])
+        
+        findings = []
+        
+        if timing == "exercise":
+            findings.append("Боли при нагрузке (типичная стенокардия)")
+        if edema and edema != "none":
+            findings.append("Отёки")
+        if has_family_cardio:
+            findings.append("Отягощённый семейный анамнез")
+        
+        if findings:
+            findings_text = ", ".join(findings)
+            return f"""
+            <div class="alert-item">
+                <p><strong>⚠️ Кардиоваскулярный риск</strong></p>
+                <p>{findings_text}.</p>
+                <p><strong>Рекомендовано:</strong> ЭКГ, консультация кардиолога</p>
+            </div>
+            """
+        
+        return None
+    
+    def _check_gastro_risk_readable(self, answers: Dict[str, Any]) -> Optional[str]:
+        """Проверка гастро-риска для читаемого формата."""
+        screening = answers.get("systems_screening", {})
+        selected_systems = screening.get("selected", [])
+        
+        if "gastro" not in selected_systems:
+            return None
+        
+        gastro_details = answers.get("gastro_details", {})
+        symptoms = gastro_details.get("selected", [])
+        
+        if "hungry_pain" in symptoms:
+            return """
+            <div class="alert-item">
+                <p><strong>⚠️ Гастропатология</strong></p>
+                <p>'Голодные' боли (подозрение на язвенную болезнь).</p>
+                <p><strong>Рекомендовано:</strong> ФГДС, УЗИ ОБП</p>
+            </div>
+            """
+        
+        return None
+    
+    def _check_onco_risk_readable(self, answers: Dict[str, Any]) -> Optional[str]:
+        """Проверка онконастороженности для читаемого формата."""
+        risk_factors = answers.get("risk_factors", {})
+        selected = risk_factors.get("selected", [])
+        
+        if "oncology" in selected:
+            return """
+            <div class="alert-item">
+                <p><strong>❗ Онконастороженность</strong></p>
+                <p>Онкология в семейном анамнезе.</p>
+                <p><strong>Рекомендовано:</strong> Тщательный осмотр, пальпация лимфоузлов</p>
+            </div>
+            """
+        
+        return None
+    
+    # ============================================
+    # Методы для текстового формата
+    # ============================================
+    
+    def _generate_text_main_complaint(self, answers: Dict[str, Any]) -> Optional[str]:
+        """Генерация блока основной жалобы для текстового формата."""
+        main_trigger = answers.get("main_trigger", {})
+        selected = main_trigger.get("selected")
+        
+        if not selected:
+            return None
+        
+        complaints_map = {
+            "pain": "Беспокоит боль",
+            "discomfort": "Общее недомогание / Дискомфорт",
+            "checkup": "Плановый осмотр / Справка / Анализы",
+        }
+        
+        complaint_text = complaints_map.get(selected, selected)
+        
+        return f"📌 ОСНОВНАЯ ПРИЧИНА ОБРАЩЕНИЯ\n{complaint_text}"
+    
+    def _generate_text_pain_details(self, answers: Dict[str, Any]) -> Optional[str]:
+        """Генерация блока детализации боли для текстового формата."""
+        pain_data = answers.get("pain_details", {})
+        
+        if not pain_data:
+            return None
+        
+        lines = ["🩺 ХАРАКТЕРИСТИКА БОЛИ"]
+        
+        locations = pain_data.get("locations", [])
+        if locations:
+            locations_map = {
+                "head": "Голова",
+                "throat": "Горло",
+                "chest": "Грудная клетка",
+                "abdomen": "Живот",
+                "back": "Поясница",
+                "joints": "Суставы/Конечности",
+            }
+            loc_names = [locations_map.get(loc, loc) for loc in locations]
+            lines.append(f"  • Локализация: {', '.join(loc_names)}")
+        
+        intensity = pain_data.get("intensity")
+        if intensity:
+            lines.append(f"  • Интенсивность: {intensity}/10")
+        
+        return "\n".join(lines)
+    
+    def _generate_text_systems_screening(self, answers: Dict[str, Any]) -> Optional[str]:
+        """Генерация блока скрининга систем для текстового формата."""
+        screening = answers.get("systems_screening", {})
+        selected_systems = screening.get("selected", [])
+        
+        if not selected_systems or "none" in selected_systems:
+            return None
+        
+        lines = ["🔍 СКРИНИНГ СИСТЕМ ОРГАНИЗМА"]
+        lines.append("(Выявленные отклонения - только положительные находки)")
+        lines.append("")
+        
+        # Дыхательная система
+        if "respiratory" in selected_systems:
+            respiratory_details = answers.get("respiratory_details", {})
+            resp_selected = respiratory_details.get("selected", [])
+            
+            if resp_selected:
+                lines.append("🫁 Дыхательная система:")
+                symptoms_map = {
+                    "dry_cough": "Кашель сухой",
+                    "wet_cough": "Кашель с мокротой",
+                    "dyspnea_walking": "Одышка при ходьбе",
+                    "asthma_attacks": "Приступы удушья",
+                }
+                for symptom in resp_selected:
+                    if symptom in symptoms_map:
+                        lines.append(f"  • {symptoms_map[symptom]}")
+                
+                smoking_years = respiratory_details.get("smoking_years")
+                if smoking_years and smoking_years > 0:
+                    lines.append(f"  • 🚬 Стаж курения: {smoking_years} лет")
+                
+                lines.append("")
+        
+        # Сердечно-сосудистая система
+        if "cardio" in selected_systems:
+            cardio_details = answers.get("cardio_details", {})
+            cardio_selected = cardio_details.get("selected")
+            
+            if cardio_selected:
+                lines.append("❤️ Сердечно-сосудистая система:")
+                timing_map = {
+                    "exercise": "Симптомы при физической нагрузке",
+                    "rest": "Симптомы в покое / Ночью",
+                    "constant": "Симптомы постоянно",
+                }
+                if cardio_selected in timing_map:
+                    lines.append(f"  • {timing_map[cardio_selected]}")
+                
+                edema = cardio_details.get("edema")
+                if edema and edema != "none":
+                    edema_map = {"legs": "Отёки на ногах", "face": "Отёки на лице"}
+                    lines.append(f"  • {edema_map.get(edema, edema)}")
+                
+                lines.append("")
+        
+        # Пищеварительная система
+        if "gastro" in selected_systems:
+            gastro_details = answers.get("gastro_details", {})
+            gastro_selected = gastro_details.get("selected", [])
+            
+            if gastro_selected:
+                lines.append("🍽️ Пищеварительная система:")
+                symptoms_map = {
+                    "hungry_pain": "Боли 'голодные' или ночные",
+                    "after_meal_pain": "Боли после еды",
+                    "constipation": "Запоры",
+                    "diarrhea": "Диарея",
+                    "nausea": "Тошнота/Рвота",
+                }
+                for symptom in gastro_selected:
+                    if symptom in symptoms_map:
+                        lines.append(f"  • {symptoms_map[symptom]}")
+                
+                lines.append("")
+        
+        # Неврология
+        if "neuro" in selected_systems:
+            lines.append("🧠 Неврология:")
+            lines.append("  • Головные боли, головокружение, нарушения сна")
+            lines.append("")
+        
+        # Мочевыделительная система
+        if "urinary" in selected_systems:
+            lines.append("💧 Мочевыделительная система:")
+            lines.append("  • Боли в пояснице, проблемы с мочеиспусканием")
+            lines.append("")
+        
+        return "\n".join(lines)
+    
+    def _generate_text_risk_factors(self, answers: Dict[str, Any]) -> Optional[str]:
+        """Генерация блока факторов риска для текстового формата."""
+        risk_data = answers.get("risk_factors", {})
+        selected = risk_data.get("selected", [])
+        
+        if not selected or "none" in selected:
+            return None
+        
+        lines = ["💊 ФАКТОРЫ РИСКА (Anamnesis Vitae)"]
+        
+        factors_map = {
+            "allergy": "⚠️ Аллергия на лекарства или продукты",
+            "diabetes": "Сахарный диабет (личный или семейный анамнез)",
+            "oncology": "🧬 Онкология у кровных родственников",
+            "cardiovascular": "Инфаркты/Инсульты у родителей до 60 лет",
+        }
+        
+        for factor in selected:
+            if factor in factors_map:
+                lines.append(f"  • {factors_map[factor]}")
+        
+        allergy_details = risk_data.get("allergy_details")
+        if allergy_details:
+            lines.append(f"    └ Детали: {allergy_details}")
+        
+        return "\n".join(lines)
+    
+    def _generate_text_alerts(self, answers: Dict[str, Any]) -> Optional[str]:
+        """Генерация блока системных алертов для текстового формата."""
+        alerts = []
+        
+        # Анализ на ХОБЛ
+        copd_alert = self._check_copd_risk(answers)
+        if copd_alert:
+            # Удаляем HTML теги
+            clean_alert = copd_alert.replace("<b>", "").replace("</b>", "").replace("<u>", "").replace("</u>", "")
+            alerts.append(f"  • {clean_alert}")
+        
+        # Анализ на кардио-риск
+        cardio_alert = self._check_cardio_risk(answers)
+        if cardio_alert:
+            clean_alert = cardio_alert.replace("<b>", "").replace("</b>", "").replace("<u>", "").replace("</u>", "")
+            alerts.append(f"  • {clean_alert}")
+        
+        # Анализ на гастро
+        gastro_alert = self._check_gastro_risk(answers)
+        if gastro_alert:
+            clean_alert = gastro_alert.replace("<b>", "").replace("</b>", "").replace("<u>", "").replace("</u>", "")
+            alerts.append(f"  • {clean_alert}")
+        
+        # Онконастороженность
+        onco_alert = self._check_onco_risk(answers)
+        if onco_alert:
+            clean_alert = onco_alert.replace("<b>", "").replace("</b>", "").replace("<u>", "").replace("</u>", "")
+            alerts.append(f"  • {clean_alert}")
+        
+        if not alerts:
+            return None
+        
+        lines = ["🚨 СИСТЕМНЫЙ АНАЛИЗ (Для врача)"]
+        lines.extend(alerts)
+        
+        return "\n".join(lines)
