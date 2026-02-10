@@ -148,13 +148,17 @@ async def export_html(
         safe_name = safe_name.replace(" ", "_")
         filename = f"report_{safe_name}_{session_id}.html"
         
+        # Кодируем имя файла для HTTP-заголовка (поддержка кириллицы)
+        from urllib.parse import quote
+        encoded_filename = quote(filename)
+        
         logger.info(f"Экспорт отчёта в HTML для сессии {session_id}")
         
         return Response(
             content=html_content,
             media_type="text/html; charset=utf-8",
             headers={
-                "Content-Disposition": f"attachment; filename={filename}"
+                "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"
             }
         )
         

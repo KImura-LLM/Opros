@@ -96,8 +96,7 @@ async def generate_token(
     """
     Генерация JWT токена для тестирования.
     
-    ⚠️ ТОЛЬКО ДЛЯ РАЗРАБОТКИ! В продакшене этот эндпоинт должен быть защищён
-    или вызываться только из Битрикс24.
+    ⚠️ ТОЛЬКО ДЛЯ РАЗРАБОТКИ! Недоступен в production.
     
     Args:
         lead_id: ID сделки/лида в Битрикс24
@@ -108,6 +107,12 @@ async def generate_token(
         JWT токен и URL для прохождения опроса
     """
     from app.core.config import settings
+    
+    if not settings.DEBUG:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Этот эндпоинт доступен только в режиме разработки",
+        )
     
     token = create_access_token(
         lead_id=lead_id,

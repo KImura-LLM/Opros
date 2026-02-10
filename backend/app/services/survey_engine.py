@@ -116,54 +116,58 @@ class SurveyEngine:
             # Простой парсер условий
             condition = condition.strip()
             
-            # Обработка "selected == 'value'"
-            if "==" in condition:
-                parts = condition.split("==")
-                field = parts[0].strip()
-                expected = parts[1].strip().strip("'\"")
-                
-                actual = self._get_answer_value(field, answer)
-                return str(actual) == expected
-            
-            # Обработка "selected contains 'value'"
+            # Определяем оператор и поле
+            operator = None
             if "contains" in condition:
-                parts = condition.split("contains")
-                field = parts[0].strip()
-                expected = parts[1].strip().strip("'\"")
-                
+                operator = "contains"
+                parts = condition.split("contains", 1)
+            elif "==" in condition:
+                operator = "=="
+                parts = condition.split("==", 1)
+            elif ">=" in condition:
+                operator = ">="
+                parts = condition.split(">=", 1)
+            elif "<=" in condition:
+                operator = "<="
+                parts = condition.split("<=", 1)
+            elif ">" in condition:
+                operator = ">"
+                parts = condition.split(">", 1)
+            elif "<" in condition:
+                operator = "<"
+                parts = condition.split("<", 1)
+            
+            if not operator or len(parts) != 2:
+                logger.warning(f"Неподдерживаемый формат условия: {condition}")
+                return False
+            
+            field = parts[0].strip()
+            expected = parts[1].strip().strip("'\"")
+            
+            # Определяем источник данных: cross-node (dot notation) или текущий ответ
+            if "." in field:
+                # Cross-node reference: "systems_screening.selected"
+                node_id, field_name = field.rsplit(".", 1)
+                source_answer = all_answers.get(node_id, {})
+                actual = self._get_answer_value(field_name, source_answer)
+            else:
                 actual = self._get_answer_value(field, answer)
+            
+            # Выполняем сравнение
+            if operator == "==":
+                return str(actual) == expected
+            elif operator == "contains":
                 if isinstance(actual, list):
                     return expected in actual
-                return expected in str(actual)
-            
-            # Обработка "value > N"
-            if ">" in condition:
-                parts = condition.split(">")
-                field = parts[0].strip()
-                threshold = int(parts[1].strip())
-                
-                actual = self._get_answer_value(field, answer)
-                return int(actual) > threshold if actual else False
-            
-            # Обработка "value < N"
-            if "<" in condition:
-                parts = condition.split("<")
-                field = parts[0].strip()
-                threshold = int(parts[1].strip())
-                
-                actual = self._get_answer_value(field, answer)
-                return int(actual) < threshold if actual else False
-            
-            # Обработка "answer_node_id.field == 'value'" (проверка предыдущих ответов)
-            if "." in condition.split("==")[0] if "==" in condition else False:
-                parts = condition.split("==")
-                node_field = parts[0].strip()
-                expected = parts[1].strip().strip("'\"")
-                
-                node_id, field = node_field.rsplit(".", 1)
-                prev_answer = all_answers.get(node_id, {})
-                actual = self._get_answer_value(field, prev_answer)
-                return str(actual) == expected
+                return expected in str(actual) if actual else False
+            elif operator == ">":
+                return int(actual) > int(expected) if actual is not None else False
+            elif operator == "<":
+                return int(actual) < int(expected) if actual is not None else False
+            elif operator == ">=":
+                return int(actual) >= int(expected) if actual is not None else False
+            elif operator == "<=":
+                return int(actual) <= int(expected) if actual is not None else False
             
             logger.warning(f"Неподдерживаемый формат условия: {condition}")
             return False

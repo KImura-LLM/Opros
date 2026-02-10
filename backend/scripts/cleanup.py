@@ -6,11 +6,11 @@
 import asyncio
 from datetime import datetime, timedelta
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 
 from app.core.database import async_session_maker
 from app.core.config import settings
-from app.models.models import SurveySession, SurveyAnswer, AuditLog
+from app.models.models import SurveySession
 
 
 async def cleanup_old_data():
@@ -19,42 +19,33 @@ async def cleanup_old_data():
     cutoff_time = datetime.utcnow() - timedelta(hours=settings.DATA_RETENTION_HOURS)
     
     async with async_session_maker() as session:
-        # 1. Получаем старые сессии
+        # 1. Получаем старые завершённые сессии
         result = await session.execute(
-            select(SurveySession.id).where(
-                SurveySession.completed_at < cutoff_time
+            select(SurveySession).where(
+                SurveySession.status == "completed",
+                # Учитываем и completed_at и started_at для надёжности
+                (
+                    (SurveySession.completed_at < cutoff_time) |
+                    (
+                        SurveySession.completed_at.is_(None) &
+                        (SurveySession.started_at < cutoff_time)
+                    )
+                ),
             )
         )
-        old_session_ids = [row[0] for row in result.fetchall()]
+        old_sessions = result.scalars().all()
         
-        if not old_session_ids:
+        if not old_sessions:
             print(f"ℹ️ Нет данных для удаления (старше {settings.DATA_RETENTION_HOURS} часов)")
             return
         
-        # 2. Удаляем ответы старых сессий
-        await session.execute(
-            delete(SurveyAnswer).where(
-                SurveyAnswer.session_id.in_(old_session_ids)
-            )
-        )
-        
-        # 3. Удаляем audit logs старых сессий
-        await session.execute(
-            delete(AuditLog).where(
-                AuditLog.session_id.in_(old_session_ids)
-            )
-        )
-        
-        # 4. Удаляем сами сессии
-        await session.execute(
-            delete(SurveySession).where(
-                SurveySession.id.in_(old_session_ids)
-            )
-        )
+        # Удаляем сессии — связанные записи удалятся каскадно
+        for s in old_sessions:
+            await session.delete(s)
         
         await session.commit()
         
-        print(f"✅ Удалено {len(old_session_ids)} сессий и связанных данных")
+        print(f"✅ Удалено {len(old_sessions)} сессий и связанных данных (каскадно)")
 
 
 async def cleanup_expired_sessions():
@@ -65,39 +56,25 @@ async def cleanup_expired_sessions():
     async with async_session_maker() as session:
         # Находим незавершённые сессии старше времени жизни токена
         result = await session.execute(
-            select(SurveySession.id).where(
+            select(SurveySession).where(
                 SurveySession.completed_at.is_(None),
+                SurveySession.status != "completed",
                 SurveySession.started_at < cutoff_time
             )
         )
-        expired_session_ids = [row[0] for row in result.fetchall()]
+        expired_sessions = result.scalars().all()
         
-        if not expired_session_ids:
+        if not expired_sessions:
             print("ℹ️ Нет незавершённых сессий с истёкшим токеном")
             return
         
-        # Удаляем связанные данные
-        await session.execute(
-            delete(SurveyAnswer).where(
-                SurveyAnswer.session_id.in_(expired_session_ids)
-            )
-        )
-        
-        await session.execute(
-            delete(AuditLog).where(
-                AuditLog.session_id.in_(expired_session_ids)
-            )
-        )
-        
-        await session.execute(
-            delete(SurveySession).where(
-                SurveySession.id.in_(expired_session_ids)
-            )
-        )
+        # Удаляем сессии — связанные записи удалятся каскадно
+        for s in expired_sessions:
+            await session.delete(s)
         
         await session.commit()
         
-        print(f"✅ Удалено {len(expired_session_ids)} незавершённых сессий с истёкшим токеном")
+        print(f"✅ Удалено {len(expired_sessions)} незавершённых сессий с истёкшим токеном")
 
 
 async def main():

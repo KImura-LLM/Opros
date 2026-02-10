@@ -197,11 +197,16 @@ async def get_dashboard_stats(
     # ================================================
     # БЛОК 4: Воронка прохождения (drop-off)
     # ================================================
-    # Считаем сколько сессий ответили на каждый node_id
+    # Считаем сколько сессий ответили на каждый node_id (в выбранном периоде)
     funnel_q = await db.execute(
         select(
             SurveyAnswer.node_id,
             func.count(func.distinct(SurveyAnswer.session_id)).label("cnt"),
+        )
+        .join(SurveySession, SurveySession.id == SurveyAnswer.session_id)
+        .where(
+            SurveySession.started_at >= dt_from,
+            SurveySession.started_at <= dt_to,
         )
         .group_by(SurveyAnswer.node_id)
         .order_by(func.count(func.distinct(SurveyAnswer.session_id)).desc())

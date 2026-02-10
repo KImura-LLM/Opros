@@ -16,6 +16,7 @@ import sys
 
 from app.core.config import settings
 from app.core.database import engine, Base
+from app.core.redis import redis_client
 from app.api.v1.router import api_router
 from app.admin.setup import setup_admin
 
@@ -47,6 +48,7 @@ async def lifespan(app: FastAPI):
     yield
     
     logger.info("👋 Остановка приложения...")
+    await redis_client.disconnect()
     await engine.dispose()
 
 

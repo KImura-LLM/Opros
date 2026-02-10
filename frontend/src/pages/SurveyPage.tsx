@@ -6,7 +6,7 @@ import React, { useState, useCallback, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useSurveyStore } from '@/store'
-import { submitAnswer, completeSurvey } from '@/api'
+import { submitAnswer, completeSurvey, goBackApi } from '@/api'
 import { Header, ProgressBar, Footer, PageContainer } from '@/components/layout'
 import {
   SingleChoice,
@@ -48,7 +48,13 @@ const SurveyPage: React.FC = () => {
     if (savedAnswer) {
       setCurrentAnswer(savedAnswer)
     } else {
-      setCurrentAnswer({})
+      // Инициализация дефолтных значений для body_map
+      // чтобы PainScale отображал значение, совпадающее с состоянием
+      if (currentNode?.type === 'body_map') {
+        setCurrentAnswer({ locations: [], intensity: 5 })
+      } else {
+        setCurrentAnswer({})
+      }
     }
   }, [currentNodeId, answers])
 
@@ -79,6 +85,7 @@ const SurveyPage: React.FC = () => {
     
     // Body map
     if (currentNode.type === 'body_map') {
+      if (!currentNode.required) return true
       const locations = currentAnswer.locations as string[] | undefined
       const intensity = currentAnswer.intensity
       return Array.isArray(locations) && locations.length > 0 && intensity !== undefined
@@ -184,8 +191,18 @@ const SurveyPage: React.FC = () => {
   }
 
   // Обработка нажатия "Назад"
-  const handleBack = () => {
-    goBack()
+  const handleBack = async () => {
+    if (!sessionId) return
+    try {
+      const response = await goBackApi(sessionId)
+      if (response.success) {
+        goBack()
+      }
+    } catch (error) {
+      console.error('Error going back:', error)
+      // Fallback: локальный goBack если сервер недоступен
+      goBack()
+    }
   }
 
   // Закрытие опроса
@@ -214,11 +231,46 @@ const SurveyPage: React.FC = () => {
 
       case 'single_choice':
         return (
-          <SingleChoice
-            options={currentNode.options || []}
-            value={(currentAnswer.selected as string) || null}
-            onChange={(value) => setCurrentAnswer({ selected: value })}
-          />
+          <div className="space-y-6">
+            <SingleChoice
+              options={currentNode.options || []}
+              value={(currentAnswer.selected as string) || null}
+              onChange={(value) => setCurrentAnswer((prev) => ({ ...prev, selected: value }))}
+            />
+            
+            {/* Дополнительные поля для single_choice */}
+            {currentNode.additional_fields?.map((field) => {
+              if (field.type === 'text') {
+                return (
+                  <TextInput
+                    key={field.id}
+                    label={field.label}
+                    placeholder={field.placeholder}
+                    value={(currentAnswer[field.id] as string) || ''}
+                    onChange={(value) =>
+                      setCurrentAnswer((prev) => ({ ...prev, [field.id]: value }))
+                    }
+                  />
+                )
+              }
+              if (field.type === 'number') {
+                return (
+                  <NumberInput
+                    key={field.id}
+                    label={field.label}
+                    placeholder={field.placeholder}
+                    value={(currentAnswer[field.id] as number) || null}
+                    onChange={(value) =>
+                      setCurrentAnswer((prev) => ({ ...prev, [field.id]: value }))
+                    }
+                    min={field.min}
+                    max={field.max}
+                  />
+                )
+              }
+              return null
+            })}
+          </div>
         )
 
       case 'multi_choice':
@@ -247,6 +299,19 @@ const SurveyPage: React.FC = () => {
                     }
                     min={field.min}
                     max={field.max}
+                  />
+                )
+              }
+              if (field.type === 'text') {
+                return (
+                  <TextInput
+                    key={field.id}
+                    label={field.label}
+                    placeholder={field.placeholder}
+                    value={(currentAnswer[field.id] as string) || ''}
+                    onChange={(value) =>
+                      setCurrentAnswer((prev) => ({ ...prev, [field.id]: value }))
+                    }
                   />
                 )
               }

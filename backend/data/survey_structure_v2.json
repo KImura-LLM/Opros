@@ -1,0 +1,712 @@
+{
+  "id": 2,
+  "name": "Подробный клинический опросник пациента",
+  "version": "2.0",
+  "description": "Расширенная анкета для сбора анамнеза перед приёмом врача (структурированный опрос по системам органов)",
+  "start_node": "welcome",
+  "branch_mapping": {
+    "respiratory": "resp_filter",
+    "cardio": "cardio_filter",
+    "gastro": "gastro_filter",
+    "urinary": "urinary_filter"
+  },
+  "nodes": [
+    {
+      "id": "welcome",
+      "type": "info_screen",
+      "question_text": "Здравствуйте!",
+      "description": "Чтобы врач мог максимально эффективно помочь вам, пожалуйста, ответьте на вопросы о вашем самочувствии. Это займёт некоторое время, но поможет поставить точный диагноз.",
+      "required": false,
+      "logic": [
+        {
+          "default": true,
+          "next_node": "body_location"
+        }
+      ]
+    },
+
+    {
+      "id": "body_location",
+      "type": "body_map",
+      "question_text": "Отметьте область, которая беспокоит вас больше всего",
+      "description": "Выберите область и оцените интенсивность боли. Если ничего не болит — нажмите «Далее».",
+      "required": false,
+      "options": [
+        { "id": "head", "text": "Голова", "value": "head" },
+        { "id": "throat", "text": "Горло", "value": "throat" },
+        { "id": "chest", "text": "Грудная клетка / Сердце", "value": "chest" },
+        { "id": "abdomen", "text": "Живот", "value": "abdomen" },
+        { "id": "back", "text": "Поясница / Пах", "value": "back" },
+        { "id": "joints", "text": "Суставы / Конечности", "value": "joints" }
+      ],
+      "min_value": 1,
+      "max_value": 10,
+      "logic": [
+        {
+          "default": true,
+          "next_node": "pain_character"
+        }
+      ]
+    },
+
+    {
+      "id": "pain_character",
+      "type": "multi_choice",
+      "question_text": "Как вы можете описать характер боли/ощущений?",
+      "description": "Можно выбрать несколько вариантов",
+      "required": true,
+      "options": [
+        { "id": "sharp", "text": "Острая / Кинжальная", "value": "sharp", "icon": "zap" },
+        { "id": "dull", "text": "Тупая / Ноющая", "value": "dull", "icon": "minus-circle" },
+        { "id": "pressing", "text": "Сжимающая / Давящая", "value": "pressing", "icon": "arrow-down-circle" },
+        { "id": "stabbing", "text": "Колющая", "value": "stabbing", "icon": "crosshair" },
+        { "id": "burning", "text": "Жгучая", "value": "burning", "icon": "flame" },
+        { "id": "cramping", "text": "Приступообразная (схватками)", "value": "cramping" },
+        { "id": "constant", "text": "Постоянная", "value": "constant", "icon": "clock" },
+        { "id": "no_pain", "text": "Боли нет (профилактика/другое)", "value": "no_pain", "icon": "check-circle" }
+      ],
+      "logic": [
+        {
+          "condition": "selected contains 'no_pain'",
+          "next_node": "free_complaint"
+        },
+        {
+          "default": true,
+          "next_node": "pain_intensity"
+        }
+      ]
+    },
+
+    {
+      "id": "pain_intensity",
+      "type": "scale_1_10",
+      "question_text": "Оцените силу боли",
+      "description": "Где 1 — едва заметная, а 10 — нестерпимая",
+      "required": true,
+      "min_value": 1,
+      "max_value": 10,
+      "logic": [
+        {
+          "default": true,
+          "next_node": "free_complaint"
+        }
+      ]
+    },
+
+    {
+      "id": "free_complaint",
+      "type": "text_input",
+      "question_text": "Опишите своими словами, на что именно вы жалуетесь?",
+      "description": "Например: слабость, температура, сыпь, перебои в сердце",
+      "placeholder": "Опишите ваши жалобы...",
+      "required": false,
+      "logic": [
+        {
+          "default": true,
+          "next_node": "temperature_filter"
+        }
+      ]
+    },
+
+
+    {
+      "id": "temperature_filter",
+      "type": "single_choice",
+      "question_text": "Было ли у вас повышение температуры тела в последнее время?",
+      "required": true,
+      "options": [
+        { "id": "temp_yes", "text": "Да", "value": "yes", "icon": "thermometer" },
+        { "id": "temp_no", "text": "Нет", "value": "no", "icon": "check-circle" }
+      ],
+      "logic": [
+        {
+          "condition": "selected == 'yes'",
+          "next_node": "temperature_details"
+        },
+        {
+          "condition": "selected == 'no'",
+          "next_node": "resp_filter"
+        },
+        {
+          "default": true,
+          "next_node": "resp_filter"
+        }
+      ]
+    },
+
+    {
+      "id": "temperature_details",
+      "type": "multi_choice",
+      "question_text": "Уточните симптомы, сопровождающие повышение температуры:",
+      "required": true,
+      "options": [
+        { "id": "chills", "text": "Озноб", "value": "chills", "icon": "thermometer" },
+        { "id": "sweating", "text": "Повышенная потливость", "value": "sweating", "icon": "droplet" },
+        { "id": "temp_morning", "text": "Температура выше утром", "value": "temp_morning", "icon": "sunrise" },
+        { "id": "temp_evening", "text": "Температура выше вечером", "value": "temp_evening", "icon": "sunset" }
+      ],
+      "logic": [
+        {
+          "default": true,
+          "next_node": "resp_filter"
+        }
+      ]
+    },
+
+
+    {
+      "id": "resp_filter",
+      "type": "single_choice",
+      "question_text": "Беспокоит ли вас кашель, одышка или боли в грудной клетке при дыхании?",
+      "required": true,
+      "options": [
+        { "id": "resp_yes", "text": "Да", "value": "yes", "icon": "wind" },
+        { "id": "resp_no", "text": "Нет", "value": "no", "icon": "check-circle" }
+      ],
+      "logic": [
+        {
+          "condition": "selected == 'yes'",
+          "next_node": "resp_cough"
+        },
+        {
+          "condition": "selected == 'no'",
+          "next_node": "cardio_filter"
+        },
+        {
+          "default": true,
+          "next_node": "cardio_filter"
+        }
+      ]
+    },
+
+    {
+      "id": "resp_cough",
+      "type": "single_choice",
+      "question_text": "Какой у вас кашель?",
+      "required": true,
+      "options": [
+        { "id": "dry", "text": "Сухой", "value": "dry" },
+        { "id": "wet", "text": "С выделением мокроты", "value": "wet" },
+        { "id": "no_cough", "text": "Кашля нет", "value": "no_cough" }
+      ],
+      "logic": [
+        {
+          "condition": "selected == 'wet'",
+          "next_node": "resp_sputum_color"
+        },
+        {
+          "default": true,
+          "next_node": "resp_dyspnea"
+        }
+      ]
+    },
+
+    {
+      "id": "resp_sputum_color",
+      "type": "single_choice",
+      "question_text": "Какого цвета мокрота?",
+      "required": true,
+      "options": [
+        { "id": "clear", "text": "Прозрачная", "value": "clear" },
+        { "id": "yellow_green", "text": "Жёлто-зелёная", "value": "yellow_green" },
+        { "id": "rusty", "text": "Ржавая", "value": "rusty" },
+        { "id": "bloody", "text": "С кровью", "value": "bloody" }
+      ],
+      "logic": [
+        {
+          "default": true,
+          "next_node": "resp_dyspnea"
+        }
+      ]
+    },
+
+    {
+      "id": "resp_dyspnea",
+      "type": "multi_choice",
+      "question_text": "Когда возникает чувство нехватки воздуха?",
+      "description": "Можно выбрать несколько вариантов",
+      "required": true,
+      "options": [
+        { "id": "at_rest", "text": "В покое", "value": "at_rest" },
+        { "id": "on_exercise", "text": "При физической нагрузке", "value": "on_exercise" },
+        { "id": "lying_down", "text": "Лёжа в постели", "value": "lying_down" },
+        { "id": "asthma_attacks", "text": "Бывают приступы удушья", "value": "asthma_attacks" },
+        { "id": "no_dyspnea", "text": "Одышки нет", "value": "no_dyspnea", "icon": "check-circle" }
+      ],
+      "logic": [
+        {
+          "default": true,
+          "next_node": "cardio_filter"
+        }
+      ]
+    },
+
+
+    {
+      "id": "cardio_filter",
+      "type": "single_choice",
+      "question_text": "Бывают ли у вас боли за грудиной, перебои в сердце или отёки?",
+      "required": true,
+      "options": [
+        { "id": "cardio_yes", "text": "Да", "value": "yes", "icon": "heart" },
+        { "id": "cardio_no", "text": "Нет", "value": "no", "icon": "check-circle" }
+      ],
+      "logic": [
+        {
+          "condition": "selected == 'yes'",
+          "next_node": "cardio_pain_irradiation"
+        },
+        {
+          "condition": "selected == 'no'",
+          "next_node": "gastro_filter"
+        },
+        {
+          "default": true,
+          "next_node": "gastro_filter"
+        }
+      ]
+    },
+
+    {
+      "id": "cardio_pain_irradiation",
+      "type": "single_choice",
+      "question_text": "Куда отдаёт (иррадиирует) боль?",
+      "required": true,
+      "options": [
+        { "id": "left_arm", "text": "В левую руку/лопатку", "value": "left_arm" },
+        { "id": "neck_jaw", "text": "В шею/челюсть", "value": "neck_jaw" },
+        { "id": "nowhere", "text": "Никуда", "value": "nowhere" }
+      ],
+      "logic": [
+        {
+          "default": true,
+          "next_node": "cardio_trigger"
+        }
+      ]
+    },
+
+    {
+      "id": "cardio_trigger",
+      "type": "single_choice",
+      "question_text": "Что вызывает боль?",
+      "required": true,
+      "options": [
+        { "id": "exercise", "text": "Физическая нагрузка", "value": "exercise" },
+        { "id": "stress", "text": "Эмоциональный стресс", "value": "stress" },
+        { "id": "at_rest", "text": "Появляется в покое", "value": "at_rest" }
+      ],
+      "logic": [
+        {
+          "default": true,
+          "next_node": "cardio_nitro"
+        }
+      ]
+    },
+
+    {
+      "id": "cardio_nitro",
+      "type": "single_choice",
+      "question_text": "Проходит ли боль после приёма нитроглицерина или остановки движения?",
+      "required": true,
+      "options": [
+        { "id": "nitro_yes", "text": "Да, проходит", "value": "yes" },
+        { "id": "nitro_no", "text": "Нет, не проходит", "value": "no" },
+        { "id": "nitro_never", "text": "Не пробовал(а)", "value": "never" }
+      ],
+      "logic": [
+        {
+          "default": true,
+          "next_node": "cardio_edema"
+        }
+      ]
+    },
+
+    {
+      "id": "cardio_edema",
+      "type": "single_choice",
+      "question_text": "Отекают ли у вас ноги или лицо?",
+      "required": true,
+      "options": [
+        { "id": "edema_evening_legs", "text": "Ноги отекают к вечеру", "value": "evening_legs" },
+        { "id": "edema_morning_face", "text": "Утром отекает лицо/веки", "value": "morning_face" },
+        { "id": "edema_no", "text": "Нет отёков", "value": "no" }
+      ],
+      "logic": [
+        {
+          "default": true,
+          "next_node": "gastro_filter"
+        }
+      ]
+    },
+
+
+    {
+      "id": "gastro_filter",
+      "type": "single_choice",
+      "question_text": "Есть ли жалобы на боли в животе, тошноту, изжогу или проблемы со стулом?",
+      "required": true,
+      "options": [
+        { "id": "gastro_yes", "text": "Да", "value": "yes", "icon": "utensils" },
+        { "id": "gastro_no", "text": "Нет", "value": "no", "icon": "check-circle" }
+      ],
+      "logic": [
+        {
+          "condition": "selected == 'yes'",
+          "next_node": "gastro_meal_relation"
+        },
+        {
+          "condition": "selected == 'no'",
+          "next_node": "urinary_filter"
+        },
+        {
+          "default": true,
+          "next_node": "urinary_filter"
+        }
+      ]
+    },
+
+    {
+      "id": "gastro_meal_relation",
+      "type": "single_choice",
+      "question_text": "Как боли связаны с приёмом пищи?",
+      "required": true,
+      "options": [
+        { "id": "hungry", "text": "Болит на голодный желудок («голодные боли»)", "value": "hungry" },
+        { "id": "right_after", "text": "Болит сразу после еды", "value": "right_after" },
+        { "id": "delayed", "text": "Болит через 1–2 часа после еды", "value": "delayed" },
+        { "id": "no_relation", "text": "Не связано с едой", "value": "no_relation" }
+      ],
+      "logic": [
+        {
+          "default": true,
+          "next_node": "gastro_dyspepsia"
+        }
+      ]
+    },
+
+    {
+      "id": "gastro_dyspepsia",
+      "type": "multi_choice",
+      "question_text": "Отметьте симптомы, которые вас беспокоят:",
+      "description": "Можно выбрать несколько вариантов",
+      "required": true,
+      "options": [
+        { "id": "heartburn", "text": "Изжога", "value": "heartburn" },
+        { "id": "belching", "text": "Отрыжка", "value": "belching" },
+        { "id": "nausea", "text": "Тошнота / Рвота", "value": "nausea" },
+        { "id": "coffee_ground_vomit", "text": "Рвота «кофейной гущей» (тёмная)", "value": "coffee_ground_vomit" },
+        { "id": "bloating", "text": "Вздутие живота", "value": "bloating" },
+        { "id": "none_dyspepsia", "text": "Ничего из перечисленного", "value": "none", "icon": "check-circle" }
+      ],
+      "logic": [
+        {
+          "default": true,
+          "next_node": "gastro_stool"
+        }
+      ]
+    },
+
+    {
+      "id": "gastro_stool",
+      "type": "single_choice",
+      "question_text": "Охарактеризуйте ваш стул:",
+      "required": true,
+      "options": [
+        { "id": "constipation", "text": "Запор (стул твёрдый, комковатый)", "value": "constipation" },
+        { "id": "normal_stool", "text": "Норма", "value": "normal" },
+        { "id": "diarrhea", "text": "Диарея (стул мягкий, водянистый)", "value": "diarrhea" }
+      ],
+      "logic": [
+        {
+          "default": true,
+          "next_node": "gastro_blood"
+        }
+      ]
+    },
+
+    {
+      "id": "gastro_blood",
+      "type": "single_choice",
+      "question_text": "Был ли стул чёрным (дёгтеобразным) или с примесью алой крови?",
+      "required": true,
+      "options": [
+        { "id": "blood_yes", "text": "Да", "value": "yes" },
+        { "id": "blood_no", "text": "Нет", "value": "no" }
+      ],
+      "logic": [
+        {
+          "default": true,
+          "next_node": "urinary_filter"
+        }
+      ]
+    },
+
+
+    {
+      "id": "urinary_filter",
+      "type": "single_choice",
+      "question_text": "Есть ли проблемы с мочеиспусканием или боли в пояснице?",
+      "required": true,
+      "options": [
+        { "id": "urinary_yes", "text": "Да", "value": "yes", "icon": "droplet" },
+        { "id": "urinary_no", "text": "Нет", "value": "no", "icon": "check-circle" }
+      ],
+      "logic": [
+        {
+          "condition": "selected == 'yes'",
+          "next_node": "urinary_details"
+        },
+        {
+          "condition": "selected == 'no'",
+          "next_node": "disease_onset"
+        },
+        {
+          "default": true,
+          "next_node": "disease_onset"
+        }
+      ]
+    },
+
+    {
+      "id": "urinary_details",
+      "type": "multi_choice",
+      "question_text": "Уточните проблемы мочевыделительной системы:",
+      "required": true,
+      "options": [
+        { "id": "dysuria", "text": "Рези, жжение при мочеиспускании", "value": "dysuria" },
+        { "id": "urine_color", "text": "Изменился цвет мочи (тёмная, красная, мутная)", "value": "urine_color" },
+        { "id": "nocturia", "text": "Приходится вставать в туалет ночью", "value": "nocturia" },
+        { "id": "difficulty_start", "text": "Затруднения с началом мочеиспускания", "value": "difficulty_start" }
+      ],
+      "logic": [
+        {
+          "default": true,
+          "next_node": "disease_onset"
+        }
+      ]
+    },
+
+
+    {
+      "id": "disease_onset",
+      "type": "single_choice",
+      "question_text": "Как давно вы считаете себя больным (по текущей проблеме)?",
+      "required": true,
+      "options": [
+        { "id": "acute", "text": "Заболел остро (часы/дни назад)", "value": "acute" },
+        { "id": "chronic_exacerbation", "text": "Болею давно, сейчас обострение", "value": "chronic_exacerbation" }
+      ],
+      "additional_fields": [
+        {
+          "id": "duration_text",
+          "type": "text",
+          "label": "Укажите примерное количество времени:",
+          "placeholder": "Например: 2 недели, 3 месяца"
+        }
+      ],
+      "logic": [
+        {
+          "default": true,
+          "next_node": "disease_history"
+        }
+      ]
+    },
+
+    {
+      "id": "disease_history",
+      "type": "text_input",
+      "question_text": "С чего началось заболевание? Принимали ли вы уже какие-то лекарства?",
+      "description": "Опишите начало заболевания и предпринятое лечение. Если лекарства помогли — укажите какие.",
+      "placeholder": "Опишите историю вашего заболевания...",
+      "required": false,
+      "logic": [
+        {
+          "default": true,
+          "next_node": "allergy"
+        }
+      ]
+    },
+
+
+    {
+      "id": "allergy",
+      "type": "single_choice",
+      "question_text": "Есть ли у вас аллергия на лекарства или продукты?",
+      "required": true,
+      "options": [
+        { "id": "allergy_yes", "text": "Да", "value": "yes", "icon": "alert-triangle" },
+        { "id": "allergy_no", "text": "Нет", "value": "no", "icon": "check-circle" }
+      ],
+      "logic": [
+        {
+          "condition": "selected == 'yes'",
+          "next_node": "allergy_details"
+        },
+        {
+          "condition": "selected == 'no'",
+          "next_node": "smoking"
+        },
+        {
+          "default": true,
+          "next_node": "smoking"
+        }
+      ]
+    },
+
+    {
+      "id": "allergy_details",
+      "type": "text_input",
+      "question_text": "Укажите на что аллергия и как проявляется",
+      "description": "Например: пенициллин — сыпь, орехи — отёк",
+      "placeholder": "На что аллергия и как проявляется...",
+      "required": true,
+      "logic": [
+        {
+          "default": true,
+          "next_node": "smoking"
+        }
+      ]
+    },
+
+    {
+      "id": "smoking",
+      "type": "single_choice",
+      "question_text": "Вы курите?",
+      "required": true,
+      "options": [
+        { "id": "smoking_yes", "text": "Да", "value": "yes" },
+        { "id": "smoking_no", "text": "Нет", "value": "no" }
+      ],
+      "logic": [
+        {
+          "condition": "selected == 'yes'",
+          "next_node": "smoking_details"
+        },
+        {
+          "condition": "selected == 'no'",
+          "next_node": "alcohol"
+        },
+        {
+          "default": true,
+          "next_node": "alcohol"
+        }
+      ]
+    },
+
+    {
+      "id": "smoking_details",
+      "type": "multi_choice_with_input",
+      "question_text": "Уточните информацию о курении:",
+      "required": true,
+      "options": [
+        { "id": "cig_lt10", "text": "Менее 10 сигарет в день", "value": "lt10" },
+        { "id": "cig_11_20", "text": "11–20 сигарет в день", "value": "11_20" },
+        { "id": "cig_21_30", "text": "21–30 сигарет в день", "value": "21_30" },
+        { "id": "cig_gt30", "text": "Более 30 сигарет в день", "value": "gt30" }
+      ],
+      "additional_fields": [
+        {
+          "id": "smoking_years",
+          "type": "number",
+          "label": "Стаж курения (лет)",
+          "placeholder": "Количество лет",
+          "min": 0,
+          "max": 100
+        },
+        {
+          "id": "first_cig_time",
+          "type": "text",
+          "label": "Как скоро после пробуждения вы закуриваете?",
+          "placeholder": "Например: через 5 минут, через час"
+        }
+      ],
+      "logic": [
+        {
+          "default": true,
+          "next_node": "alcohol"
+        }
+      ]
+    },
+
+    {
+      "id": "alcohol",
+      "type": "single_choice",
+      "question_text": "Употребляете ли алкоголь?",
+      "required": true,
+      "options": [
+        { "id": "alc_no", "text": "Не употребляю", "value": "no" },
+        { "id": "alc_rare", "text": "Редко", "value": "rare" },
+        { "id": "alc_moderate", "text": "Умеренно", "value": "moderate" },
+        { "id": "alc_often", "text": "Часто", "value": "often" }
+      ],
+      "logic": [
+        {
+          "default": true,
+          "next_node": "heredity"
+        }
+      ]
+    },
+
+    {
+      "id": "heredity",
+      "type": "multi_choice",
+      "question_text": "Были ли у ваших близких родственников (родители, братья/сёстры) следующие заболевания?",
+      "description": "Можно выбрать несколько вариантов",
+      "required": true,
+      "options": [
+        { "id": "her_cardio", "text": "Инфаркт / Инсульт", "value": "cardio", "icon": "heart" },
+        { "id": "her_diabetes", "text": "Сахарный диабет", "value": "diabetes", "icon": "droplet" },
+        { "id": "her_oncology", "text": "Онкология", "value": "oncology", "icon": "alert-circle" },
+        { "id": "her_tuberculosis", "text": "Туберкулёз", "value": "tuberculosis" },
+        { "id": "her_mental", "text": "Психические расстройства", "value": "mental", "icon": "brain" },
+        { "id": "her_none", "text": "Нет / Не знаю", "value": "none", "icon": "check-circle" }
+      ],
+      "logic": [
+        {
+          "default": true,
+          "next_node": "past_diseases"
+        }
+      ]
+    },
+
+    {
+      "id": "past_diseases",
+      "type": "text_input",
+      "question_text": "Какие операции, травмы или серьёзные инфекции вы переносили ранее?",
+      "description": "Например: гепатиты, туберкулёз, переломы, операции",
+      "placeholder": "Перечислите перенесённые заболевания, травмы, операции...",
+      "required": false,
+      "logic": [
+        {
+          "default": true,
+          "next_node": "occupation"
+        }
+      ]
+    },
+
+    {
+      "id": "occupation",
+      "type": "text_input",
+      "question_text": "Ваша профессия? Связана ли работа с профессиональными вредностями?",
+      "description": "Укажите профессию и вредные факторы: пыль, химикаты, шум, вибрация и т.д.",
+      "placeholder": "Профессия и условия труда...",
+      "required": false,
+      "logic": [
+        {
+          "default": true,
+          "next_node": "finish"
+        }
+      ]
+    },
+
+    {
+      "id": "finish",
+      "type": "info_screen",
+      "question_text": "Спасибо!",
+      "description": "Ваши ответы сохранены. Врач изучит их перед приёмом и сможет максимально эффективно вам помочь.",
+      "required": false,
+      "is_final": true,
+      "logic": []
+    }
+  ]
+}

@@ -12,6 +12,7 @@ import uuid
 from sqlalchemy import (
     Column,
     Integer,
+    BigInteger,
     String,
     Boolean,
     DateTime,
@@ -59,7 +60,7 @@ class SurveySession(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     
     # Привязка к Битрикс24
-    lead_id = Column(Integer, nullable=False, index=True, comment="ID сделки/лида в Битрикс24")
+    lead_id = Column(BigInteger, nullable=False, index=True, comment="ID сделки/лида в Битрикс24")
     entity_type = Column(String(10), default="DEAL", comment="Тип сущности: DEAL или LEAD")
     patient_name = Column(String(255), nullable=True, comment="Имя пациента (для приветствия)")
     

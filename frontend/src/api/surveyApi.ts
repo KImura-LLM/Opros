@@ -123,7 +123,8 @@ export async function completeSurvey(
 export async function goBackApi(
   sessionId: string
 ): Promise<{ success: boolean; current_node: string }> {
-  return apiFetch(`/survey/back?session_id=${sessionId}`, {
+  return apiFetch(`/survey/back`, {
     method: 'POST',
+    body: JSON.stringify({ session_id: sessionId }),
   })
 }

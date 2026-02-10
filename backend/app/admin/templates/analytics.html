@@ -9,6 +9,11 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <!-- Flatpickr -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://npmcdn.com/flatpickr/dist/l10n/ru.js"></script>
 
     <style>
         /* ============================================
@@ -195,6 +200,23 @@
         .btn-apply:hover {
             background: #00cc66;
             box-shadow: 0 4px 12px rgba(0,255,128,0.3);
+        }
+        .btn-reset {
+            background: transparent;
+            color: #aaa;
+            border: 1px solid #333;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-weight: 500;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+        .btn-reset:hover {
+            border-color: #666;
+            color: #fff;
+            background: rgba(255,255,255,0.05);
         }
 
         /* Сетка блоков */
@@ -490,10 +512,11 @@
             </div>
             <form class="date-filter" id="dateFilterForm">
                 <label>От</label>
-                <input type="date" name="date_from" id="dateFrom" value="">
+                <input type="text" name="date_from" id="dateFrom" placeholder="Выберите дату..." readonly>
                 <label>До</label>
-                <input type="date" name="date_to" id="dateTo" value="">
+                <input type="text" name="date_to" id="dateTo" placeholder="Выберите дату..." readonly>
                 <button type="submit" class="btn-apply">Применить</button>
+                <button type="button" class="btn-reset" id="btnReset" title="Сбросить на последнюю неделю">По умолчанию</button>
             </form>
         </div>
 
@@ -718,7 +741,7 @@
         }
 
         var labels = topAnswers.map(function(a) {
-            return a.label.length > 55 ? a.label.substring(0, 52) + '…' : a.label;
+            return a.label.length > 20 ? a.label.substring(0, 17) + '…' : a.label;
         });
         var values = topAnswers.map(function(a) { return a.count; });
 
@@ -737,11 +760,10 @@
                     backgroundColor: colors.slice(0, values.length),
                     borderRadius: 6,
                     borderSkipped: false,
-                    barThickness: 28,
+                    barThickness: 40,
                 }]
             },
             options: {
-                indexAxis: 'y',
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
@@ -762,14 +784,20 @@
                     }
                 },
                 scales: {
-                    x: {
+                    y: {
                         beginAtZero: true,
                         grid: { color: 'rgba(255,255,255,0.04)' },
                         ticks: { color: '#666', font: { size: 11 }, stepSize: 1 },
                     },
-                    y: {
+                    x: {
                         grid: { display: false },
-                        ticks: { color: '#aaa', font: { size: 12 }, padding: 8 },
+                        ticks: { 
+                            color: '#aaa', 
+                            font: { size: 11 }, 
+                            padding: 8,
+                            maxRotation: 45,
+                            minRotation: 0
+                        },
                     }
                 }
             }
@@ -827,7 +855,45 @@
         }).join('');
     }
 
-    document.addEventListener('DOMContentLoaded', loadDashboard);
+    document.addEventListener('DOMContentLoaded', function() {
+        // Init Flatpickr with restrictions
+        const fpFrom = flatpickr("#dateFrom", {
+            locale: "ru",
+            dateFormat: "Y-m-d",
+            theme: "dark",
+            maxDate: "today"
+        });
+        const fpTo = flatpickr("#dateTo", {
+            locale: "ru",
+            dateFormat: "Y-m-d",
+            theme: "dark",
+            maxDate: "today"
+        });
+
+        // Pre-fill from URL params
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('date_from')) fpFrom.setDate(params.get('date_from'));
+        if (params.get('date_to')) fpTo.setDate(params.get('date_to'));
+
+        // "Default" button logic (Last 7 days)
+        document.getElementById('btnReset').addEventListener('click', function() {
+            const end = new Date();
+            const start = new Date();
+            start.setDate(end.getDate() - 7);
+
+            fpFrom.setDate(start);
+            fpTo.setDate(end);
+            
+             // Use Flatpickr's formatting to get correct string strings
+            const fromStr = fpFrom.formatDate(start, "Y-m-d");
+            const toStr = fpTo.formatDate(end, "Y-m-d");
+
+            // Redirect to reload data
+            window.location.href = '/admin/analytics?date_from=' + fromStr + '&date_to=' + toStr;
+        });
+
+        loadDashboard();
+    });
     </script>
 </body>
 </html>

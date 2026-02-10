@@ -10,6 +10,7 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from loguru import logger
@@ -284,9 +285,12 @@ async def submit_answer(
     if is_finished:
         progress_percent = 100.0
     else:
-        # Предполагаем среднюю длину опроса в 10 вопросов для более реалистичного прогресс-бара
-        # Реальное число узлов в JSON намного больше длины любого конкретного пути
-        ESTIMATED_PATH_LENGTH = 10
+        # Оценка средней длины пути зависит от версии опросника
+        # v1 ≈ 5–7 узлов, v2 ≈ 12–18 узлов (с ветвлениями)
+        total_nodes = len(config.json_config.get("nodes", []))
+        # Исключаем info_screen из подсчёта, средний путь ~60% от общего числа узлов
+        countable = [n for n in config.json_config.get("nodes", []) if n.get("type") != "info_screen"]
+        ESTIMATED_PATH_LENGTH = max(5, int(len(countable) * 0.6))
         completed = len(progress["answers"])
         progress_percent = min(95.0, (completed / ESTIMATED_PATH_LENGTH) * 100)
     
@@ -450,21 +454,44 @@ async def complete_survey(
     )
 
 
+class GoBackRequest(BaseModel):
+    """Запрос на возврат к предыдущему вопросу."""
+    session_id: UUID
+
+
 @router.post("/back")
 async def go_back(
-    session_id: UUID,
+    data: GoBackRequest,
+    db: AsyncSession = Depends(get_db),
     redis: RedisClient = Depends(get_redis),
 ):
     """
     Возврат на предыдущий вопрос.
     
     Args:
-        session_id: ID сессии
+        data: ID сессии
         
     Returns:
         Предыдущий узел
     """
-    progress = await redis.get_survey_progress(str(session_id))
+    # Проверка сессии в БД
+    stmt = select(SurveySession).where(SurveySession.id == data.session_id)
+    result = await db.execute(stmt)
+    session = result.scalar_one_or_none()
+    
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Сессия не найдена",
+        )
+    
+    if session.status == "completed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Опрос уже завершён",
+        )
+    
+    progress = await redis.get_survey_progress(str(data.session_id))
     
     if not progress or len(progress.get("history", [])) <= 1:
         raise HTTPException(
@@ -474,13 +501,17 @@ async def go_back(
     
     # Удаление текущего узла из истории
     history = progress["history"]
-    history.pop()  # Удаляем текущий
+    current_node = history.pop()  # Удаляем текущий
     previous_node = history[-1] if history else "welcome"
+    
+    # Удаляем ответ на текущий вопрос из прогресса
+    if current_node in progress.get("answers", {}):
+        del progress["answers"][current_node]
     
     progress["current_node"] = previous_node
     progress["history"] = history
     
-    await redis.save_survey_progress(str(session_id), progress)
+    await redis.save_survey_progress(str(data.session_id), progress)
     
     return {
         "success": True,
