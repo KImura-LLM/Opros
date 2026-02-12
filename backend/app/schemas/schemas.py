@@ -103,6 +103,7 @@ class SurveyStartResponse(BaseModel):
     patient_name: Optional[str] = None
     survey_config: dict
     message: str
+    expires_at: Optional[datetime] = Field(None, description="Время истечения сессии")
 
 
 class SurveyAnswerRequest(BaseModel):

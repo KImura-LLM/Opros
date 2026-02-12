@@ -45,27 +45,19 @@ const PreviewModal = ({ isOpen, onClose }: PreviewModalProps) => {
     
     if (nodeEdges.length === 0) return null;
     
-    // Находим подходящее правило
-    const answer = answers[currentNodeId!];
+    // Получаем ответ в нужном формате
+    const answerData = answers[currentNodeId!] as any;
     
     // Сначала ищем условные переходы
     for (const edge of nodeEdges) {
-      if (edge.data?.condition) {
+      if (edge.data?.condition && !edge.data?.isDefault) {
         const condition = edge.data.condition;
+        const result = evaluateCondition(condition, answerData);
         
-        // Простая проверка условий
-        if (condition.includes("selected == '")) {
-          const match = condition.match(/selected == '([^']+)'/);
-          if (match && answer === match[1]) {
-            return edge.target;
-          }
-        }
+        console.log('[Preview] Checking condition:', condition, '| Result:', result, '| Answer:', answerData);
         
-        if (condition.includes("selected contains '")) {
-          const match = condition.match(/selected contains '([^']+)'/);
-          if (match && Array.isArray(answer) && answer.includes(match[1])) {
-            return edge.target;
-          }
+        if (result) {
+          return edge.target;
         }
       }
     }
@@ -75,15 +67,100 @@ const PreviewModal = ({ isOpen, onClose }: PreviewModalProps) => {
     return defaultEdge?.target || nodeEdges[0]?.target || null;
   };
   
-  const handleAnswer = (value: unknown) => {
+  // Вычисление условия (аналогично backend)
+  const evaluateCondition = (condition: string, answerData: any): boolean => {
+    try {
+      // Проверка selected == "value"
+      if (condition.includes('selected ==')) {
+        const match = condition.match(/selected\s*==\s*"([^"]+)"/);
+        if (match) {
+          const expected = match[1];
+          return answerData?.selected === expected;
+        }
+      }
+      
+      // Проверка "value" in selected (для multi_choice)
+      if (condition.includes('in selected')) {
+        const match = condition.match(/"([^"]+)"\s+in\s+selected/);
+        if (match) {
+          const expected = match[1];
+          return Array.isArray(answerData?.selected) && answerData.selected.includes(expected);
+        }
+      }
+      
+      // Проверка value >= N (для slider)
+      if (condition.includes('value >=')) {
+        const match = condition.match(/value\s*>=\s*(\d+)/);
+        if (match) {
+          const expected = parseInt(match[1]);
+          return (answerData?.value || 0) >= expected;
+        }
+      }
+      
+      if (condition.includes('value >')) {
+        const match = condition.match(/value\s*>\s*(\d+)/);
+        if (match) {
+          const expected = parseInt(match[1]);
+          return (answerData?.value || 0) > expected;
+        }
+      }
+      
+      if (condition.includes('value <=')) {
+        const match = condition.match(/value\s*<=\s*(\d+)/);
+        if (match) {
+          const expected = parseInt(match[1]);
+          return (answerData?.value || 0) <= expected;
+        }
+      }
+      
+      if (condition.includes('value <')) {
+        const match = condition.match(/value\s*<\s*(\d+)/);
+        if (match) {
+          const expected = parseInt(match[1]);
+          return (answerData?.value || 0) < expected;
+        }
+      }
+      
+      // Проверка "text" in text (для text_input)
+      if (condition.includes('in text')) {
+        const match = condition.match(/"([^"]+)"\s+in\s+text/);
+        if (match) {
+          const expected = match[1].toLowerCase();
+          const text = (answerData?.text || '').toLowerCase();
+          return text.includes(expected);
+        }
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('Error evaluating condition:', condition, error);
+      return false;
+    }
+  };
+  
+  const handleAnswer = (value: unknown, field: 'selected' | 'value' | 'text' | 'locations' | 'intensity' = 'selected') => {
     if (!currentNodeId) return;
-    setAnswers((prev: Record<string, unknown>) => ({ ...prev, [currentNodeId]: value }));
+    
+    setAnswers((prev: Record<string, unknown>) => {
+      const current = (prev[currentNodeId] as any) || {};
+      return {
+        ...prev,
+        [currentNodeId]: {
+          ...current,
+          [field]: value,
+        }
+      };
+    });
   };
   
   const handleNext = () => {
     if (!currentNodeId) return;
     
     const nextId = getNextNode();
+    
+    console.log('[Preview] Current node:', currentNodeId);
+    console.log('[Preview] Answer:', answers[currentNodeId]);
+    console.log('[Preview] Next node:', nextId);
     
     if (nextId) {
       setHistory((prev: string[]) => [...prev, currentNodeId]);
@@ -120,59 +197,61 @@ const PreviewModal = ({ isOpen, onClose }: PreviewModalProps) => {
   const renderNodeContent = () => {
     if (!nodeData) return null;
     
-    const currentAnswer = answers[currentNodeId!];
+    const currentAnswer = answers[currentNodeId!] as any;
     
     switch (nodeData.type as NodeType) {
       case 'single_choice':
         return (
           <div className="space-y-2">
-            {nodeData.options?.map(option => (
-              <button
-                key={option.id}
-                onClick={() => handleAnswer(option.value || option.id)}
-                className={`
-                  w-full text-left p-4 rounded-lg border-2 transition-all
-                  ${currentAnswer === (option.value || option.id)
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:border-gray-300'
-                  }
-                `}
-              >
-                <div className="flex items-center gap-3">
-                  <div className={`
-                    w-5 h-5 rounded-full border-2 flex items-center justify-center
-                    ${currentAnswer === (option.value || option.id)
-                      ? 'border-blue-500 bg-blue-500'
-                      : 'border-gray-300'
+            {nodeData.options?.map(option => {
+              const isSelected = currentAnswer?.selected === option.id;
+              return (
+                <button
+                  key={option.id}
+                  onClick={() => handleAnswer(option.id, 'selected')}
+                  className={`
+                    w-full text-left p-4 rounded-lg border-2 transition-all
+                    ${isSelected
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-200 hover:border-gray-300'
                     }
-                  `}>
-                    {currentAnswer === (option.value || option.id) && (
-                      <div className="w-2 h-2 bg-white rounded-full" />
+                  `}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`
+                      w-5 h-5 rounded-full border-2 flex items-center justify-center
+                      ${isSelected
+                        ? 'border-blue-500 bg-blue-500'
+                        : 'border-gray-300'
+                      }
+                    `}>
+                      {isSelected && (
+                        <div className="w-2 h-2 bg-white rounded-full" />
                     )}
                   </div>
                   <span>{option.text}</span>
                 </div>
               </button>
-            ))}
-          </div>
-        );
+            );
+          })}
+        </div>
+      );
         
       case 'multi_choice':
       case 'multi_choice_with_input':
-        const selectedValues = (currentAnswer as string[]) || [];
+        const selectedValues = (currentAnswer?.selected as string[]) || [];
         return (
           <div className="space-y-2">
             {nodeData.options?.map(option => {
-              const isSelected = selectedValues.includes(option.value || option.id);
+              const isSelected = selectedValues.includes(option.id);
               return (
                 <button
                   key={option.id}
                   onClick={() => {
-                    const value = option.value || option.id;
                     const newValues = isSelected
-                      ? selectedValues.filter(v => v !== value)
-                      : [...selectedValues, value];
-                    handleAnswer(newValues);
+                      ? selectedValues.filter(v => v !== option.id)
+                      : [...selectedValues, option.id];
+                    handleAnswer(newValues, 'selected');
                   }}
                   className={`
                     w-full text-left p-4 rounded-lg border-2 transition-all
@@ -203,8 +282,8 @@ const PreviewModal = ({ isOpen, onClose }: PreviewModalProps) => {
       case 'text_input':
         return (
           <textarea
-            value={(currentAnswer as string) || ''}
-            onChange={(e) => handleAnswer(e.target.value)}
+            value={(currentAnswer?.text as string) || ''}
+            onChange={(e) => handleAnswer(e.target.value, 'text')}
             placeholder={nodeData.placeholder || 'Введите ответ...'}
             maxLength={nodeData.max_length}
             className="w-full p-4 border-2 border-gray-200 rounded-lg focus:border-blue-500 focus:ring-0 resize-none"
@@ -213,7 +292,7 @@ const PreviewModal = ({ isOpen, onClose }: PreviewModalProps) => {
         );
         
       case 'slider':
-        const sliderValue = (currentAnswer as number) || nodeData.min_value || 1;
+        const sliderValue = (currentAnswer?.value as number) ?? nodeData.min_value ?? 1;
         return (
           <div className="space-y-4">
             <input
@@ -222,7 +301,7 @@ const PreviewModal = ({ isOpen, onClose }: PreviewModalProps) => {
               max={nodeData.max_value || 10}
               step={nodeData.step || 1}
               value={sliderValue}
-              onChange={(e) => handleAnswer(parseInt(e.target.value))}
+              onChange={(e) => handleAnswer(parseInt(e.target.value), 'value')}
               className="w-full h-3 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
             />
             <div className="flex justify-between text-sm text-gray-500">
@@ -250,8 +329,8 @@ const PreviewModal = ({ isOpen, onClose }: PreviewModalProps) => {
               value: o.value || o.id,
               icon: o.icon
             }))}
-            value={(currentAnswer as string[]) || []}
-            onChange={(val) => handleAnswer(val)}
+            value={(currentAnswer?.locations as string[]) || []}
+            onChange={(val) => handleAnswer(val, 'locations')}
           />
         );
         
@@ -263,8 +342,8 @@ const PreviewModal = ({ isOpen, onClose }: PreviewModalProps) => {
                <input 
                   type="checkbox" 
                   className="w-5 h-5 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-                  checked={!!currentAnswer}
-                  onChange={(e) => handleAnswer(e.target.checked)}
+                  checked={!!currentAnswer?.selected}
+                  onChange={(e) => handleAnswer(e.target.checked, 'selected')}
                />
                <span className="text-sm font-medium text-gray-700">Я даю согласие на обработку персональных данных</span>
             </label>
@@ -282,11 +361,30 @@ const PreviewModal = ({ isOpen, onClose }: PreviewModalProps) => {
     if (!nodeData.required) return true;
     if (nodeData.type === 'info_screen') return true;
     
-    const answer = answers[currentNodeId!];
+    const answerData = answers[currentNodeId!] as any;
     
-    if (answer === undefined || answer === null) return false;
-    if (Array.isArray(answer) && answer.length === 0) return false;
-    if (typeof answer === 'string' && answer.trim() === '') return false;
+    if (!answerData) return false;
+    
+    // Проверка в зависимости от типа
+    if (nodeData.type === 'single_choice' || nodeData.type === 'consent_screen') {
+      return !!answerData.selected;
+    }
+    
+    if (nodeData.type === 'multi_choice' || nodeData.type === 'multi_choice_with_input') {
+      return Array.isArray(answerData.selected) && answerData.selected.length > 0;
+    }
+    
+    if (nodeData.type === 'text_input') {
+      return !!answerData.text && answerData.text.trim() !== '';
+    }
+    
+    if (nodeData.type === 'slider') {
+      return answerData.value !== undefined && answerData.value !== null;
+    }
+    
+    if (nodeData.type === 'body_map') {
+      return Array.isArray(answerData.locations) && answerData.locations.length > 0;
+    }
     
     return true;
   };

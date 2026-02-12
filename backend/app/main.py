@@ -13,6 +13,7 @@ from fastapi.openapi.docs import get_redoc_html
 from starlette.middleware.sessions import SessionMiddleware
 from loguru import logger
 import sys
+import asyncio
 
 from app.core.config import settings
 from app.core.database import engine, Base
@@ -30,6 +31,50 @@ logger.add(
 )
 
 
+# Фоновая задача очистки истёкших сессий
+async def periodic_session_cleanup():
+    """Периодическая очистка истёкших сессий"""
+    from datetime import datetime, timezone
+    from sqlalchemy import select, update
+    from app.core.database import AsyncSessionLocal
+    from app.models import SurveySession
+    
+    while True:
+        try:
+            async with AsyncSessionLocal() as db:
+                now = datetime.now(timezone.utc)
+                
+                # Находим истёкшие сессии
+                stmt = select(SurveySession).where(
+                    SurveySession.status == "in_progress",
+                    SurveySession.expires_at.isnot(None),
+                    SurveySession.expires_at < now
+                )
+                
+                result = await db.execute(stmt)
+                expired_sessions = result.scalars().all()
+                
+                if expired_sessions:
+                    session_ids = [s.id for s in expired_sessions]
+                    
+                    update_stmt = (
+                        update(SurveySession)
+                        .where(SurveySession.id.in_(session_ids))
+                        .values(status="abandoned", completed_at=now)
+                    )
+                    
+                    await db.execute(update_stmt)
+                    await db.commit()
+                    
+                    logger.info(f"Автоматически завершено {len(expired_sessions)} истёкших сессий")
+        
+        except Exception as e:
+            logger.error(f"Ошибка при очистке истёкших сессий: {e}")
+        
+        # Проверка каждые 15 минут
+        await asyncio.sleep(15 * 60)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -45,9 +90,14 @@ async def lifespan(app: FastAPI):
             await conn.run_sync(Base.metadata.create_all)
         logger.info("📦 Таблицы базы данных созданы/проверены")
     
+    # Запуск фоновой задачи очистки истёкших сессий
+    cleanup_task = asyncio.create_task(periodic_session_cleanup())
+    logger.info("⏰ Запущена фоновая задача очистки истёкших сессий (каждые 15 мин)")
+    
     yield
     
     logger.info("👋 Остановка приложения...")
+    cleanup_task.cancel()
     await redis_client.disconnect()
     await engine.dispose()
 

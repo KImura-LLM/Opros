@@ -40,16 +40,18 @@
 - [x] Настройка SQLAlchemy Async (connection pool)
 - [x] Создание моделей:
   - [x] SurveyConfig (id, name, json_config: JSONB, is_active, created_at)
-  - [x] SurveySession (id, token_hash, lead_id, patient_name, started_at, completed_at)
+  - [x] SurveySession (id, token_hash, lead_id, patient_name, started_at, completed_at, expires_at)
   - [x] SurveyAnswer (id, session_id, node_id, answer_data: JSONB, created_at)
   - [x] AuditLog (id, session_id, action, timestamp)
 - [x] Настройка Alembic для миграций
 - [x] Создание initial migration
+- [x] Миграция для добавления expires_at (2-часовое автоистечение сессий)
 
 ### 2.3 Redis & Сессии
 - [x] Настройка Redis client (aioredis)
 - [x] Сервис для хранения прогресса опроса (TTL = время жизни токена)
 - [x] Rate limiting middleware
+- [x] Автоматическое завершение истекших сессий (фоновая задача каждые 15 мин)
 
 ### 2.4 JWT Авторизация
 - [x] Создание JWT utils (encode/decode)
@@ -103,6 +105,7 @@
 
 ### 3.5 Компоненты UI (Design System)
 - [x] Layout: Header (логотип + кнопка выхода)
+- [x] Layout: SessionTimer (обратный отсчёт до истечения сессии с цветовой кодировкой)
 - [x] Layout: ProgressBar (анимированный)
 - [x] Layout: Footer (кнопки Назад/Далее)
 - [x] QuestionCard: обёртка с анимацией
@@ -206,4 +209,4 @@
 
 ---
 
-> **Последнее обновление:** 04.02.2026
+> **Последнее обновление:** 12.02.2026 - Добавлено автоматическое истечение сессий через 2 часа

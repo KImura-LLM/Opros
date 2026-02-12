@@ -1,140 +1,10 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Аналитика — Опросник</title>
+{% extends "layout.html" %}
 
-    <!-- FontAwesome -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
-    <!-- Flatpickr -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
-    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
-    <script src="https://npmcdn.com/flatpickr/dist/l10n/ru.js"></script>
+{% block content %}
+<!-- Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 
-    <style>
-        /* ============================================
-           Базовые стили (повторяют тёмную тему layout)
-           ============================================ */
-        :root {
-            --bg-dark: #050505;
-            --bg-card: #0d0d0d;
-            --bg-sidebar: #0a0a0a;
-            --border-color: #222;
-            --text-primary: #ffffff;
-            --text-secondary: #aaa;
-            --text-muted: #666;
-            --accent-green: #00ff80;
-            --accent-blue: #4dabf7;
-            --accent-red: #ff6b6b;
-            --accent-yellow: #ffd43b;
-            --accent-purple: #a78bfa;
-        }
-
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-        body {
-            background: var(--bg-dark);
-            color: var(--text-primary);
-            font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            display: flex;
-            min-height: 100vh;
-        }
-
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-track { background: var(--bg-dark); }
-        ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
-
-        /* ============================================
-           Sidebar (повторяет навигацию layout.html)
-           ============================================ */
-        .sidebar {
-            width: 260px;
-            min-height: 100vh;
-            background: var(--bg-sidebar);
-            border-right: 1px solid var(--border-color);
-            display: flex;
-            flex-direction: column;
-            padding: 20px 0;
-            position: fixed;
-            top: 0; left: 0;
-            overflow-y: auto;
-        }
-        .sidebar-brand {
-            padding: 0 20px 20px;
-            border-bottom: 1px solid var(--border-color);
-            margin-bottom: 12px;
-        }
-        .sidebar-brand a {
-            color: #fff;
-            text-decoration: none;
-            font-size: 1.1rem;
-            font-weight: 700;
-        }
-        .sidebar-nav {
-            list-style: none;
-            padding: 0 8px;
-            flex: 1;
-        }
-        .sidebar-nav li a {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 11px 16px;
-            margin: 2px 0;
-            color: var(--text-secondary);
-            text-decoration: none;
-            border-radius: 8px;
-            font-size: 0.9rem;
-            transition: all 0.2s;
-        }
-        .sidebar-nav li a:hover {
-            color: var(--accent-green);
-            background: rgba(0,255,128,0.05);
-        }
-        .sidebar-nav li a.active {
-            color: var(--accent-green);
-            background: rgba(0,255,128,0.1);
-            border-left: 3px solid var(--accent-green);
-        }
-        .sidebar-nav li a i { width: 20px; text-align: center; }
-        .sidebar-section {
-            color: #555;
-            font-size: 0.7rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            padding: 16px 16px 6px;
-            margin-top: 8px;
-            border-top: 1px solid #1a1a1a;
-        }
-        .sidebar-logout {
-            margin-top: auto;
-            padding: 12px 24px;
-        }
-        .sidebar-logout a {
-            color: var(--accent-red);
-            text-decoration: none;
-            font-size: 0.9rem;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        .sidebar-logout a:hover { opacity: 0.8; }
-        .ext-icon { font-size: 0.6rem; opacity: 0.4; margin-left: 4px; }
-
-        /* ============================================
-           Основная область
-           ============================================ */
-        .main-content {
-            margin-left: 260px;
-            flex: 1;
-            padding: 30px 40px;
-            min-height: 100vh;
-        }
+<style>
 
         /* ============================================
            Дашборд — компоненты
@@ -471,39 +341,15 @@
         @keyframes spin { to { transform: rotate(360deg); } }
 
         @media (max-width: 768px) {
-            .sidebar { display: none; }
-            .main-content { margin-left: 0; padding: 20px; }
             .stats-grid { grid-template-columns: 1fr; }
             .funnel-label { flex: 0 0 35%; }
         }
-    </style>
-</head>
-<body>
-    <!-- Sidebar -->
-    <aside class="sidebar">
-        <div class="sidebar-brand">
-            <a href="/admin">Опросник — Админ</a>
-        </div>
-        <ul class="sidebar-nav">
-            <li><a href="/admin/survey-config/list"><i class="fa-solid fa-clipboard-list"></i> Опросники</a></li>
-            <li><a href="/admin/survey-session/list"><i class="fa-solid fa-user-clock"></i> Сессии опросов</a></li>
-            <li><a href="/admin/survey-answer/list"><i class="fa-solid fa-comments"></i> Ответы</a></li>
-            <li><a href="/admin/audit-log/list"><i class="fa-solid fa-shield-halved"></i> Логи аудита</a></li>
-            <li><a href="/admin/analytics" class="active"><i class="fa-solid fa-chart-line"></i> Аналитика</a></li>
-            <li><div class="sidebar-section">Инструменты</div></li>
-            <li><a href="/docs" target="_blank"><i class="fa-solid fa-book"></i> API Docs <i class="fa-solid fa-external-link-alt ext-icon"></i></a></li>
-            <li><a href="/redoc" target="_blank"><i class="fa-solid fa-file-code"></i> ReDoc <i class="fa-solid fa-external-link-alt ext-icon"></i></a></li>
-        </ul>
-        <div class="sidebar-logout">
-            <a href="/admin/logout"><i class="fa-solid fa-sign-out-alt"></i> Выйти</a>
-        </div>
-    </aside>
+</style>
 
-    <!-- Main Content -->
-    <div class="main-content">
-        <a href="/admin" class="back-link">
-            <i class="fa-solid fa-arrow-left"></i> Назад к панели управления
-        </a>
+<!-- Analytics Page Content -->
+<a href="/admin" class="back-link">
+    <i class="fa-solid fa-arrow-left"></i> Назад к панели управления
+</a>
 
         <div class="analytics-header">
             <div>
@@ -598,9 +444,8 @@
             </div>
 
         </div>
-    </div>
 
-    <script>
+<script>
     // ============================================
     // Загрузка и рендеринг дашборда аналитики
     // ============================================
@@ -894,6 +739,12 @@
 
         loadDashboard();
     });
-    </script>
-</body>
-</html>
+</script>
+
+<!-- Flatpickr -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/themes/dark.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="https://npmcdn.com/flatpickr/dist/l10n/ru.js"></script>
+
+{% endblock %}

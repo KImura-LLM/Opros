@@ -84,6 +84,7 @@ class SurveySession(Base):
     # Временные метки
     started_at = Column(DateTime(timezone=True), server_default=func.now())
     completed_at = Column(DateTime(timezone=True), nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True, comment="Время автоматического истечения сессии")
     
     # IP адрес (для логирования, не связан с ПДн)
     ip_address = Column(String(45), nullable=True)

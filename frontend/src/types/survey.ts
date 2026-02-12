@@ -95,6 +95,7 @@ export interface SurveyStartResponse {
   patient_name?: string
   survey_config: SurveyConfig
   message: string
+  expires_at?: string // ISO timestamp когда сессия истечёт
 }
 
 export interface SurveyAnswerResponse {

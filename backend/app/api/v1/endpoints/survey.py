@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from loguru import logger
+from datetime import timedelta
 
 from app.core.database import get_db
 from app.core.redis import get_redis, RedisClient
@@ -144,6 +145,9 @@ async def start_survey(
     client_ip = request.client.host if request.client else None
     user_agent = request.headers.get("user-agent")
     
+    # Установка времени истечения сессии (2 часа с момента создания)
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=2)
+    
     session = SurveySession(
         lead_id=token_data.lead_id,
         entity_type=token_data.entity_type,
@@ -153,6 +157,7 @@ async def start_survey(
         status="in_progress",
         consent_given=True,
         consent_timestamp=datetime.now(timezone.utc),
+        expires_at=expires_at,
         ip_address=client_ip,
         user_agent=user_agent,
     )
@@ -189,6 +194,7 @@ async def start_survey(
         patient_name=token_data.patient_name,
         survey_config=config.json_config,
         message="Опрос начат",
+        expires_at=expires_at,
     )
 
 
@@ -222,6 +228,18 @@ async def submit_answer(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Опрос уже завершён",
+        )
+    
+    # Проверка истечения срока сессии
+    if session.expires_at and datetime.now(timezone.utc) > session.expires_at:
+        session.status = "abandoned"
+        await db.commit()
+        
+        logger.warning(f"Сессия {session.id} автоматически завершена по истечении времени")
+        
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="Время прохождения опроса истекло. Сессия была автоматически завершена.",
         )
     
     # Получение конфига

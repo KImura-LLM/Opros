@@ -15,6 +15,7 @@ interface SurveyState {
   sessionId: string | null
   patientName: string | null
   token: string | null
+  expiresAt: string | null // ISO timestamp
 
   // Конфигурация опросника
   config: SurveyConfig | null
@@ -31,7 +32,7 @@ interface SurveyState {
   animationDirection: AnimationDirection
 
   // Действия
-  setSession: (sessionId: string, patientName?: string) => void
+  setSession: (sessionId: string, patientName?: string, expiresAt?: string) => void
   setToken: (token: string) => void
   setConfig: (config: SurveyConfig) => void
   setCurrentNode: (nodeId: string, direction?: AnimationDirection) => void
@@ -52,6 +53,7 @@ const initialState = {
   sessionId: null,
   patientName: null,
   token: null,
+  expiresAt: null,
   config: null,
   currentNodeId: 'welcome',
   answers: {},
@@ -65,8 +67,12 @@ const initialState = {
 export const useSurveyStore = create<SurveyState>()((set, get) => ({
   ...initialState,
 
-  setSession: (sessionId: string, patientName?: string) =>
-    set({ sessionId, patientName: patientName || null }),
+  setSession: (sessionId: string, patientName?: string, expiresAt?: string) =>
+    set({ 
+      sessionId, 
+      patientName: patientName || null, 
+      expiresAt: expiresAt || null 
+    }),
 
   setToken: (token: string) => set({ token }),
 

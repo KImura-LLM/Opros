@@ -31,6 +31,7 @@ import NodePalette from './components/NodePalette';
 import NodeEditor from './components/NodeEditor';
 import Toolbar from './components/Toolbar';
 import PreviewModal from './components/PreviewModal';
+import EdgeEditor from './components/EdgeEditor';
 
 // Регистрация кастомных узлов
 const nodeTypes = {
@@ -61,6 +62,7 @@ const SurveyEditorInner = ({ surveyId }: SurveyEditorProps) => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [edges, setLocalEdges] = useEdgesState<any>([]);
   const [showPreview, setShowPreview] = useState(false);
+  const [selectedEdge, setSelectedEdge] = useState<FlowEdge | null>(null);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
@@ -207,6 +209,17 @@ const SurveyEditorInner = ({ surveyId }: SurveyEditorProps) => {
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: any) => {
       selectNode(node.id);
+      setSelectedEdge(null);
+    },
+    [selectNode]
+  );
+
+  // Клик на связи
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const handleEdgeClick = useCallback(
+    (_: React.MouseEvent, edge: any) => {
+      selectNode(null);
+      setSelectedEdge(edge as FlowEdge);
     },
     [selectNode]
   );
@@ -264,6 +277,7 @@ const SurveyEditorInner = ({ surveyId }: SurveyEditorProps) => {
             onDrop={handleDrop}
             onPaneClick={handlePaneClick}
             onNodeClick={handleNodeClick}
+            onEdgeClick={handleEdgeClick}
             nodeTypes={nodeTypes}
             fitView
             snapToGrid
@@ -271,6 +285,7 @@ const SurveyEditorInner = ({ surveyId }: SurveyEditorProps) => {
             defaultEdgeOptions={{
               type: 'smoothstep',
               animated: false,
+              style: { strokeWidth: 2 },
             }}
             connectionLineType={ConnectionLineType.SmoothStep}
             proOptions={{ hideAttribution: true }}
@@ -286,6 +301,9 @@ const SurveyEditorInner = ({ surveyId }: SurveyEditorProps) => {
                 borderRadius: '8px',
               }}
             />
+      
+      {/* Редактор связи */}
+      <EdgeEditor edge={selectedEdge} onClose={() => setSelectedEdge(null)} />
             <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
           </ReactFlow>
         </div>

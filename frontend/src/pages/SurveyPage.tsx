@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useSurveyStore } from '@/store'
 import { submitAnswer, completeSurvey, goBackApi } from '@/api'
-import { Header, ProgressBar, Footer, PageContainer } from '@/components/layout'
+import { Header, ProgressBar, Footer, PageContainer, SessionTimer } from '@/components/layout'
 import {
   SingleChoice,
   MultiChoice,
@@ -27,6 +27,7 @@ const SurveyPage: React.FC = () => {
     answers,
     progress,
     animationDirection,
+    expiresAt,
     setCurrentNode,
     setAnswer,
     setProgress,
@@ -204,6 +205,12 @@ const SurveyPage: React.FC = () => {
       goBack()
     }
   }
+
+  // Обработка истечения времени сессии
+  const handleSessionExpired = useCallback(() => {
+    alert('Время сессии истекло. Опрос будет автоматически завершён.')
+    navigate('/')
+  }, [navigate])
 
   // Закрытие опроса
   const handleClose = () => {
@@ -410,6 +417,7 @@ const SurveyPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       <Header onClose={handleClose} />
+      {expiresAt && <SessionTimer expiresAt={expiresAt} onExpire={handleSessionExpired} />}
       <ProgressBar progress={progress} />
       
       <PageContainer>

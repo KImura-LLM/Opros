@@ -36,7 +36,7 @@ const HomePage: React.FC = () => {
           setPatientName(response.patient_name || null)
           setToken(token)
           if (response.session_id) {
-            setSession(response.session_id, response.patient_name || undefined)
+            setSession(response.session_id, response.patient_name || undefined, response.expires_at)
           }
         } else {
           setError('Ссылка недействительна или срок её действия истёк.')
@@ -57,7 +57,7 @@ const HomePage: React.FC = () => {
     setIsStarting(true)
     try {
       const response = await startSurvey(token, true)
-      setSession(response.session_id, response.patient_name || undefined)
+      setSession(response.session_id, response.patient_name || undefined, response.expires_at)
       setConfig(response.survey_config)
       navigate('/survey')
     } catch (err) {

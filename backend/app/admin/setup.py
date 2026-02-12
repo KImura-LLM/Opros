@@ -635,9 +635,13 @@ def setup_admin(app):
             from starlette.responses import RedirectResponse as RR
             return RR(url="/admin/login", status_code=302)
 
+        # Создаём минимальный объект admin для совместимости с layout.html
+        class AdminStub:
+            title = "Опросник - Админ"
+        
         return _analytics_tpl.TemplateResponse(
             "analytics.html",
-            {"request": request},
+            {"request": request, "admin": AdminStub()},
         )
 
     # --- Инициализация SQLAdmin ---

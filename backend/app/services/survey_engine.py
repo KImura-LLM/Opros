@@ -79,13 +79,17 @@ class SurveyEngine:
             condition = rule.get("condition")
             if condition and self._evaluate_condition(condition, answer, all_answers):
                 next_node = rule.get("next_node")
-                logger.debug(f"Условие выполнено: {condition} -> {next_node}")
+                logger.info(f"Условие выполнено: {condition} -> {next_node} (answer: {answer})")
                 return next_node
+            elif condition:
+                logger.debug(f"Условие НЕ выполнено: {condition} (answer: {answer})")
         
         # Ищем default переход
         for rule in logic:
             if rule.get("default", False):
-                return rule.get("next_node")
+                default_next = rule.get("next_node")
+                logger.info(f"Переход по умолчанию: {default_next}")
+                return default_next
         
         # Fallback - следующий по порядку
         return self._get_default_next_node(current_node_id)

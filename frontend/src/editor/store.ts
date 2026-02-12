@@ -99,7 +99,7 @@ interface EditorStore {
   // Управление связями
   addEdge: (sourceId: string, targetId: string, condition?: string) => void;
   deleteEdge: (edgeId: string) => void;
-  updateEdge: (edgeId: string, data: { condition?: string }) => void;
+  updateEdge: (edgeId: string, data: { condition?: string; isDefault?: boolean }) => void;
   
   // Выбор узла
   selectNode: (nodeId: string | null) => void;
@@ -463,15 +463,18 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   addEdge: (sourceId: string, targetId: string, condition?: string) => {
     const edgeId = `${sourceId}-${targetId}-${Date.now()}`;
     
+    const isDefault = !condition;
+    
     const newEdge: FlowEdge = {
       id: edgeId,
       source: sourceId,
       target: targetId,
       type: 'smoothstep',
-      label: condition || '',
+      label: isDefault ? 'По умолчанию' : (condition || ''),
+      animated: !isDefault,
       data: {
         condition,
-        isDefault: !condition,
+        isDefault,
       },
     };
     
@@ -492,18 +495,19 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   },
   
   // Обновление связи
-  updateEdge: (edgeId: string, data: { condition?: string }) => {
+  updateEdge: (edgeId: string, data: { condition?: string; isDefault?: boolean }) => {
     get().pushHistory('Обновление связи');
     set(state => ({
       edges: state.edges.map(edge =>
         edge.id === edgeId
           ? { 
               ...edge, 
-              label: data.condition || 'По умолчанию',
+              label: data.isDefault ? 'По умолчанию' : (data.condition || ''),
+              animated: !data.isDefault,
               data: { 
                 ...edge.data, 
                 condition: data.condition,
-                isDefault: !data.condition,
+                isDefault: data.isDefault ?? !data.condition,
               } 
             }
           : edge
