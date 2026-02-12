@@ -5,8 +5,9 @@
 import React, { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Loader2, AlertCircle, Plus } from 'lucide-react'
+import { Loader2, AlertCircle } from 'lucide-react'
 import { validateToken, startSurvey } from '@/api'
+import { Branding } from '@/components/layout/Branding'
 import { useSurveyStore } from '@/store'
 
 const HomePage: React.FC = () => {
@@ -114,12 +115,7 @@ const HomePage: React.FC = () => {
       {/* Header */}
       <header className="bg-white border-b border-slate-100">
         <div className="max-w-lg mx-auto px-4 h-14 flex items-center">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
-              <Plus className="w-5 h-5 text-white" />
-            </div>
-            <span className="font-semibold text-slate-800">Ваша Клиника</span>
-          </div>
+          <Branding />
         </div>
       </header>
 

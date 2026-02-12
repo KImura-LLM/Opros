@@ -4,8 +4,9 @@
 
 import React from 'react'
 import { motion } from 'framer-motion'
-import { CheckCircle, Plus } from 'lucide-react'
+import { CheckCircle } from 'lucide-react'
 import { useSurveyStore } from '@/store'
+import { Branding } from '@/components/layout/Branding'
 
 const CompletePage: React.FC = () => {
   const { patientName, reset } = useSurveyStore()
@@ -22,12 +23,7 @@ const CompletePage: React.FC = () => {
       {/* Header */}
       <header className="bg-white border-b border-slate-100">
         <div className="max-w-lg mx-auto px-4 h-14 flex items-center">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
-              <Plus className="w-5 h-5 text-white" />
-            </div>
-            <span className="font-semibold text-slate-800">Ваша Клиника</span>
-          </div>
+          <Branding />
         </div>
       </header>
 

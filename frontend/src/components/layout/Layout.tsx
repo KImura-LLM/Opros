@@ -3,8 +3,9 @@
  */
 
 import React from 'react'
-import { X, Plus } from 'lucide-react'
+import { X } from 'lucide-react'
 import { motion } from 'framer-motion'
+import { Branding } from './Branding'
 
 // Header с логотипом и кнопкой закрытия
 interface HeaderProps {
@@ -20,12 +21,7 @@ export const Header: React.FC<HeaderProps> = ({
     <header className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-slate-100">
       <div className="max-w-lg mx-auto px-4 h-14 flex items-center justify-between">
         {/* Логотип */}
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
-            <Plus className="w-5 h-5 text-white" />
-          </div>
-          <span className="font-semibold text-slate-800">Ваша Клиника</span>
-        </div>
+        <Branding />
 
         {/* Кнопка закрытия */}
         {showClose && onClose && (

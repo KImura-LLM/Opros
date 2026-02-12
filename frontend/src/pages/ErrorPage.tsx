@@ -5,7 +5,8 @@
 import React from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { AlertCircle, Plus } from 'lucide-react'
+import { AlertCircle } from 'lucide-react'
+import { Branding } from '@/components/layout/Branding'
 
 const ErrorPage: React.FC = () => {
   const [searchParams] = useSearchParams()
@@ -16,12 +17,7 @@ const ErrorPage: React.FC = () => {
       {/* Header */}
       <header className="bg-white border-b border-slate-100">
         <div className="max-w-lg mx-auto px-4 h-14 flex items-center">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
-              <Plus className="w-5 h-5 text-white" />
-            </div>
-            <span className="font-semibold text-slate-800">Ваша Клиника</span>
-          </div>
+          <Branding />
         </div>
       </header>
 

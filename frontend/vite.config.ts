@@ -5,6 +5,19 @@ import path from 'path'
 
 // https://vitejs.dev/config/
 export default defineConfig({
+  server: {
+    host: '0.0.0.0',
+    port: 5173,
+    hmr: {
+      // Это позволяет HMR работать при доступе с телефона
+      // Если IP изменится, нужно будет обновить здесь или закомментировать host
+      host: '192.168.31.208', 
+      clientPort: 5173
+    },
+    watch: {
+      usePolling: true,
+    }
+  },
   plugins: [
     react(),
     VitePWA({
@@ -62,16 +75,6 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
-    },
-  },
-  server: {
-    port: 5173,
-    host: true,
-    proxy: {
-      '/api': {
-        target: 'http://localhost:8000',
-        changeOrigin: true,
-      },
     },
   },
 })
