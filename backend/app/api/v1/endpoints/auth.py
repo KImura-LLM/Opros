@@ -41,7 +41,7 @@ async def validate_token(
     token_data = verify_token(token)
     
     if token_data is None:
-        logger.warning(f"Невалидный токен: {token[:20]}...")
+        logger.warning("Попытка валидации невалидного токена")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Ссылка недействительна или срок её действия истёк",

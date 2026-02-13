@@ -124,7 +124,6 @@ class SurveyProgressResponse(BaseModel):
     """Текущий прогресс опроса."""
     session_id: UUID
     current_node: str
-    answers: dict
     history: List[str]
     progress_percent: float
 
@@ -139,6 +138,7 @@ class SurveyCompleteResponse(BaseModel):
     success: bool
     message: str
     report_sent: bool = Field(..., description="Отчёт отправлен в Битрикс24")
+    pdf_sent: bool = Field(False, description="PDF-отчёт прикреплён к карточке Битрикс24")
 
 
 # ==========================================

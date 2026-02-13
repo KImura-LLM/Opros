@@ -7,7 +7,7 @@
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, survey, survey_editor, reports, analytics
+from app.api.v1.endpoints import auth, survey, survey_editor, reports, analytics, bitrix_webhook
 
 api_router = APIRouter()
 
@@ -42,4 +42,11 @@ api_router.include_router(
 api_router.include_router(
     analytics.router,
     tags=["Аналитика"],
+)
+
+# Роутер вебхуков Битрикс24
+api_router.include_router(
+    bitrix_webhook.router,
+    prefix="/bitrix",
+    tags=["Битрикс24"],
 )

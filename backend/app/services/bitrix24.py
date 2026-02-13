@@ -3,9 +3,15 @@
 # ============================================
 """
 HTTP-клиент для отправки данных в Битрикс24.
+Поддерживает:
+- Отправку комментариев в ленту сущностей
+- Загрузку файлов (PDF-отчётов) на диск
+- Прикрепление файлов к карточке сделки/лида
 """
 
+import base64
 import httpx
+from io import BytesIO
 from typing import Optional
 from loguru import logger
 
@@ -168,4 +174,276 @@ class Bitrix24Client:
                 
         except Exception as e:
             logger.error(f"Ошибка получения сделки из Битрикс24: {e}")
+            return None
+
+    async def get_contact(self, contact_id: int) -> Optional[dict]:
+        """
+        Получение данных контакта.
+        
+        Метод API: crm.contact.get
+        
+        Args:
+            contact_id: ID контакта
+            
+        Returns:
+            Данные контакта или None
+        """
+        if not self.webhook_url:
+            return None
+        
+        method_url = f"{self.webhook_url.rstrip('/')}/crm.contact.get"
+        payload = {"id": contact_id}
+        
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(method_url, json=payload)
+                response.raise_for_status()
+                return response.json().get("result")
+        except Exception as e:
+            logger.error(f"Ошибка получения контакта из Битрикс24: {e}")
+            return None
+
+    async def get_patient_name_from_deal(self, deal_id: int) -> Optional[str]:
+        """
+        Получение ФИО пациента (контакта) из сделки.
+        
+        1. Получаем сделку → берём CONTACT_ID
+        2. Получаем контакт → берём NAME + LAST_NAME
+        
+        Args:
+            deal_id: ID сделки
+            
+        Returns:
+            ФИО контакта или None
+        """
+        deal = await self.get_deal(deal_id)
+        if not deal:
+            logger.warning(f"Не удалось получить сделку {deal_id} для извлечения имени")
+            return None
+        
+        contact_id = deal.get("CONTACT_ID")
+        if not contact_id:
+            logger.warning(f"В сделке {deal_id} не указан контакт (CONTACT_ID)")
+            return None
+        
+        contact = await self.get_contact(int(contact_id))
+        if not contact:
+            logger.warning(f"Не удалось получить контакт {contact_id}")
+            return None
+        
+        name = contact.get("NAME", "")
+        last_name = contact.get("LAST_NAME", "")
+        full_name = f"{name} {last_name}".strip()
+        
+        if full_name:
+            logger.info(f"Имя пациента из Битрикс24: {full_name} (сделка {deal_id})")
+        
+        return full_name or None
+
+    async def upload_pdf_to_entity(
+        self,
+        entity_id: int,
+        entity_type: str,
+        pdf_bytes: bytes,
+        filename: str,
+    ) -> bool:
+        """
+        Загрузка PDF-отчёта в карточку сделки/лида через crm.timeline.comment.add
+        с вложенным файлом (base64).
+        
+        Альтернативный подход: загрузка через disk.folder.uploadfile
+        и прикрепление через crm.deal.update (UF_CRM_xxx).
+        
+        Здесь используем наиболее универсальный метод:
+        1. Загрузка файла через REST (crm.activity.add с STORAGE_TYPE_DISK)
+        2. Или через комментарий с base64-вложением
+        
+        Args:
+            entity_id: ID сделки или лида
+            entity_type: Тип сущности ('DEAL' или 'LEAD')
+            pdf_bytes: Содержимое PDF-файла
+            filename: Имя файла
+            
+        Returns:
+            True если успешно, False при ошибке
+        """
+        if not self.webhook_url:
+            logger.warning("BITRIX24_WEBHOOK_URL не настроен, пропускаем загрузку PDF")
+            return False
+        
+        # Кодируем PDF в base64
+        pdf_base64 = base64.b64encode(pdf_bytes).decode("utf-8")
+        
+        # Метод 1: Создание дела (активности) с файлом
+        success = await self._upload_via_activity(
+            entity_id=entity_id,
+            entity_type=entity_type,
+            pdf_base64=pdf_base64,
+            filename=filename,
+        )
+        
+        if success:
+            return True
+        
+        # Метод 2 (fallback): Комментарий со ссылкой на файл
+        logger.warning("Не удалось загрузить PDF через активность, пробуем через комментарий")
+        return await self._upload_via_comment_with_file(
+            entity_id=entity_id,
+            entity_type=entity_type,
+            pdf_base64=pdf_base64,
+            filename=filename,
+        )
+    
+    async def _upload_via_activity(
+        self,
+        entity_id: int,
+        entity_type: str,
+        pdf_base64: str,
+        filename: str,
+    ) -> bool:
+        """
+        Загрузка PDF через crm.activity.add (создание дела с вложением).
+        
+        Этот метод создаёт «Дело» (активность) в карточке сделки/лида
+        с прикреплённым PDF-файлом. Файл будет виден в ленте и во вкладке «Дела».
+        """
+        method_url = f"{self.webhook_url.rstrip('/')}/crm.activity.add"
+        
+        # Маппинг типов сущностей в ID Битрикс24
+        owner_type_id = 2 if entity_type.upper() == "DEAL" else 1  # 2=DEAL, 1=LEAD
+        
+        payload = {
+            "fields": {
+                "OWNER_TYPE_ID": owner_type_id,
+                "OWNER_ID": entity_id,
+                "TYPE_ID": 4,  # 4 = Email (позволяет прикреплять файлы)
+                "SUBJECT": "Результаты опроса пациента",
+                "DESCRIPTION": (
+                    "Пациент завершил прохождение опроса. "
+                    "PDF-отчёт с результатами прикреплён к этому делу."
+                ),
+                "DESCRIPTION_TYPE": 1,  # 1 = Plain text
+                "DIRECTION": 2,  # 2 = Исходящее
+                "COMPLETED": "Y",
+                "RESPONSIBLE_ID": 1,  # Ответственный (по умолчанию - ID=1)
+                "FILES": [
+                    {
+                        "fileData": [filename, pdf_base64],
+                    }
+                ],
+            }
+        }
+        
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(method_url, json=payload)
+                response.raise_for_status()
+                
+                result = response.json()
+                
+                if result.get("result"):
+                    activity_id = result["result"]
+                    logger.info(
+                        f"PDF загружен через активность в Битрикс24: "
+                        f"activity_id={activity_id}, entity_type={entity_type}, "
+                        f"entity_id={entity_id}, filename={filename}"
+                    )
+                    return True
+                else:
+                    error = result.get("error_description", "Неизвестная ошибка")
+                    logger.error(f"Ошибка загрузки PDF через активность: {error}")
+                    return False
+                    
+        except httpx.HTTPStatusError as e:
+            logger.error(f"HTTP ошибка при загрузке PDF через активность: {e}")
+            return False
+        except httpx.RequestError as e:
+            logger.error(f"Ошибка соединения при загрузке PDF: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"Неожиданная ошибка при загрузке PDF через активность: {e}")
+            return False
+    
+    async def _upload_via_comment_with_file(
+        self,
+        entity_id: int,
+        entity_type: str,
+        pdf_base64: str,
+        filename: str,
+    ) -> bool:
+        """
+        Загрузка PDF через комментарий в таймлайне с прикреплённым файлом.
+        
+        Fallback-метод: если crm.activity.add не работает,
+        добавляем комментарий с base64-файлом.
+        """
+        method_url = f"{self.webhook_url.rstrip('/')}/crm.timeline.comment.add"
+        
+        entity_type_map = {
+            "DEAL": "deal",
+            "LEAD": "lead",
+        }
+        
+        payload = {
+            "fields": {
+                "ENTITY_ID": entity_id,
+                "ENTITY_TYPE": entity_type_map.get(entity_type.upper(), "deal"),
+                "COMMENT": (
+                    f"Результаты опроса пациента.\n"
+                    f"PDF-отчёт прикреплён к этому комментарию: {filename}"
+                ),
+                "FILES": {
+                    "fileData": [filename, pdf_base64],
+                },
+            }
+        }
+        
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(method_url, json=payload)
+                response.raise_for_status()
+                
+                result = response.json()
+                
+                if result.get("result"):
+                    logger.info(
+                        f"PDF загружен через комментарий в Битрикс24: "
+                        f"entity_type={entity_type}, entity_id={entity_id}"
+                    )
+                    return True
+                else:
+                    error = result.get("error_description", "Неизвестная ошибка")
+                    logger.error(f"Ошибка загрузки PDF через комментарий: {error}")
+                    return False
+                    
+        except Exception as e:
+            logger.error(f"Ошибка загрузки PDF через комментарий: {e}")
+            return False
+    
+    async def get_lead(self, lead_id: int) -> Optional[dict]:
+        """
+        Получение данных лида.
+        
+        Метод API: crm.lead.get
+        
+        Args:
+            lead_id: ID лида
+            
+        Returns:
+            Данные лида или None
+        """
+        if not self.webhook_url:
+            return None
+        
+        method_url = f"{self.webhook_url.rstrip('/')}/crm.lead.get"
+        
+        payload = {"id": lead_id}
+        
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(method_url, json=payload)
+                response.raise_for_status()
+                return response.json().get("result")
+        except Exception as e:
+            logger.error(f"Ошибка получения лида из Битрикс24: {e}")
             return None

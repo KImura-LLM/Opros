@@ -62,7 +62,9 @@ class Settings(BaseSettings):
     JWT_EXPIRATION_HOURS: int = 48
     
     # Битрикс24
-    BITRIX24_WEBHOOK_URL: str = ""
+    BITRIX24_WEBHOOK_URL: str = ""  # Исходящий вебхук (для отправки данных В Битрикс24)
+    BITRIX24_INCOMING_TOKEN: str = ""  # Токен для проверки входящих запросов ОТ Битрикс24
+    BITRIX24_CATEGORY_ID: str = ""  # ID категории воронки (оставьте пустым для обработки всех воронок)
     
     # CORS
     CORS_ORIGINS_STR: str = "http://localhost:3000,http://localhost:5173"
@@ -96,8 +98,33 @@ class Settings(BaseSettings):
 def get_settings() -> Settings:
     """
     Получение настроек приложения (с кэшированием).
+    Проверяет критические настройки безопасности в production.
     """
-    return Settings()
+    s = Settings()
+    
+    # Проверка критических настроек безопасности в production
+    if s.ENVIRONMENT == "production" or not s.DEBUG:
+        insecure_defaults = []
+        
+        if s.SECRET_KEY == "change-me-in-production":
+            insecure_defaults.append("SECRET_KEY")
+        if s.JWT_SECRET_KEY == "jwt-secret-change-me":
+            insecure_defaults.append("JWT_SECRET_KEY")
+        if s.ADMIN_PASSWORD == "admin":
+            insecure_defaults.append("ADMIN_PASSWORD")
+        if s.ADMIN_USERNAME == "admin":
+            insecure_defaults.append("ADMIN_USERNAME")
+        if s.POSTGRES_PASSWORD == "opros_password":
+            insecure_defaults.append("POSTGRES_PASSWORD")
+        
+        if insecure_defaults:
+            raise ValueError(
+                f"КРИТИЧЕСКАЯ ОШИБКА БЕЗОПАСНОСТИ: В production используются дефолтные значения: "
+                f"{', '.join(insecure_defaults)}. "
+                f"Установите безопасные значения в переменных окружения или .env файле."
+            )
+    
+    return s
 
 
 # Глобальный экземпляр настроек

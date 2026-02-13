@@ -8,9 +8,20 @@ import { motion } from 'framer-motion'
 import { AlertCircle } from 'lucide-react'
 import { Branding } from '@/components/layout/Branding'
 
+const ERROR_MESSAGES: Record<string, string> = {
+  'expired': 'Срок действия ссылки истёк. Попросите отправить новую.',
+  'invalid': 'Ссылка недействительна. Проверьте правильность ссылки.',
+  'used': 'Эта ссылка уже была использована.',
+  'completed': 'Опрос уже был завершён ранее.',
+  'session_expired': 'Время прохождения опроса истекло.',
+  'not_found': 'Опрос не найден.',
+  'server_error': 'Ошибка сервера. Попробуйте позже.',
+}
+
 const ErrorPage: React.FC = () => {
   const [searchParams] = useSearchParams()
-  const errorMessage = searchParams.get('message') || 'Произошла ошибка'
+  const errorCode = searchParams.get('code') || 'default'
+  const errorMessage = ERROR_MESSAGES[errorCode] || 'Произошла ошибка'
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">

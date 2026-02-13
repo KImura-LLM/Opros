@@ -37,6 +37,43 @@ from app.services.bitrix24 import Bitrix24Client
 router = APIRouter()
 
 
+# ==========================================
+# Вспомогательная функция проверки владения сессией
+# ==========================================
+
+async def verify_session_owner(
+    session: SurveySession,
+    request: Request,
+    redis: RedisClient,
+) -> None:
+    """
+    Проверяет, что запрос исходит от владельца сессии.
+    Использует token из заголовка X-Session-Token для проверки token_hash.
+    
+    Raises:
+        HTTPException: Если токен не предоставлен или не совпадает
+    """
+    session_token = request.headers.get("X-Session-Token")
+    if not session_token:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Доступ запрещён: отсутствует токен сессии",
+        )
+    
+    # Проверяем, что хэш токена совпадает с хэшем, привязанным к сессии
+    provided_hash = get_token_hash(session_token)
+    if provided_hash != session.token_hash:
+        logger.warning(
+            f"Попытка доступа к чужой сессии {session.id}: "
+            f"ожидаемый hash={session.token_hash[:8]}..., "
+            f"предоставленный hash={provided_hash[:8]}..."
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Доступ запрещён: токен не принадлежит данной сессии",
+        )
+
+
 @router.get("/config", response_model=SurveyConfigResponse)
 async def get_survey_config(
     db: AsyncSession = Depends(get_db),
@@ -142,7 +179,12 @@ async def start_survey(
         )
     
     # Создание новой сессии
-    client_ip = request.client.host if request.client else None
+    # Получаем реальный IP клиента (учитываем прокси nginx)
+    client_ip = (
+        request.headers.get("X-Real-IP")
+        or request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
+        or (request.client.host if request.client else None)
+    )
     user_agent = request.headers.get("user-agent")
     
     # Установка времени истечения сессии (2 часа с момента создания)
@@ -201,6 +243,7 @@ async def start_survey(
 @router.post("/answer", response_model=SurveyAnswerResponse)
 async def submit_answer(
     data: SurveyAnswerRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     redis: RedisClient = Depends(get_redis),
 ):
@@ -223,6 +266,9 @@ async def submit_answer(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Сессия не найдена",
         )
+    
+    # Проверка владения сессией
+    await verify_session_owner(session, request, redis)
     
     if session.status == "completed":
         raise HTTPException(
@@ -322,6 +368,7 @@ async def submit_answer(
 @router.get("/progress/{session_id}", response_model=SurveyProgressResponse)
 async def get_progress(
     session_id: UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     redis: RedisClient = Depends(get_redis),
 ):
@@ -344,6 +391,9 @@ async def get_progress(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Сессия не найдена",
         )
+    
+    # Проверка владения сессией
+    await verify_session_owner(session, request, redis)
     
     # Получение прогресса из Redis
     progress = await redis.get_survey_progress(str(session_id))
@@ -373,7 +423,6 @@ async def get_progress(
     return SurveyProgressResponse(
         session_id=session_id,
         current_node=progress.get("current_node", "welcome"),
-        answers=progress.get("answers", {}),
         history=progress.get("history", []),
         progress_percent=round(progress_percent, 1),
     )
@@ -382,6 +431,7 @@ async def get_progress(
 @router.post("/complete", response_model=SurveyCompleteResponse)
 async def complete_survey(
     data: SurveyCompleteRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     redis: RedisClient = Depends(get_redis),
 ):
@@ -407,6 +457,9 @@ async def complete_survey(
             detail="Сессия не найдена",
         )
     
+    # Проверка владения сессией
+    await verify_session_owner(session, request, redis)
+    
     if session.status == "completed":
         return SurveyCompleteResponse(
             success=True,
@@ -427,18 +480,64 @@ async def complete_survey(
     # Генерация отчёта
     report_gen = ReportGenerator(config.json_config if config else {})
     answers_dict = {a.node_id: a.answer_data for a in answers}
-    report_html = report_gen.generate_html_report(
-        patient_name=session.patient_name,
-        answers=answers_dict,
-    )
     
-    # Отправка в Битрикс24
     bitrix_client = Bitrix24Client()
-    report_sent = await bitrix_client.send_comment(
-        entity_id=session.lead_id,
-        entity_type=session.entity_type,
-        comment=report_html,
-    )
+    report_sent = False
+    
+    # Генерация и отправка PDF-отчёта в карточку Битрикс24
+    pdf_sent = False
+    try:
+        from weasyprint import HTML as WeasyHTML
+        from io import BytesIO
+        
+        # Генерируем читаемый HTML для PDF
+        readable_html = report_gen.generate_readable_html_report(
+            patient_name=session.patient_name,
+            answers=answers_dict,
+        )
+        
+        # Конвертируем в PDF
+        pdf_buffer = BytesIO()
+        WeasyHTML(string=readable_html).write_pdf(pdf_buffer)
+        pdf_bytes = pdf_buffer.getvalue()
+        
+        # Формируем имя файла
+        patient_safe = session.patient_name or "patient"
+        patient_safe = "".join(c for c in patient_safe if c.isalnum() or c in (' ', '_')).strip()
+        patient_safe = patient_safe.replace(" ", "_")
+        date_str = datetime.now(timezone.utc).strftime("%d_%m_%Y")
+        pdf_filename = f"Anketa_{patient_safe}_{date_str}.pdf"
+        
+        # Отправляем PDF в Битрикс24
+        pdf_sent = await bitrix_client.upload_pdf_to_entity(
+            entity_id=session.lead_id,
+            entity_type=session.entity_type,
+            pdf_bytes=pdf_bytes,
+            filename=pdf_filename,
+        )
+        
+        if pdf_sent:
+            logger.info(f"PDF-отчёт отправлен в Битрикс24: lead_id={session.lead_id}")
+            report_sent = True
+        else:
+            logger.warning(f"Не удалось отправить PDF в Битрикс24: lead_id={session.lead_id}")
+            
+    except ImportError:
+        logger.warning("WeasyPrint не установлен, PDF-отчёт не будет отправлен")
+    except Exception as e:
+        logger.error(f"Ошибка генерации/отправки PDF в Битрикс24: {e}")
+    
+    # Если PDF не удалось отправить — отправляем текстовый комментарий как fallback
+    if not pdf_sent:
+        report_text = report_gen.generate_text_report(
+            patient_name=session.patient_name,
+            answers=answers_dict,
+        )
+        report_sent = await bitrix_client.send_comment(
+            entity_id=session.lead_id,
+            entity_type=session.entity_type,
+            comment=report_text,
+        )
     
     # Обновление статуса сессии
     session.status = "completed"
@@ -451,6 +550,7 @@ async def complete_survey(
         details={
             "answers_count": len(answers),
             "report_sent": report_sent,
+            "pdf_sent": pdf_sent,
         },
     )
     db.add(audit_log)
@@ -469,6 +569,7 @@ async def complete_survey(
         success=True,
         message="Спасибо! Анкета заполнена. Данные переданы врачу.",
         report_sent=report_sent,
+        pdf_sent=pdf_sent,
     )
 
 
@@ -480,6 +581,7 @@ class GoBackRequest(BaseModel):
 @router.post("/back")
 async def go_back(
     data: GoBackRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     redis: RedisClient = Depends(get_redis),
 ):
@@ -502,6 +604,9 @@ async def go_back(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Сессия не найдена",
         )
+    
+    # Проверка владения сессией
+    await verify_session_owner(session, request, redis)
     
     if session.status == "completed":
         raise HTTPException(

@@ -16,6 +16,7 @@ from weasyprint import HTML
 from app.core.database import get_db
 from app.models import SurveySession, SurveyAnswer, SurveyConfig
 from app.services.report_generator import ReportGenerator
+from app.api.v1.endpoints.survey_editor import verify_admin_session
 
 
 router = APIRouter(prefix="/reports", tags=["reports"])
@@ -80,7 +81,8 @@ async def get_session_with_answers(
 @router.get("/{session_id}/preview")
 async def preview_report(
     session_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _admin: bool = Depends(verify_admin_session),
 ):
     """
     Предпросмотр отчёта в HTML формате.
@@ -119,7 +121,8 @@ async def preview_report(
 @router.get("/{session_id}/export/html")
 async def export_html(
     session_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _admin: bool = Depends(verify_admin_session),
 ):
     """
     Экспорт отчёта в HTML файл.
@@ -172,7 +175,8 @@ async def export_html(
 @router.get("/{session_id}/export/txt")
 async def export_txt(
     session_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _admin: bool = Depends(verify_admin_session),
 ):
     """
     Экспорт отчёта в TXT файл.
@@ -227,7 +231,8 @@ async def export_txt(
 @router.get("/{session_id}/export/pdf")
 async def export_pdf(
     session_id: UUID,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    _admin: bool = Depends(verify_admin_session),
 ):
     """
     Экспорт отчёта в PDF файл.

@@ -15,6 +15,7 @@ from loguru import logger
 
 from app.core.database import get_db
 from app.models import SurveySession, SurveyAnswer, SurveyConfig
+from app.api.v1.endpoints.survey_editor import verify_admin_session
 
 
 router = APIRouter(prefix="/analytics", tags=["Аналитика"])
@@ -25,6 +26,7 @@ async def get_dashboard_stats(
     date_from: Optional[str] = Query(None, description="Дата начала (YYYY-MM-DD)"),
     date_to: Optional[str] = Query(None, description="Дата конца (YYYY-MM-DD)"),
     db: AsyncSession = Depends(get_db),
+    _admin: bool = Depends(verify_admin_session),
 ):
     """
     Получить сводную статистику для дашборда.

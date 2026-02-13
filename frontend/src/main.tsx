@@ -17,5 +17,10 @@ try {
   console.log('App rendered')
 } catch (e) {
   console.error('App render failed:', e)
-  document.getElementById('root')!.innerHTML = '<div style="color:red; padding: 20px;">' + String(e) + '</div>'
+  const root = document.getElementById('root')!
+  root.textContent = ''
+  const errorDiv = document.createElement('div')
+  errorDiv.style.cssText = 'color:red; padding: 20px;'
+  errorDiv.textContent = 'Ошибка загрузки приложения. Пожалуйста, обновите страницу.'
+  root.appendChild(errorDiv)
 }

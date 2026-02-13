@@ -10,8 +10,20 @@ import type {
   SurveyConfig,
   AnswerData,
 } from '@/types'
+import { useSurveyStore } from '@/store/surveyStore'
 
 const API_URL = import.meta.env.VITE_API_URL || '/api/v1'
+
+/**
+ * Получение токена сессии из store (для привязки запросов к сессии)
+ */
+function getSessionToken(): string | null {
+  try {
+    return useSurveyStore.getState().token
+  } catch {
+    return null
+  }
+}
 
 /**
  * Базовый fetch с обработкой ошибок
@@ -22,9 +34,17 @@ async function apiFetch<T>(
 ): Promise<T> {
   const url = `${API_URL}${endpoint}`
 
+  // Добавляем токен сессии для изоляции доступа
+  const sessionToken = getSessionToken()
+  const extraHeaders: Record<string, string> = {}
+  if (sessionToken) {
+    extraHeaders['X-Session-Token'] = sessionToken
+  }
+
   const response = await fetch(url, {
     headers: {
       'Content-Type': 'application/json',
+      ...extraHeaders,
       ...options.headers,
     },
     ...options,

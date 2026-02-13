@@ -24,18 +24,34 @@ const MAX_HISTORY_SIZE = 50;
 const AUTOSAVE_INTERVAL = 3 * 60 * 1000;
 
 /**
- * Helper функция для API запросов с поддержкой Basic Auth
+ * Helper функция для API запросов с поддержкой сессионных cookie
+ * Учётные данные хранятся только в памяти (не в sessionStorage) для безопасности
  */
+
+// Хранение учётных данных только в оперативной памяти
+let _adminCredentials: { username: string; password: string } | null = null;
+
+function getAdminCredentials(): { username: string; password: string } | null {
+  return _adminCredentials;
+}
+
+function setAdminCredentials(username: string, password: string): void {
+  _adminCredentials = { username, password };
+}
+
+function clearAdminCredentials(): void {
+  _adminCredentials = null;
+}
+
 async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
-  // Проверяем, есть ли сохранённые учётные данные
-  const authData = sessionStorage.getItem('admin_auth');
   const headers: Record<string, string> = {
     ...(options.headers as Record<string, string> || {}),
   };
   
-  if (authData) {
-    const { username, password } = JSON.parse(authData);
-    const credentials = btoa(`${username}:${password}`);
+  // Используем учётные данные из памяти (не из sessionStorage)
+  const creds = getAdminCredentials();
+  if (creds) {
+    const credentials = btoa(`${creds.username}:${creds.password}`);
     headers['Authorization'] = `Basic ${credentials}`;
   }
   
@@ -45,17 +61,11 @@ async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Re
     credentials: 'include', // Для поддержки сессионных cookie
   });
   
-  // Если 401 и нет учётных данных, запрашиваем их
-  if (response.status === 401 && !authData) {
-    const username = prompt('Введите имя пользователя администратора:');
-    const password = prompt('Введите пароль:');
-    
-    if (username && password) {
-      sessionStorage.setItem('admin_auth', JSON.stringify({ username, password }));
-      return fetchWithAuth(url, options); // Повторяем запрос
-    }
-    
-    throw new Error('Требуется аутентификация');
+  // Если 401 и нет учётных данных, перенаправляем на страницу входа в админ-панель
+  if (response.status === 401 && !creds) {
+    // Перенаправляем на /admin/login вместо использования prompt()
+    window.location.href = '/admin/login';
+    throw new Error('Требуется аутентификация. Перенаправление на страницу входа...');
   }
   
   return response;
