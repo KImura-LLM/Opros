@@ -1,5 +1,4 @@
 import React from 'react'
-import { Plus } from 'lucide-react'
 
 // TODO: Измените название клиники здесь
 export const CLINIC_NAME = 'Я - Здоров!'

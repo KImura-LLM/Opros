@@ -88,6 +88,7 @@ export interface TokenValidationResponse {
   session_id?: string
   patient_name?: string
   message?: string
+  expires_at?: string
 }
 
 export interface SurveyStartResponse {

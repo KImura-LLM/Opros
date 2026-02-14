@@ -35,11 +35,11 @@ function getAdminCredentials(): { username: string; password: string } | null {
   return _adminCredentials;
 }
 
-function setAdminCredentials(username: string, password: string): void {
+export function setAdminCredentials(username: string, password: string): void {
   _adminCredentials = { username, password };
 }
 
-function clearAdminCredentials(): void {
+export function clearAdminCredentials(): void {
   _adminCredentials = null;
 }
 
