@@ -11,6 +11,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_redoc_html
 from starlette.middleware.sessions import SessionMiddleware
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from loguru import logger
 import sys
 import asyncio
@@ -120,6 +121,10 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+# Доверенные прокси — чтобы X-Forwarded-Proto корректно передавался
+# и SQLAdmin генерировал https:// ссылки за Nginx
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=["*"])
 
 # Настройка сессий для админ-панели
 app.add_middleware(
