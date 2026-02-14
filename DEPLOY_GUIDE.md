@@ -522,7 +522,7 @@ FRONTEND_URL=https://opros-izdorov.ru
 
 ### Шаг 7.1 — Убедиться, что конфиг оригинальный
 
-- [ ] **Выполнено**
+- [+] **Выполнено**
 
 ```bash
 cd /home/deploy/opros
@@ -548,7 +548,7 @@ grep "ssl_certificate" nginx/conf.d/default.conf
 
 ### Шаг 7.2 — Заменить домен одной командой
 
-- [ ] **Выполнено**
+- [+] **Выполнено**
 
 Вместо ручного редактирования в nano — выполните **одну команду** `sed`, которая заменит все 4 места разом:
 
@@ -562,7 +562,7 @@ sed -i 's/server_name _;/server_name opros-izdorov.ru;/g; s/your-domain.ru/opros
 
 ### Шаг 7.3 — Проверить изменения
 
-- [ ] **Выполнено**
+- [+]Выполнено**
 
 ```bash
 grep -E "server_name|ssl_certificate" nginx/conf.d/default.conf
@@ -586,7 +586,7 @@ grep -E "server_name|ssl_certificate" nginx/conf.d/default.conf
 
 ### Шаг 8.1 — Подготовить директории
 
-- [ ] **Выполнено**
+- [+] **Выполнено**
 
 ```bash
 cd /home/deploy/opros
@@ -597,7 +597,7 @@ mkdir -p certbot/conf certbot/www
 
 ### Шаг 8.2 — Создать временный конфиг Nginx (только HTTP)
 
-- [ ] **Выполнено**
+- [+] **Выполнено**
 
 Сохраните оригинал и создайте упрощённый конфиг:
 
@@ -628,7 +628,7 @@ NGINX_TEMP
 
 ### Шаг 8.3 — Запустить Nginx
 
-- [ ] **Выполнено**
+- [+] **Выполнено**
 
 ```bash
 docker volume create opros_frontend_build
@@ -654,7 +654,8 @@ xxxxxxxxxxxx   nginx:alpine   Up       0.0.0.0:80->80/tcp, 0.0.0.0:443->443/tcp 
 - [ ] **Выполнено**
 
 ```bash
-docker compose -f docker-compose.prod.yml run --rm certbot certonly \
+docker compose -f docker-compose.prod.yml run --rm --entrypoint '' certbot \
+  certbot certonly \
   --webroot \
   --webroot-path=/var/www/certbot \
   --email prikolyank@gmail.com \
@@ -662,6 +663,8 @@ docker compose -f docker-compose.prod.yml run --rm certbot certonly \
   --no-eff-email \
   -d opros-izdorov.ru
 ```
+
+> 📌 **Важно:** Флаг `--entrypoint ''` обязателен — без него compose использует entrypoint из конфигурации (цикл `certbot renew`), и команда `certonly` не выполнится.
 
 **✅ Результат:**
 ```
@@ -736,12 +739,8 @@ opros-certbot            Up
 - [ ] **Выполнено**
 
 ```bash
-docker compose -f docker-compose.prod.yml exec backend alembic upgrade head
+docker compose -f docker-compose.prod.yml exec -e PYTHONPATH=/app backend alembic upgrade head
 ```
-
-**✅ Результат:**
-```
-INFO  [alembic.runtime.migration] Running upgrade  -> 001, Initial tables
 INFO  [alembic.runtime.migration] Running upgrade 001 -> 002, ...
 INFO  [alembic.runtime.migration] Running upgrade 002 -> 003, ...
 ```
@@ -834,7 +833,7 @@ docker compose -f docker-compose.prod.yml up -d --build
 Если изменились модели БД:
 
 ```bash
-docker compose -f docker-compose.prod.yml exec backend alembic upgrade head
+docker compose -f docker-compose.prod.yml exec -e PYTHONPATH=/app backend alembic upgrade head
 ```
 
 ---
@@ -850,7 +849,7 @@ docker compose -f docker-compose.prod.yml exec backend alembic upgrade head
 | Все логи | `docker compose -f docker-compose.prod.yml logs -f` |
 | Логи сервиса | `docker compose -f docker-compose.prod.yml logs backend` |
 | Перезапуск | `docker compose -f docker-compose.prod.yml restart backend` |
-| Миграции | `docker compose -f docker-compose.prod.yml exec backend alembic upgrade head` |
+| Миграции | `docker compose -f docker-compose.prod.yml exec -e PYTHONPATH=/app backend alembic upgrade head` |
 | Зайти в контейнер | `docker compose -f docker-compose.prod.yml exec backend bash` |
 | SSH на сервер | `ssh deploy@ВАШ_IP` |
 
