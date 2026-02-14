@@ -69,10 +69,14 @@ class Bitrix24Client:
             "LEAD": "lead",
         }
         
+        entity_type_normalized = (entity_type or "DEAL").upper()
+        if entity_type_normalized not in entity_type_map:
+            entity_type_normalized = "DEAL"
+
         payload = {
             "fields": {
                 "ENTITY_ID": entity_id,
-                "ENTITY_TYPE": entity_type_map.get(entity_type, "deal"),
+                "ENTITY_TYPE": entity_type_map[entity_type_normalized],
                 "COMMENT": comment,
             }
         }
@@ -83,17 +87,29 @@ class Bitrix24Client:
                 response.raise_for_status()
                 
                 result = response.json()
-                
-                if result.get("result"):
+
+                if "error" in result:
+                    error = result.get("error_description", result.get("error", "Неизвестная ошибка"))
+                    logger.error(
+                        f"Ошибка Битрикс24 при добавлении комментария: {error} "
+                        f"(error={result.get('error')}, entity_type={entity_type_normalized}, entity_id={entity_id})"
+                    )
+                    return False
+
+                raw_result = result.get("result")
+                if isinstance(raw_result, int) and raw_result > 0:
                     logger.info(
                         f"Комментарий отправлен в Битрикс24: "
-                        f"entity_type={entity_type}, entity_id={entity_id}"
+                        f"comment_id={raw_result}, entity_type={entity_type_normalized}, entity_id={entity_id}"
                     )
                     return True
-                else:
-                    error = result.get("error_description", "Неизвестная ошибка")
-                    logger.error(f"Ошибка Битрикс24: {error}")
-                    return False
+
+                logger.warning(
+                    "Неожиданный ответ Bitrix crm.timeline.comment.add: "
+                    f"result={raw_result!r} (type={type(raw_result).__name__}), "
+                    f"entity_type={entity_type_normalized}, entity_id={entity_id}, response={result}"
+                )
+                return False
                     
         except httpx.HTTPStatusError as e:
             logger.error(f"HTTP ошибка при отправке в Битрикс24: {e}")
