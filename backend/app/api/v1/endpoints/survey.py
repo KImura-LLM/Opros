@@ -16,6 +16,7 @@ from sqlalchemy import select
 from loguru import logger
 from datetime import timedelta
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.redis import get_redis, RedisClient
 from app.core.security import verify_token, get_token_hash
@@ -179,6 +180,19 @@ async def start_survey(
         )
     
     # Создание новой сессии
+    # Если имя отсутствует в токене (компактный JWT) — загружаем из CRM
+    patient_name = token_data.patient_name
+    if not patient_name and settings.BITRIX24_WEBHOOK_URL:
+        try:
+            bitrix_client = Bitrix24Client()
+            entity_type = token_data.entity_type or "DEAL"
+            if entity_type == "DEAL":
+                patient_name = await bitrix_client.get_patient_name_from_deal(token_data.lead_id)
+            if patient_name:
+                logger.info(f"Имя пациента загружено из CRM при старте опроса: {patient_name}")
+        except Exception as e:
+            logger.warning(f"Не удалось загрузить имя из CRM: {e}")
+    
     # Получаем реальный IP клиента (учитываем прокси nginx)
     client_ip = (
         request.headers.get("X-Real-IP")
@@ -193,7 +207,7 @@ async def start_survey(
     session = SurveySession(
         lead_id=token_data.lead_id,
         entity_type=token_data.entity_type,
-        patient_name=token_data.patient_name,
+        patient_name=patient_name,
         survey_config_id=config.id,
         token_hash=token_data.token_hash,
         status="in_progress",

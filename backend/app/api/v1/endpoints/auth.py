@@ -10,11 +10,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from loguru import logger
 
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.redis import get_redis, RedisClient
 from app.core.security import verify_token, get_token_hash, create_access_token
 from app.models import SurveyConfig, SurveySession
 from app.schemas import TokenValidationRequest, TokenValidationResponse
+from app.services.bitrix24 import Bitrix24Client
 
 router = APIRouter()
 
@@ -77,12 +79,25 @@ async def validate_token(
             message="Сессия восстановлена",
         )
     
-    logger.info(f"Токен валиден: lead_id={token_data.lead_id}, patient={token_data.patient_name}")
+    # Если имя отсутствует в токене (компактный JWT) — загружаем из CRM
+    patient_name = token_data.patient_name
+    if not patient_name and settings.BITRIX24_WEBHOOK_URL:
+        try:
+            bitrix_client = Bitrix24Client()
+            entity_type = token_data.entity_type or "DEAL"
+            if entity_type == "DEAL":
+                patient_name = await bitrix_client.get_patient_name_from_deal(token_data.lead_id)
+            if patient_name:
+                logger.info(f"Имя пациента загружено из CRM: {patient_name}")
+        except Exception as e:
+            logger.warning(f"Не удалось загрузить имя из CRM: {e}")
+    
+    logger.info(f"Токен валиден: lead_id={token_data.lead_id}, patient={patient_name}")
     
     return TokenValidationResponse(
         valid=True,
         session_id=None,
-        patient_name=token_data.patient_name,
+        patient_name=patient_name,
         message="Токен действителен",
     )
 
