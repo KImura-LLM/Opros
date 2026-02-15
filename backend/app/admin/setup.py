@@ -141,39 +141,6 @@ class SurveyConfigAdmin(ModelView, model=SurveyConfig):
     def visual_structure(model, prop):
         """Рендеринг визуальной структуры опросника."""
         from markupsafe import Markup
-        
-        config = model.json_config
-        nodes = {n['id']: n for n in config.get('nodes', [])}
-        start = config.get('start_node')
-        
-        html = ['<div style="font-family: -apple-system, BlinkMacSystemFont, \'Segoe UI\', Roboto, Helvetica, Arial, sans-serif; line-height: 1.5; background: #fff; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0; max-width: 100%; overflow-x: auto;">']
-        html.append(f'<h3 style="margin-top:0; margin-bottom:15px; color:#1e293b;">Карта опросника (v{model.version})</h3>')
-
-        STYLES = {
-            'type': 'display: inline-block; padding: 2px 8px; font-size: 0.75em; border-radius: 9999px; background: #f1f5f9; color: #475569; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;',
-            'question': 'font-weight: 600; color: #0f172a; margin-left: 8px;',
-            'logic-container': 'margin-left: 20px; padding-left: 15px; border-left: 2px solid #e2e8f0; margin-top: 8px;',
-            'branch': 'color: #64748b; font-size: 0.9em; margin-top: 6px; display: flex; align-items: flex-start;',
-            'condition-tag': 'color: #059669; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; background: #d1fae5; padding: 1px 6px; border-radius: 4px; font-size: 0.9em;',
-            'default-tag': 'color: #6366f1; font-style: italic; background: #e0e7ff; padding: 1px 6px; border-radius: 4px; font-size: 0.9em;',
-            'id': 'color: #94a3b8; font-size: 0.8em; font-family: monospace; margin-left: auto;',
-            'final': 'display: inline-block; padding: 2px 8px; font-size: 0.75em; border-radius: 9999px; background: #fff7ed; color: #c2410c; border: 1px solid #ffedd5; font-weight: 600;'
-        }
-
-        ICONS = {
-            'info_screen': 'ℹ️',
-            'single_choice': '🔘',
-            'multi_choice': '☑️',
-            'multi_choice_with_input': '📝',
-            'scale_1_10': '📏',
-            'body_map': '🧘',
-            'text_input': '✍️',
-            'number_input': '1️⃣2️⃣',
-        }
-
-    def visual_structure(model, prop):
-        """Рендеринг визуальной структуры опросника."""
-        from markupsafe import Markup
         import re
         
         config = model.json_config
@@ -370,14 +337,6 @@ class SurveySessionAdmin(ModelView, model=SurveySession):
     ]
     column_default_sort = [("started_at", True)]
     
-    column_formatters = {
-        SurveySession.status: lambda m, a: {
-            "in_progress": "🔄 В процессе",
-            "completed": "✅ Завершён",
-            "abandoned": "❌ Брошен",
-        }.get(m.status, m.status),
-    }
-    
     # Форматтер для кнопок экспорта
     @staticmethod
     def _report_actions_formatter(model, prop):
@@ -476,10 +435,6 @@ class SurveySessionAdmin(ModelView, model=SurveySession):
         "report_actions": _report_actions_formatter.__func__,
     }
     
-    column_labels = {
-        "report_actions": "Отчёты",
-    }
-    
     # Добавляем предпросмотр в детали
     column_details_list = [
         SurveySession.id,
@@ -545,7 +500,7 @@ class SurveySessionAdmin(ModelView, model=SurveySession):
     }
     
     column_labels = {
-        **column_labels,
+        "report_actions": "Отчёты",
         "report_preview": "Отчёт",
     }
     

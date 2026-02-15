@@ -9,7 +9,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.openapi.docs import get_redoc_html
 from starlette.middleware.sessions import SessionMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from loguru import logger
@@ -108,8 +107,8 @@ app = FastAPI(
     title="Опросник пациента API",
     description="API для PWA-приложения сбора анамнеза пациентов",
     version="1.0.0",
-    docs_url="/docs" if settings.DEBUG else None,
-    redoc_url=None,
+    docs_url="/docs",
+    redoc_url="/redoc",
     lifespan=lifespan,
 )
 
@@ -139,16 +138,6 @@ app.include_router(api_router, prefix="/api/v1")
 
 # Настройка Admin панели
 setup_admin(app)
-
-
-if settings.DEBUG:
-    @app.get("/redoc", include_in_schema=False)
-    async def redoc_html():
-        return get_redoc_html(
-            openapi_url=app.openapi_url,
-            title=app.title + " - ReDoc",
-            redoc_js_url="https://unpkg.com/redoc@2.0.0-rc.77/bundles/redoc.standalone.js",
-        )
 
 
 @app.get("/health", tags=["Health"])
