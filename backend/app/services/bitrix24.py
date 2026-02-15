@@ -463,3 +463,132 @@ class Bitrix24Client:
         except Exception as e:
             logger.error(f"Ошибка получения лида из Битрикс24: {e}")
             return None
+    
+    async def send_whatsapp_message(
+        self,
+        contact_id: int,
+        phone: str,
+        message: str,
+    ) -> bool:
+        """
+        Отправка WhatsApp сообщения через Битрикс24 Открытые Линии.
+        
+        Метод API: imconnector.send.messages
+        
+        Args:
+            contact_id: ID контакта в Битрикс24
+            phone: Номер телефона в формате +7XXXXXXXXXX
+            message: Текст сообщения
+            
+        Returns:
+            True если сообщение отправлено успешно
+        """
+        if not self.webhook_url:
+            logger.warning("BITRIX24_WEBHOOK_URL не настроен, пропуск WhatsApp")
+            return False
+        
+        # Форматируем номер телефона (удаляем + и пробелы)
+        formatted_phone = phone.replace("+", "").replace(" ", "").replace("-", "")
+        
+        # Пробуем несколько вариантов API для отправки
+        # Вариант 1: через imconnector.send.messages
+        method_url = f"{self.webhook_url.rstrip('/')}/imconnector.send.messages"
+        
+        payload = {
+            "CONNECTOR": "whatsapp",
+            "LINE": "whatsapp",
+            "MESSAGES": [
+                {
+                    "user": {"id": formatted_phone},
+                    "message": {"type": "text", "text": message}
+                }
+            ]
+        }
+        
+        try:
+            logger.info(f"Попытка отправки WhatsApp сообщения: {formatted_phone}")
+            
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(method_url, json=payload)
+                response.raise_for_status()
+                
+                result = response.json()
+                
+                if result.get("result"):
+                    logger.info(f"✅ WhatsApp сообщение отправлено: contact_id={contact_id}")
+                    return True
+                else:
+                    error_desc = result.get("error_description", result.get("error", "Неизвестная ошибка"))
+                    logger.warning(f"⚠️ Битрикс24 вернул ошибку при отправке WhatsApp: {error_desc}")
+                    return False
+                    
+        except httpx.HTTPStatusError as e:
+            logger.warning(
+                f"⚠️ HTTP ошибка при отправке WhatsApp (статус {e.response.status_code}): {e.response.text[:200]}"
+            )
+            return False
+        except Exception as e:
+            logger.warning(f"⚠️ Ошибка отправки WhatsApp: {e}")
+            return False
+    
+    async def send_whatsapp_with_fallback(
+        self,
+        deal_id: int,
+        contact_id: Optional[int],
+        phone: Optional[str],
+        message: str,
+        entity_type: str = "DEAL",
+    ) -> dict:
+        """
+        Отправка WhatsApp с fallback на комментарий к сделке.
+        
+        Args:
+            deal_id: ID сделки
+            contact_id: ID контакта (опционально)
+            phone: Номер телефона (опционально)
+            message: Текст сообщения
+            entity_type: Тип сущности ('DEAL' или 'LEAD')
+            
+        Returns:
+            Словарь с результатами отправки
+        """
+        result = {
+            "whatsapp_sent": False,
+            "comment_added": False,
+            "method_used": None,
+        }
+        
+        # Попытка отправки через WhatsApp
+        if contact_id and phone:
+            whatsapp_sent = await self.send_whatsapp_message(contact_id, phone, message)
+            if whatsapp_sent:
+                result["whatsapp_sent"] = True
+                result["method_used"] = "whatsapp"
+                return result
+        
+        # Fallback: добавляем комментарий к сделке с инструкцией для менеджера
+        logger.info(f"WhatsApp недоступен для сделки {deal_id}, добавляем комментарий с инструкцией")
+        
+        fallback_comment = (
+            f"[ChatApp robot][Отправить сообщение][WhatsApp][Ошибка]<br><br>"
+            f"[Чат]<br><br>"
+            f"[Сообщение]<br>"
+            f"{message.replace(chr(10), '<br>')}<br><br>"
+            f"[Текст ошибки]<br>"
+            f"<span style='color: red;'>WhatsApp API недоступен. Пожалуйста, отправьте сообщение вручную через канал связи с пациентом.</span>"
+        )
+        
+        comment_added = await self.send_comment(
+            entity_id=deal_id,
+            entity_type=entity_type,
+            comment=fallback_comment,
+        )
+        
+        if comment_added:
+            result["comment_added"] = True
+            result["method_used"] = "comment_fallback"
+            logger.info(f"✅ Fallback комментарий добавлен к сделке {deal_id}")
+        else:
+            logger.error(f"❌ Не удалось добавить комментарий к сделке {deal_id}")
+        
+        return result

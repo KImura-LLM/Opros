@@ -251,6 +251,46 @@ async def bitrix_webhook(
                     f"Не удалось записать ссылку в поле UF_CRM_1771160085. "
                     f"Проверьте, что поле создано в настройках CRM."
                 )
+            
+            # Попытка отправки WhatsApp сообщения с fallback на комментарий
+            try:
+                # Получаем данные сделки для извлечения контакта и телефона
+                deal_data = await bitrix_client.get_deal(lead_id)
+                contact_id = None
+                phone = None
+                
+                if deal_data:
+                    contact_id = deal_data.get("CONTACT_ID")
+                    phones = deal_data.get("PHONE", [])
+                    if phones and isinstance(phones, list) and len(phones) > 0:
+                        phone = phones[0].get("VALUE")
+                
+                # Формируем сообщение для WhatsApp
+                whatsapp_message = (
+                    f"Здравствуйте, {patient_display}!\n\n"
+                    f"Пожалуйста, пройдите медицинский опрос перед приёмом:\n"
+                    f"{survey_url}\n\n"
+                    f"Это займёт 3-5 минут. Спасибо!"
+                )
+                
+                # Отправка с автоматическим fallback
+                send_result = await bitrix_client.send_whatsapp_with_fallback(
+                    deal_id=lead_id,
+                    contact_id=contact_id,
+                    phone=phone,
+                    message=whatsapp_message,
+                    entity_type=entity_type,
+                )
+                
+                if send_result["whatsapp_sent"]:
+                    logger.info(f"✅ WhatsApp сообщение отправлено для сделки {lead_id}")
+                elif send_result["comment_added"]:
+                    logger.info(f"✅ Добавлен комментарий с инструкцией для сделки {lead_id}")
+                else:
+                    logger.warning(f"⚠️ Не удалось отправить WhatsApp или добавить комментарий для сделки {lead_id}")
+                    
+            except Exception as e:
+                logger.error(f"❌ Ошибка при отправке WhatsApp/добавлении комментария: {e}")
     
     return BitrixWebhookResponse(
         success=True,
