@@ -64,15 +64,15 @@ def create_access_token(
     else:
         expire = now + timedelta(hours=settings.JWT_EXPIRATION_HOURS)
     
-    # Генерация уникального ID токена
+    # Генерация уникального ID токена (8 символов вместо 16 — экономия в JWT)
     jti = hashlib.sha256(
         f"{lead_id}:{now.isoformat()}:{settings.SECRET_KEY}".encode()
-    ).hexdigest()[:16]
+    ).hexdigest()[:8]
     
+    # Компактный payload: короткие ключи для минимального размера токена
     payload = {
-        "lead_id": lead_id,
-        "patient_name": patient_name,
-        "entity_type": entity_type,
+        "l": lead_id,           # lead_id
+        "e": entity_type,       # entity_type
         "exp": expire,
         "iat": now,
         "jti": jti,
@@ -105,8 +105,8 @@ def verify_token(token: str) -> Optional[TokenData]:
             algorithms=[settings.JWT_ALGORITHM],
         )
         
-        # Извлечение данных
-        lead_id = payload.get("lead_id")
+        # Извлечение данных (поддержка компактного и старого формата)
+        lead_id = payload.get("l") or payload.get("lead_id")
         if lead_id is None:
             logger.warning("Токен не содержит lead_id")
             return None
@@ -116,8 +116,8 @@ def verify_token(token: str) -> Optional[TokenData]:
         
         return TokenData(
             lead_id=lead_id,
-            patient_name=payload.get("patient_name"),
-            entity_type=payload.get("entity_type", "DEAL"),
+            patient_name=payload.get("n") or payload.get("patient_name"),
+            entity_type=payload.get("e") or payload.get("entity_type", "DEAL"),
             token_hash=token_hash,
         )
         

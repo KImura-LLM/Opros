@@ -203,10 +203,9 @@ async def bitrix_webhook(
         else:
             logger.warning(f"Не удалось получить имя пациента из CRM для сделки {lead_id}")
     
-    # Генерация JWT токена
+    # Генерация JWT токена (компактный — без patient_name для короткой ссылки)
     token = create_access_token(
         lead_id=lead_id,
-        patient_name=patient_name,
         entity_type=entity_type,
     )
     
@@ -300,10 +299,9 @@ async def generate_survey_link(
     if entity_type not in ("DEAL", "LEAD"):
         entity_type = "DEAL"
     
-    # Генерация JWT токена
+    # Генерация JWT токена (компактный — без patient_name для короткой ссылки)
     token = create_access_token(
         lead_id=data.lead_id,
-        patient_name=data.patient_name,
         entity_type=entity_type,
     )
     
