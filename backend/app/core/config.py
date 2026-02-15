@@ -66,6 +66,13 @@ class Settings(BaseSettings):
     BITRIX24_INCOMING_TOKEN: str = ""  # Токен для проверки входящих запросов ОТ Битрикс24
     BITRIX24_CATEGORY_ID: str = ""  # ID категории воронки (оставьте пустым для обработки всех воронок)
     
+    # Сокращение URL (для SMS)
+    BITLY_ACCESS_TOKEN: str = ""  # Токен Bit.ly API (опционально)
+    URL_SHORTENER_PROVIDER: str = "clckru"  # 'bitly' или 'clckru'
+    
+    # Telegram Bot (для отправки уведомлений)
+    TELEGRAM_BOT_TOKEN: str = ""  # Токен бота от @BotFather (опционально)
+    
     # CORS
     CORS_ORIGINS_STR: str = "http://localhost:3000,http://localhost:5173"
     

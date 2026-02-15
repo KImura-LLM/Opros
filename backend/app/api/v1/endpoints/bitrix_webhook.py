@@ -237,6 +237,20 @@ async def bitrix_webhook(
             logger.info(f"Ссылка на опрос записана в комментарий сделки {lead_id} в Битрикс24")
         else:
             logger.warning(f"Не удалось записать ссылку в комментарий сделки {lead_id}")
+        
+        # Запись ссылки в пользовательское поле UF_CRM_OPROS_LINK (для отправки через SMS/WhatsApp)
+        if entity_type == "DEAL":
+            updated = await bitrix_client.update_deal_field(
+                deal_id=lead_id,
+                fields={"UF_CRM_OPROS_LINK": survey_url}
+            )
+            if updated:
+                logger.info(f"Ссылка записана в поле UF_CRM_OPROS_LINK сделки {lead_id}")
+            else:
+                logger.warning(
+                    f"Не удалось записать ссылку в поле UF_CRM_OPROS_LINK. "
+                    f"Проверьте, что поле создано в настройках CRM."
+                )
     
     return BitrixWebhookResponse(
         success=True,
