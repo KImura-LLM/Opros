@@ -684,6 +684,15 @@
                                 <span class="nav-link-title">Аналитика</span>
                             </a>
                         </li>
+                        <li class="nav-item">
+                            <a class="nav-link {% if '/admin/logs' in request.url.path %}active{% endif %}" 
+                               href="/admin/logs">
+                                <span class="nav-link-icon d-md-none d-lg-inline-block">
+                                    <i class="fa-solid fa-file-lines"></i>
+                                </span>
+                                <span class="nav-link-title">Логи системы</span>
+                            </a>
+                        </li>
                         
                         <!-- Разделитель -->
                         <li class="nav-item" style="margin: 16px 8px; border-top: 1px solid #333; padding-top: 16px;">

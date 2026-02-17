@@ -11,6 +11,7 @@ from starlette.requests import Request
 from starlette.responses import RedirectResponse
 from typing import Optional
 from pathlib import Path
+from loguru import logger
 
 from app.core.config import settings
 from app.core.database import engine
@@ -598,6 +599,125 @@ def setup_admin(app):
             "analytics.html",
             {"request": request, "admin": AdminStub()},
         )
+    
+    @app.get("/admin/logs", response_class=HTMLResponse, include_in_schema=False)
+    async def admin_logs_page(request: Request):
+        """Страница просмотра логов системы."""
+        if not request.session.get("admin_authenticated"):
+            from starlette.responses import RedirectResponse as RR
+            return RR(url="/admin/login", status_code=302)
+
+        class AdminStub:
+            title = "Опросник - Админ"
+        
+        return _analytics_tpl.TemplateResponse(
+            "logs.html",
+            {"request": request, "admin": AdminStub()},
+        )
+    
+    @app.get("/admin/api/logs", include_in_schema=False)
+    async def admin_api_logs(
+        request: Request,
+        level: str = "",
+        source: str = "",
+        lines: int = 100
+    ):
+        """API endpoint для получения логов через Docker."""
+        from fastapi.responses import JSONResponse
+        import subprocess
+        import re
+        from datetime import datetime
+        
+        if not request.session.get("admin_authenticated"):
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        
+        try:
+            # Получаем логи из Docker контейнера backend
+            cmd = [
+                "docker", "compose", "-f", "docker-compose.prod.yml",
+                "logs", "--tail", str(lines), "backend"
+            ]
+            
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+            
+            if result.returncode != 0:
+                return JSONResponse({
+                    "error": "Failed to fetch logs",
+                    "details": result.stderr
+                }, status_code=500)
+            
+            # Парсинг логов
+            logs = []
+            log_lines = result.stdout.split('\n')
+            
+            # Паттерн для парсинга логов loguru
+            # Пример: 2026-02-17 12:34:56 | INFO     | app.services.bitrix24:send_comment:101 - Отправка комментария
+            pattern = re.compile(
+                r'(?P<timestamp>\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})\s*\|\s*'
+                r'(?P<level>\w+)\s*\|\s*'
+                r'(?P<source>[^:]+:[^:]+:[^\s]+)\s*-\s*'
+                r'(?P<message>.*)'
+            )
+            
+            for line in log_lines:
+                if not line.strip():
+                    continue
+                
+                match = pattern.search(line)
+                if match:
+                    log_data = match.groupdict()
+                    
+                    # Фильтрация по уровню
+                    if level and log_data['level'].strip() != level:
+                        continue
+                    
+                    # Фильтрация по источнику
+                    if source:
+                        source_lower = log_data['source'].lower()
+                        if source == 'bitrix24' and 'bitrix' not in source_lower:
+                            continue
+                        elif source == 'survey' and 'survey' not in source_lower:
+                            continue
+                        elif source == 'api' and 'api' not in source_lower:
+                            continue
+                        elif source == 'database' and 'database' not in source_lower and 'db' not in source_lower:
+                            continue
+                    
+                    logs.append({
+                        "timestamp": log_data['timestamp'],
+                        "level": log_data['level'].strip(),
+                        "source": log_data['source'].strip(),
+                        "message": log_data['message'].strip()
+                    })
+                else:
+                    # Если строка не соответствует паттерну, добавляем как есть
+                    logs.append({
+                        "timestamp": "",
+                        "level": "INFO",
+                        "source": "",
+                        "message": line.strip()
+                    })
+            
+            return JSONResponse({
+                "logs": logs,
+                "total": len(logs),
+                "fetched_at": datetime.utcnow().isoformat()
+            })
+            
+        except subprocess.TimeoutExpired:
+            return JSONResponse({
+                "error": "Timeout while fetching logs"
+            }, status_code=504)
+        except Exception as e:
+            logger.error(f"Ошибка при получении логов: {e}")
+            return JSONResponse({
+                "error": str(e)
+            }, status_code=500)
 
     # --- Инициализация SQLAdmin ---
     admin = Admin(

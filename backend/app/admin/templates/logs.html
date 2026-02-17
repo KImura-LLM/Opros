@@ -1,0 +1,308 @@
+{% extends "layout.html" %}
+
+{% block title %}Логи системы - {{ admin.title }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h3 class="card-title">
+                    <i class="fa-solid fa-file-lines me-2"></i>
+                    Логи системы
+                </h3>
+                <div class="btn-group" role="group">
+                    <button type="button" class="btn btn-sm btn-primary" onclick="refreshLogs()">
+                        <i class="fa-solid fa-rotate"></i> Обновить
+                    </button>
+                    <button type="button" class="btn btn-sm btn-success" onclick="autoRefresh()">
+                        <i class="fa-solid fa-play"></i> Авто (5с)
+                    </button>
+                    <button type="button" class="btn btn-sm btn-danger" onclick="stopAutoRefresh()">
+                        <i class="fa-solid fa-stop"></i> Стоп
+                    </button>
+                    <button type="button" class="btn btn-sm btn-secondary" onclick="clearLogs()">
+                        <i class="fa-solid fa-eraser"></i> Очистить
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <!-- Фильтры -->
+                <div class="row mb-3">
+                    <div class="col-md-3">
+                        <label for="filterLevel" class="form-label">Уровень логов</label>
+                        <select id="filterLevel" class="form-select form-select-sm" onchange="refreshLogs()">
+                            <option value="all">Все уровни</option>
+                            <option value="DEBUG">DEBUG</option>
+                            <option value="INFO" selected>INFO</option>
+                            <option value="WARNING">WARNING</option>
+                            <option value="ERROR">ERROR</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="filterSource" class="form-label">Источник</label>
+                        <select id="filterSource" class="form-select form-select-sm" onchange="refreshLogs()">
+                            <option value="all">Все источники</option>
+                            <option value="bitrix24">Bitrix24</option>
+                            <option value="survey">Survey Engine</option>
+                            <option value="api">API</option>
+                            <option value="database">Database</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="filterLines" class="form-label">Количество строк</label>
+                        <select id="filterLines" class="form-select form-select-sm" onchange="refreshLogs()">
+                            <option value="50">50 последних</option>
+                            <option value="100" selected>100 последних</option>
+                            <option value="200">200 последних</option>
+                            <option value="500">500 последних</option>
+                            <option value="1000">1000 последних</option>
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label for="filterSearch" class="form-label">Поиск</label>
+                        <input type="text" id="filterSearch" class="form-control form-control-sm" 
+                               placeholder="Введите текст для поиска..." onkeyup="filterLogDisplay()">
+                    </div>
+                </div>
+
+                <!-- Индикатор загрузки -->
+                <div id="loadingIndicator" class="text-center py-3" style="display: none;">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Загрузка...</span>
+                    </div>
+                    <p class="mt-2 text-muted">Загрузка логов...</p>
+                </div>
+
+                <!-- Контейнер логов -->
+                <div id="logsContainer" style="background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 5px; font-family: 'Courier New', monospace; font-size: 12px; height: 600px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word;">
+                    <div class="text-center text-muted">Нажмите "Обновить" для загрузки логов</div>
+                </div>
+
+                <div class="mt-3">
+                    <small class="text-muted">
+                        <i class="fa-solid fa-circle-info"></i>
+                        Логи загружаются с работающего сервера. Используйте фильтры для поиска нужной информации.
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Цветовая схема для разных уровней логов */
+    .log-line {
+        margin: 2px 0;
+        padding: 2px 5px;
+        border-radius: 3px;
+    }
+    
+    .log-DEBUG {
+        color: #808080;
+    }
+    
+    .log-INFO {
+        color: #4ec9b0;
+    }
+    
+    .log-WARNING {
+        color: #dcdcaa;
+        background: rgba(220, 220, 170, 0.1);
+    }
+    
+    .log-ERROR {
+        color: #f48771;
+        background: rgba(244, 135, 113, 0.1);
+        font-weight: 500;
+    }
+    
+    .log-timestamp {
+        color: #569cd6;
+    }
+    
+    .log-source {
+        color: #9cdcfe;
+    }
+    
+    #autoRefreshStatus {
+        display: inline-block;
+        margin-left: 10px;
+        padding: 4px 10px;
+        border-radius: 4px;
+        font-size: 11px;
+        background: #28a745;
+        color: white;
+    }
+</style>
+
+<script>
+let autoRefreshInterval = null;
+let rawLogs = [];
+
+// Функция загрузки логов через API
+async function refreshLogs() {
+    const level = document.getElementById('filterLevel').value;
+    const source = document.getElementById('filterSource').value;
+    const lines = document.getElementById('filterLines').value;
+    
+    const loadingIndicator = document.getElementById('loadingIndicator');
+    const logsContainer = document.getElementById('logsContainer');
+    
+    loadingIndicator.style.display = 'block';
+    logsContainer.style.display = 'none';
+    
+    try {
+        const params = new URLSearchParams({
+            level: level === 'all' ? '' : level,
+            source: source === 'all' ? '' : source,
+            lines: lines
+        });
+        
+        const response = await fetch(`/admin/api/logs?${params}`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        rawLogs = data.logs || [];
+        
+        displayLogs(rawLogs);
+        
+    } catch (error) {
+        logsContainer.innerHTML = `<div class="text-danger">
+            <i class="fa-solid fa-exclamation-triangle"></i>
+            Ошибка загрузки логов: ${error.message}
+        </div>`;
+        console.error('Ошибка загрузки логов:', error);
+    } finally {
+        loadingIndicator.style.display = 'none';
+        logsContainer.style.display = 'block';
+    }
+}
+
+// Отображение логов с подсветкой
+function displayLogs(logs) {
+    const container = document.getElementById('logsContainer');
+    
+    if (!logs || logs.length === 0) {
+        container.innerHTML = '<div class="text-center text-muted">Логи отсутствуют</div>';
+        return;
+    }
+    
+    let html = '';
+    
+    logs.forEach(log => {
+        const level = log.level || 'INFO';
+        const timestamp = log.timestamp || '';
+        const source = log.source || '';
+        const message = log.message || '';
+        
+        html += `<div class="log-line log-${level}">`;
+        html += `<span class="log-timestamp">${timestamp}</span> `;
+        html += `<span class="log-level">[${level}]</span> `;
+        if (source) {
+            html += `<span class="log-source">${source}</span> - `;
+        }
+        html += `<span class="log-message">${escapeHtml(message)}</span>`;
+        html += `</div>`;
+    });
+    
+    container.innerHTML = html;
+    
+    // Автоскролл вниз к последним логам
+    container.scrollTop = container.scrollHeight;
+}
+
+// Фильтрация отображаемых логов по поисковому запросу
+function filterLogDisplay() {
+    const searchTerm = document.getElementById('filterSearch').value.toLowerCase();
+    
+    if (!searchTerm) {
+        displayLogs(rawLogs);
+        return;
+    }
+    
+    const filtered = rawLogs.filter(log => {
+        const message = (log.message || '').toLowerCase();
+        const source = (log.source || '').toLowerCase();
+        return message.includes(searchTerm) || source.includes(searchTerm);
+    });
+    
+    displayLogs(filtered);
+}
+
+// Автообновление логов каждые 5 секунд
+function autoRefresh() {
+    if (autoRefreshInterval) {
+        return; // Уже запущено
+    }
+    
+    refreshLogs(); // Первое обновление
+    
+    autoRefreshInterval = setInterval(() => {
+        refreshLogs();
+    }, 5000);
+    
+    // Показываем индикатор
+    showAutoRefreshStatus();
+}
+
+// Остановка автообновления
+function stopAutoRefresh() {
+    if (autoRefreshInterval) {
+        clearInterval(autoRefreshInterval);
+        autoRefreshInterval = null;
+        hideAutoRefreshStatus();
+    }
+}
+
+// Показать статус автообновления
+function showAutoRefreshStatus() {
+    let status = document.getElementById('autoRefreshStatus');
+    if (!status) {
+        status = document.createElement('span');
+        status.id = 'autoRefreshStatus';
+        status.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Автообновление активно';
+        document.querySelector('.card-header .btn-group').appendChild(status);
+    }
+}
+
+// Скрыть статус автообновления
+function hideAutoRefreshStatus() {
+    const status = document.getElementById('autoRefreshStatus');
+    if (status) {
+        status.remove();
+    }
+}
+
+// Очистка отображения логов
+function clearLogs() {
+    rawLogs = [];
+    document.getElementById('logsContainer').innerHTML = '<div class="text-center text-muted">Логи очищены. Нажмите "Обновить" для загрузки новых.</div>';
+}
+
+// Экранирование HTML
+function escapeHtml(text) {
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    };
+    return text.replace(/[&<>"']/g, m => map[m]);
+}
+
+// Автозагрузка при открытии страницы
+document.addEventListener('DOMContentLoaded', () => {
+    refreshLogs();
+});
+
+// Остановка автообновления при закрытии страницы
+window.addEventListener('beforeunload', () => {
+    stopAutoRefresh();
+});
+</script>
+{% endblock %}

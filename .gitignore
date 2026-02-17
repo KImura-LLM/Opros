@@ -153,3 +153,6 @@ dump.rdb
 # Coverage
 coverage/
 .nyc_output/
+
+# Info directory
+INFO/
