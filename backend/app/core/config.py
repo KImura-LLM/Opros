@@ -64,7 +64,14 @@ class Settings(BaseSettings):
     # Битрикс24
     BITRIX24_WEBHOOK_URL: str = ""  # Исходящий вебхук (для отправки данных В Битрикс24)
     BITRIX24_INCOMING_TOKEN: str = ""  # Токен для проверки входящих запросов ОТ Битрикс24
-    BITRIX24_CATEGORY_ID: str = ""  # ID категории воронки (оставьте пустым для обработки всех воронок)
+    BITRIX24_ALLOWED_CATEGORIES: str = ""  # Разрешённые ID воронок через запятую (например "19,25"). Пусто = все воронки.
+    
+    @property
+    def ALLOWED_CATEGORY_IDS(self) -> List[str]:
+        """Парсинг списка разрешённых воронок."""
+        if not self.BITRIX24_ALLOWED_CATEGORIES:
+            return []
+        return [c.strip() for c in self.BITRIX24_ALLOWED_CATEGORIES.split(",") if c.strip()]
     
     # Сокращение URL (для SMS)
     BITLY_ACCESS_TOKEN: str = ""  # Токен Bit.ly API (опционально)

@@ -41,8 +41,8 @@ class BitrixWebhookRequest(BaseModel):
 class BitrixWebhookResponse(BaseModel):
     """Ответ на запрос от Битрикс24."""
     success: bool
-    survey_url: str = Field(..., description="Ссылка на прохождение опроса")
-    expires_in_hours: int = Field(..., description="Срок действия ссылки в часах")
+    survey_url: str = Field("", description="Ссылка на прохождение опроса")
+    expires_in_hours: int = Field(0, description="Срок действия ссылки в часах")
     message: str
 
 
@@ -155,42 +155,53 @@ async def bitrix_webhook(
         entity_type = "DEAL"
 
     # Проверка категории воронки (если настроена фильтрация)
-    if settings.BITRIX24_CATEGORY_ID:
-        resolved_category_id = category_id
+    allowed_categories = settings.ALLOWED_CATEGORY_IDS
+    if allowed_categories:
+        resolved_category_id: Optional[str] = None
 
-        # Если category_id не пришел из робота, пробуем получить его из CRM по ID сделки.
-        if not resolved_category_id and entity_type == "DEAL" and settings.BITRIX24_WEBHOOK_URL:
+        # ВСЕГДА получаем category_id из API Битрикс24 — не доверяем параметру из запроса
+        if entity_type == "DEAL" and settings.BITRIX24_WEBHOOK_URL:
             try:
                 bitrix_client = Bitrix24Client()
                 deal_data = await bitrix_client.get_deal(lead_id)
                 if deal_data:
                     resolved_category_id = str(deal_data.get("CATEGORY_ID", "")).strip() or None
-                    if resolved_category_id:
-                        logger.info(
-                            f"category_id не передан в вебхуке, загружен из CRM: "
-                            f"deal_id={lead_id}, category_id={resolved_category_id}"
-                        )
+                    logger.info(
+                        f"CATEGORY_ID загружен из CRM: "
+                        f"deal_id={lead_id}, category_id={resolved_category_id}"
+                    )
             except Exception as e:
                 logger.warning(f"Не удалось получить CATEGORY_ID из CRM для сделки {lead_id}: {e}")
+
+        # Если не удалось получить из CRM — используем значение из запроса как fallback
+        if not resolved_category_id:
+            resolved_category_id = category_id
+            if resolved_category_id:
+                logger.warning(
+                    f"category_id взят из параметров запроса (не из CRM): "
+                    f"deal_id={lead_id}, category_id={resolved_category_id}"
+                )
 
         if not resolved_category_id:
             logger.warning(
                 f"Сделка {lead_id} не содержит category_id, но фильтрация включена. "
-                f"Добавьте {{{{CATEGORY_ID}}}} в параметры робота Битрикс24."
+                f"Разрешённые воронки: {allowed_categories}."
             )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Не указана категория воронки (category_id)",
+                detail="Не удалось определить категорию воронки сделки",
             )
 
-        if str(resolved_category_id) != str(settings.BITRIX24_CATEGORY_ID):
+        if resolved_category_id not in allowed_categories:
             logger.info(
-                f"Сделка {lead_id} из категории {resolved_category_id} пропущена. "
-                f"Обрабатываются только сделки из категории {settings.BITRIX24_CATEGORY_ID}."
+                f"Сделка {lead_id} из воронки {resolved_category_id} пропущена. "
+                f"Разрешённые воронки: {allowed_categories}."
             )
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Эта воронка не обрабатывается. Разрешена только категория {settings.BITRIX24_CATEGORY_ID}.",
+            return BitrixWebhookResponse(
+                success=False,
+                survey_url="",
+                expires_in_hours=0,
+                message=f"Воронка {resolved_category_id} не обрабатывается. Разрешены: {', '.join(allowed_categories)}.",
             )
     
     # Если имя пациента не передано (или было шаблоном) — получаем из CRM
