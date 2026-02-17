@@ -31,6 +31,19 @@ logger.add(
     level="DEBUG" if settings.DEBUG else "INFO",
 )
 
+# Добавляем логирование в файл для админки
+import os
+logs_dir = os.path.join(os.getcwd(), "logs")
+os.makedirs(logs_dir, exist_ok=True)
+logger.add(
+    os.path.join(logs_dir, "app.log"),
+    rotation="10 MB",
+    retention="7 days",
+    format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
+    level="INFO",
+    encoding="utf-8"
+)
+
 
 # Фоновая задача очистки истёкших сессий
 async def periodic_session_cleanup():

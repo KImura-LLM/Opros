@@ -622,38 +622,34 @@ def setup_admin(app):
         source: str = "",
         lines: int = 100
     ):
-        """API endpoint для получения логов через Docker."""
+        """API endpoint для получения логов из файла."""
         from fastapi.responses import JSONResponse
-        import subprocess
         import re
-        from datetime import datetime
+        import os
         
         if not request.session.get("admin_authenticated"):
             return JSONResponse({"error": "Unauthorized"}, status_code=401)
         
         try:
-            # Получаем логи из Docker контейнера backend
-            cmd = [
-                "docker", "compose", "-f", "docker-compose.prod.yml",
-                "logs", "--tail", str(lines), "backend"
-            ]
+            # Путь к файлу логов
+            log_path = os.path.join(os.getcwd(), "logs", "app.log")
             
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=10
-            )
-            
-            if result.returncode != 0:
-                return JSONResponse({
-                    "error": "Failed to fetch logs",
-                    "details": result.stderr
-                }, status_code=500)
+            log_lines = []
+            if os.path.exists(log_path):
+                # Читаем последние строки файла
+                # Для оптимизации при больших файлах можно использовать seek,
+                # но с ротацией 10МБ readlines() вполне приемлем
+                with open(log_path, "r", encoding="utf-8") as f:
+                    all_lines = f.readlines()
+                    # Берем последние N строк + запас для фильтрации
+                    start_idx = max(0, len(all_lines) - lines * 2) 
+                    log_lines = all_lines[start_idx:]
+            else:
+                # Если файла нет, возвращаем пустой список (возможно первый запуск)
+                return JSONResponse({"logs": []})
             
             # Парсинг логов
             logs = []
-            log_lines = result.stdout.split('\n')
             
             # Паттерн для парсинга логов loguru
             # Пример: 2026-02-17 12:34:56 | INFO     | app.services.bitrix24:send_comment:101 - Отправка комментария
@@ -677,47 +673,25 @@ def setup_admin(app):
                         continue
                     
                     # Фильтрация по источнику
-                    if source:
-                        source_lower = log_data['source'].lower()
-                        if source == 'bitrix24' and 'bitrix' not in source_lower:
-                            continue
-                        elif source == 'survey' and 'survey' not in source_lower:
-                            continue
-                        elif source == 'api' and 'api' not in source_lower:
-                            continue
-                        elif source == 'database' and 'database' not in source_lower and 'db' not in source_lower:
-                            continue
-                    
+                    if source and source not in log_data['source']:
+                         continue
+                         
                     logs.append({
                         "timestamp": log_data['timestamp'],
                         "level": log_data['level'].strip(),
                         "source": log_data['source'].strip(),
                         "message": log_data['message'].strip()
                     })
-                else:
-                    # Если строка не соответствует паттерну, добавляем как есть
-                    logs.append({
-                        "timestamp": "",
-                        "level": "INFO",
-                        "source": "",
-                        "message": line.strip()
-                    })
             
-            return JSONResponse({
-                "logs": logs,
-                "total": len(logs),
-                "fetched_at": datetime.utcnow().isoformat()
-            })
+            # Возвращаем последние N отфильтрованных логов
+            return JSONResponse({"logs": logs[-lines:]})
             
-        except subprocess.TimeoutExpired:
-            return JSONResponse({
-                "error": "Timeout while fetching logs"
-            }, status_code=504)
         except Exception as e:
-            logger.error(f"Ошибка при получении логов: {e}")
             return JSONResponse({
-                "error": str(e)
+                "error": "Failed to fetch logs",
+                "details": str(e)
             }, status_code=500)
+
 
     # --- Инициализация SQLAdmin ---
     admin = Admin(
