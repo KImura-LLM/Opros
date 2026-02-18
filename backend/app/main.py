@@ -142,8 +142,9 @@ app.add_middleware(RateLimitMiddleware)
 
 # Доверенные прокси — чтобы X-Forwarded-Proto корректно передавался
 # и SQLAdmin генерировал https:// ссылки за Nginx
-# Ограничиваем доверенные хосты только внутренней Docker-сетью
-app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=["nginx", "127.0.0.1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"])
+# Примечание: uvicorn 0.27 не поддерживает CIDR, используем "*"
+# Безопасно — приложение доступно только через nginx (expose, не ports)
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
 # Настройка сессий для админ-панели
 app.add_middleware(
