@@ -21,6 +21,7 @@ from app.core.database import engine, Base
 from app.core.redis import redis_client
 from app.api.v1.router import api_router
 from app.admin.setup import setup_admin
+from app.core.middleware import RateLimitMiddleware
 
 
 # Настройка логирования
@@ -121,8 +122,9 @@ app = FastAPI(
     title="Опросник пациента API",
     description="API для PWA-приложения сбора анамнеза пациентов",
     version="1.0.0",
-    docs_url="/docs",
+    docs_url="/docs" if settings.DEBUG else None,
     redoc_url=None,
+    openapi_url="/openapi.json" if settings.DEBUG else None,
     lifespan=lifespan,
 )
 
@@ -135,9 +137,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Rate limiting на уровне приложения (дополняет nginx)
+app.add_middleware(RateLimitMiddleware)
+
 # Доверенные прокси — чтобы X-Forwarded-Proto корректно передавался
 # и SQLAdmin генерировал https:// ссылки за Nginx
-app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=["*"])
+# Ограничиваем доверенные хосты только внутренней Docker-сетью
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts=["nginx", "127.0.0.1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"])
 
 # Настройка сессий для админ-панели
 app.add_middleware(
@@ -145,6 +151,8 @@ app.add_middleware(
     secret_key=settings.SECRET_KEY,
     session_cookie="admin_session",
     max_age=3600,  # 1 час
+    same_site="strict",
+    https_only=not settings.DEBUG,
 )
 
 # Подключение роутеров API

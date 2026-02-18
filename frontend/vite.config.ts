@@ -9,14 +9,22 @@ export default defineConfig({
     host: '0.0.0.0',
     port: 5173,
     hmr: {
-      // Это позволяет HMR работать при доступе с телефона
-      // Если IP изменится, нужно будет обновить здесь или закомментировать host
-      host: '192.168.31.208', 
+      // HMR использует автоопределение хоста
       clientPort: 5173
     },
     watch: {
       usePolling: true,
     }
+  },
+  // Удаляем console.log/warn из production-сборки (безопасность)
+  build: {
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: true,
+        drop_debugger: true,
+      },
+    },
   },
   plugins: [
     react(),

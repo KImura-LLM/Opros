@@ -3,13 +3,37 @@
 // ============================================
 
 import { useParams, useNavigate } from 'react-router-dom';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { SurveyEditor, useEditorStore } from '../editor';
 
 const EditorPage = () => {
   const { surveyId } = useParams<{ surveyId: string }>();
   const navigate = useNavigate();
   const isDirty = useEditorStore(state => state.isDirty);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isChecking, setIsChecking] = useState(true);
+  
+  // Проверка авторизации перед показом редактора
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const response = await fetch('/admin/api/session', {
+          credentials: 'include',
+        });
+        if (response.ok) {
+          setIsAuthenticated(true);
+        } else {
+          // Перенаправляем на админку для входа
+          window.location.href = '/admin/login';
+        }
+      } catch {
+        window.location.href = '/admin/login';
+      } finally {
+        setIsChecking(false);
+      }
+    };
+    checkAuth();
+  }, []);
   
   useEffect(() => {
     // Если ID не указан, редирект на список
@@ -33,6 +57,20 @@ const EditorPage = () => {
   }, [isDirty]);
   
   if (!surveyId) {
+    return null;
+  }
+  
+  // Показываем загрузку пока проверяем авторизацию
+  if (isChecking) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <p className="text-slate-600">Проверка доступа...</p>
+      </div>
+    );
+  }
+  
+  // Не авторизован — не показываем UI редактора
+  if (!isAuthenticated) {
     return null;
   }
   

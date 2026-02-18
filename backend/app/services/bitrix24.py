@@ -16,6 +16,7 @@ from typing import Optional
 from loguru import logger
 
 from app.core.config import settings
+from app.core.log_utils import mask_name
 
 
 class Bitrix24Client:
@@ -252,7 +253,7 @@ class Bitrix24Client:
         full_name = f"{name} {last_name}".strip()
         
         if full_name:
-            logger.info(f"Имя пациента из Битрикс24: {full_name} (сделка {deal_id})")
+            logger.info(f"Имя пациента из Битрикс24: {mask_name(full_name)} (сделка {deal_id})")
         
         return full_name or None
 

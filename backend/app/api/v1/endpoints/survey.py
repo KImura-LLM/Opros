@@ -20,6 +20,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.redis import get_redis, RedisClient
 from app.core.security import verify_token, get_token_hash
+from app.core.log_utils import mask_name
 from app.models import SurveyConfig, SurveySession, SurveyAnswer, AuditLog
 from app.schemas import (
     SurveyStartRequest,
@@ -189,7 +190,7 @@ async def start_survey(
             if entity_type == "DEAL":
                 patient_name = await bitrix_client.get_patient_name_from_deal(token_data.lead_id)
             if patient_name:
-                logger.info(f"Имя пациента загружено из CRM при старте опроса: {patient_name}")
+                logger.info(f"Имя пациента загружено из CRM при старте опроса: {mask_name(patient_name)}")
         except Exception as e:
             logger.warning(f"Не удалось загрузить имя из CRM: {e}")
     

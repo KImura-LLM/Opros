@@ -9,7 +9,12 @@ from datetime import datetime
 from typing import Any, Optional, List
 from uuid import UUID
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, Field, ConfigDict, field_validator
+import json
+
+
+# Максимальный размер JSON-данных ответа (16 КБ)
+MAX_ANSWER_DATA_SIZE = 16 * 1024
 
 
 # ==========================================
@@ -109,8 +114,30 @@ class SurveyStartResponse(BaseModel):
 class SurveyAnswerRequest(BaseModel):
     """Запрос на сохранение ответа."""
     session_id: UUID
-    node_id: str = Field(..., description="ID текущего вопроса")
+    node_id: str = Field(..., description="ID текущего вопроса", max_length=200)
     answer_data: dict = Field(..., description="Ответ пользователя")
+    
+    @field_validator("answer_data")
+    @classmethod
+    def validate_answer_data_size(cls, v: dict) -> dict:
+        """Проверка размера и глубины answer_data для защиты от DoS."""
+        serialized = json.dumps(v, ensure_ascii=False)
+        if len(serialized) > MAX_ANSWER_DATA_SIZE:
+            raise ValueError(
+                f"Размер ответа превышает допустимый лимит ({MAX_ANSWER_DATA_SIZE // 1024} КБ)"
+            )
+        # Проверка глубины вложенности (максимум 5 уровней)
+        def check_depth(obj, depth=0):
+            if depth > 5:
+                raise ValueError("Слишком глубокая вложенность данных ответа (максимум 5)")
+            if isinstance(obj, dict):
+                for val in obj.values():
+                    check_depth(val, depth + 1)
+            elif isinstance(obj, list):
+                for item in obj:
+                    check_depth(item, depth + 1)
+        check_depth(v)
+        return v
 
 
 class SurveyAnswerResponse(BaseModel):

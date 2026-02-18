@@ -51,6 +51,7 @@ services:
       - .env
     environment:
       - ENVIRONMENT=development
+      - DEBUG=true
     volumes:
       - ./backend:/app
     ports:

@@ -79,10 +79,10 @@ class SurveyEngine:
             condition = rule.get("condition")
             if condition and self._evaluate_condition(condition, answer, all_answers):
                 next_node = rule.get("next_node")
-                logger.info(f"Условие выполнено: {condition} -> {next_node} (answer: {answer})")
+                logger.info(f"Условие выполнено: {condition} -> {next_node}")
                 return next_node
             elif condition:
-                logger.debug(f"Условие НЕ выполнено: {condition} (answer: {answer})")
+                logger.debug(f"Условие НЕ выполнено: {condition}")
         
         # Ищем default переход
         for rule in logic:

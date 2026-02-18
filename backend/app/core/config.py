@@ -25,8 +25,8 @@ class Settings(BaseSettings):
     )
     
     # Общие настройки
-    ENVIRONMENT: str = "development"
-    DEBUG: bool = True
+    ENVIRONMENT: str = "production"
+    DEBUG: bool = False
     SECRET_KEY: str = "change-me-in-production"
     
     # База данных PostgreSQL
@@ -116,26 +116,34 @@ def get_settings() -> Settings:
     """
     s = Settings()
     
-    # Проверка критических настроек безопасности в production
-    if s.ENVIRONMENT == "production" or not s.DEBUG:
-        insecure_defaults = []
-        
-        if s.SECRET_KEY == "change-me-in-production":
-            insecure_defaults.append("SECRET_KEY")
-        if s.JWT_SECRET_KEY == "jwt-secret-change-me":
-            insecure_defaults.append("JWT_SECRET_KEY")
-        if s.ADMIN_PASSWORD == "admin":
-            insecure_defaults.append("ADMIN_PASSWORD")
-        if s.ADMIN_USERNAME == "admin":
-            insecure_defaults.append("ADMIN_USERNAME")
-        if s.POSTGRES_PASSWORD == "opros_password":
-            insecure_defaults.append("POSTGRES_PASSWORD")
-        
-        if insecure_defaults:
+    # Проверка критических настроек безопасности — ВСЕГДА, не только в production
+    insecure_defaults = []
+    
+    if s.SECRET_KEY == "change-me-in-production":
+        insecure_defaults.append("SECRET_KEY")
+    if s.JWT_SECRET_KEY == "jwt-secret-change-me":
+        insecure_defaults.append("JWT_SECRET_KEY")
+    if s.ADMIN_PASSWORD == "admin":
+        insecure_defaults.append("ADMIN_PASSWORD")
+    if s.ADMIN_USERNAME == "admin":
+        insecure_defaults.append("ADMIN_USERNAME")
+    if s.POSTGRES_PASSWORD == "opros_password":
+        insecure_defaults.append("POSTGRES_PASSWORD")
+    
+    if insecure_defaults:
+        if s.ENVIRONMENT == "production" or not s.DEBUG:
             raise ValueError(
                 f"КРИТИЧЕСКАЯ ОШИБКА БЕЗОПАСНОСТИ: В production используются дефолтные значения: "
                 f"{', '.join(insecure_defaults)}. "
                 f"Установите безопасные значения в переменных окружения или .env файле."
+            )
+        else:
+            import warnings
+            warnings.warn(
+                f"⚠️ ВНИМАНИЕ: Используются небезопасные дефолтные значения: "
+                f"{', '.join(insecure_defaults)}. "
+                f"Обязательно замените перед деплоем в production!",
+                stacklevel=2,
             )
     
     return s

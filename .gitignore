@@ -156,3 +156,8 @@ coverage/
 
 # Info directory
 INFO/
+
+# CI/CD Pipelines
+.github/workflows/
+.gitlab-ci.yml
+*.jenkinsfile

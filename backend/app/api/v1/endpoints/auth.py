@@ -14,6 +14,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.redis import get_redis, RedisClient
 from app.core.security import verify_token, get_token_hash, create_access_token
+from app.core.log_utils import mask_name
 from app.models import SurveyConfig, SurveySession
 from app.schemas import TokenValidationRequest, TokenValidationResponse
 from app.services.bitrix24 import Bitrix24Client
@@ -88,11 +89,11 @@ async def validate_token(
             if entity_type == "DEAL":
                 patient_name = await bitrix_client.get_patient_name_from_deal(token_data.lead_id)
             if patient_name:
-                logger.info(f"Имя пациента загружено из CRM: {patient_name}")
+                logger.info(f"Имя пациента загружено из CRM: {mask_name(patient_name)}")
         except Exception as e:
             logger.warning(f"Не удалось загрузить имя из CRM: {e}")
     
-    logger.info(f"Токен валиден: lead_id={token_data.lead_id}, patient={patient_name}")
+    logger.info(f"Токен валиден: lead_id={token_data.lead_id}, patient={mask_name(patient_name)}")
     
     return TokenValidationResponse(
         valid=True,

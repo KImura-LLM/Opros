@@ -15,6 +15,7 @@ from loguru import logger
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import create_access_token
+from app.core.log_utils import mask_name
 from app.services.bitrix24 import Bitrix24Client
 
 
@@ -134,19 +135,18 @@ async def bitrix_webhook(
             detail="Не указан ID сделки/лида (lead_id)",
         )
     
-    # Проверка токена авторизации (обязательна в production)
-    if settings.BITRIX24_INCOMING_TOKEN:
-        if auth_token != settings.BITRIX24_INCOMING_TOKEN:
-            logger.warning(f"Неверный auth_token в вебхуке от Битрикс24. IP: {request.client.host}")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Неверный токен авторизации",
-            )
-    elif settings.ENVIRONMENT == "production" or not settings.DEBUG:
-        logger.error("BITRIX24_INCOMING_TOKEN не настроен в production!")
+    # Проверка токена авторизации (обязательна всегда)
+    if not settings.BITRIX24_INCOMING_TOKEN:
+        logger.error("BITRIX24_INCOMING_TOKEN не настроен! Вебхуки отклонены.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Сервер не настроен для приёма вебхуков",
+            detail="Сервер не настроен для приёма вебхуков: BITRIX24_INCOMING_TOKEN не задан",
+        )
+    if auth_token != settings.BITRIX24_INCOMING_TOKEN:
+        logger.warning(f"Неверный auth_token в вебхуке от Битрикс24. IP: {request.client.host}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Неверный токен авторизации",
         )
     
     # Нормализация entity_type
@@ -210,7 +210,7 @@ async def bitrix_webhook(
         if entity_type == "DEAL":
             patient_name = await bitrix_client.get_patient_name_from_deal(lead_id)
         if patient_name:
-            logger.info(f"Имя пациента загружено из CRM: {patient_name}")
+            logger.info(f"Имя пациента загружено из CRM: {mask_name(patient_name)}")
         else:
             logger.warning(f"Не удалось получить имя пациента из CRM для сделки {lead_id}")
     
@@ -225,7 +225,7 @@ async def bitrix_webhook(
     
     logger.info(
         f"Сгенерирована ссылка для опроса: "
-        f"lead_id={lead_id}, patient={patient_name}, "
+        f"lead_id={lead_id}, patient={mask_name(patient_name)}, "
         f"entity_type={entity_type}"
     )
     
@@ -290,19 +290,18 @@ async def generate_survey_link(
     Returns:
         URL для прохождения опроса
     """
-    # Проверка токена авторизации (обязательна в production)
-    if settings.BITRIX24_INCOMING_TOKEN:
-        if data.auth_token != settings.BITRIX24_INCOMING_TOKEN:
-            logger.warning(f"Неверный auth_token. IP: {request.client.host}")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Неверный токен авторизации",
-            )
-    elif settings.ENVIRONMENT == "production" or not settings.DEBUG:
-        logger.error("BITRIX24_INCOMING_TOKEN не настроен в production!")
+    # Проверка токена авторизации (обязательна всегда)
+    if not settings.BITRIX24_INCOMING_TOKEN:
+        logger.error("BITRIX24_INCOMING_TOKEN не настроен! Вебхуки отклонены.")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Сервер не настроен для приёма вебхуков",
+            detail="Сервер не настроен для приёма вебхуков: BITRIX24_INCOMING_TOKEN не задан",
+        )
+    if data.auth_token != settings.BITRIX24_INCOMING_TOKEN:
+        logger.warning(f"Неверный auth_token. IP: {request.client.host}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Неверный токен авторизации",
         )
     
     # Нормализация entity_type
@@ -320,7 +319,7 @@ async def generate_survey_link(
     
     logger.info(
         f"Сгенерирована ссылка (generate-link): "
-        f"lead_id={data.lead_id}, patient={data.patient_name}"
+        f"lead_id={data.lead_id}, patient={mask_name(data.patient_name)}"
     )
     
     return BitrixWebhookResponse(

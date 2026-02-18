@@ -39,12 +39,13 @@ const HomePage: React.FC = () => {
           if (response.session_id) {
             setSession(response.session_id, response.patient_name || undefined, response.expires_at)
           }
+          // Очищаем токен из URL (безопасность: не оставляем JWT в истории браузера)
+          window.history.replaceState({}, '', window.location.pathname)
         } else {
           setError('Ссылка недействительна или срок её действия истёк.')
         }
       })
       .catch((err) => {
-        console.error('Token validation error:', err)
         setError(err.message || 'Ошибка проверки ссылки')
       })
       .finally(() => {
@@ -62,7 +63,6 @@ const HomePage: React.FC = () => {
       setConfig(response.survey_config)
       navigate('/survey')
     } catch (err) {
-      console.error('Start survey error:', err)
       setError(err instanceof Error ? err.message : 'Ошибка при начале опроса')
     } finally {
       setIsStarting(false)
