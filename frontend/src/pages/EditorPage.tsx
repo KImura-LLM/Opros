@@ -23,13 +23,13 @@ const EditorPage = () => {
         if (response.ok) {
           setIsAuthenticated(true);
         } else {
-          // Перенаправляем на страницу входа, сохраняя текущий URL для возврата
-          const returnUrl = encodeURIComponent(window.location.pathname);
-          window.location.href = `/admin/login?next=${returnUrl}`;
+          // Сохраняем URL возврата в cookie (форма SQLAdmin не передаёт query params)
+          document.cookie = `admin_redirect=${encodeURIComponent(window.location.pathname)}; path=/; SameSite=Lax; max-age=300`;
+          window.location.href = '/admin/login';
         }
       } catch {
-        const returnUrl = encodeURIComponent(window.location.pathname);
-        window.location.href = `/admin/login?next=${returnUrl}`;
+        document.cookie = `admin_redirect=${encodeURIComponent(window.location.pathname)}; path=/; SameSite=Lax; max-age=300`;
+        window.location.href = '/admin/login';
       } finally {
         setIsChecking(false);
       }

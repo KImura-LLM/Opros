@@ -626,29 +626,32 @@ def setup_admin(app):
     @app.post("/admin/login", include_in_schema=False)
     async def admin_login_with_next(request: Request):
         """
-        Кастомный обработчик логина с поддержкой параметра ?next= для редиректа.
+        Кастомный обработчик логина с поддержкой редиректа обратно в редактор.
+        Читает URL возврата из cookie `admin_redirect` (т.к. форма SQLAdmin не передаёт query params).
         Регистрируется ДО создания Admin(), чтобы перехватить стандартный хендлер SQLAdmin.
         """
         from starlette.responses import RedirectResponse as RR
+        from starlette.responses import Response
 
         form = await request.form()
         username = form.get("username")
         password = form.get("password")
-        next_url = request.query_params.get("next", "").strip()
+
+        # Читаем URL возврата из cookie (устанавливается фронтендом перед редиректом на логин)
+        redirect_cookie = request.cookies.get("admin_redirect", "").strip()
 
         if username == settings.ADMIN_USERNAME and password == settings.ADMIN_PASSWORD:
             request.session.update({"admin_authenticated": True})
-            logger.info(f"Администратор вошёл в систему, редирект: {next_url or '/admin/'}")
-            # Редирект на указанную страницу (только внутренние ссылки)
-            redirect_to = next_url if (next_url and next_url.startswith("/")) else "/admin/"
-            return RR(url=redirect_to, status_code=303)
+            # Редирект только на внутренние страницы в целях безопасности
+            redirect_to = redirect_cookie if (redirect_cookie and redirect_cookie.startswith("/")) else "/admin/"
+            logger.info(f"Администратор вошёл в систему, редирект: {redirect_to}")
+            response = RR(url=redirect_to, status_code=303)
+            # Удаляем cookie после использования
+            response.delete_cookie("admin_redirect", path="/")
+            return response
 
         logger.warning("Неудачная попытка входа в админ-панель")
-        # Неверные данные — возврат на форму с ошибкой
-        fail_url = "/admin/login"
-        if next_url:
-            fail_url += f"?next={next_url}"
-        return RR(url=fail_url, status_code=302)
+        return RR(url="/admin/login", status_code=302)
 
     @app.get("/admin/api/logs", include_in_schema=False)
     async def admin_api_logs(
