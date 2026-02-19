@@ -154,10 +154,20 @@ dump.rdb
 coverage/
 .nyc_output/
 
-# Info directory
+# Документация с секретами (не коммитить!)
 INFO/
+
+# CI/CD шаблоны (не используются)
+opros-cicd/
 
 # CI/CD Pipelines
 .github/workflows/
 .gitlab-ci.yml
 *.jenkinsfile
+
+# Отладочные артефакты Playwright MCP
+.playwright-mcp/
+
+# Корневой package.json (не нужен)
+/package.json
+/package-lock.json
