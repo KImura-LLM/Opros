@@ -693,6 +693,50 @@ def setup_admin(app):
             }, status_code=500)
 
 
+    # --- Ручной запуск очистки истёкших сессий (только для авторизованных) ---
+    @app.post("/admin/cleanup-sessions", include_in_schema=False)
+    async def admin_cleanup_sessions(request: Request):
+        """Ручная принудительная очистка истёкших и зависших сессий."""
+        from fastapi.responses import JSONResponse
+        from datetime import datetime, timezone, timedelta
+        from sqlalchemy import update
+        from app.core.database import async_session_maker
+        from app.models import SurveySession
+
+        if not request.session.get("admin_authenticated"):
+            return JSONResponse({"error": "Не авторизован"}, status_code=403)
+
+        now = datetime.now(timezone.utc)
+        # Граница "зависших" без expires_at — старше 3 часов
+        stale_threshold = now - timedelta(hours=3)
+
+        async with async_session_maker() as db:
+            # 1. Закрываем сессии с истёкшим expires_at
+            res1 = await db.execute(
+                update(SurveySession)
+                .where(
+                    SurveySession.status == "in_progress",
+                    SurveySession.expires_at.isnot(None),
+                    SurveySession.expires_at < now,
+                )
+                .values(status="abandoned", completed_at=now)
+            )
+            # 2. Закрываем сессии без expires_at, старше 3 часов
+            res2 = await db.execute(
+                update(SurveySession)
+                .where(
+                    SurveySession.status == "in_progress",
+                    SurveySession.expires_at.is_(None),
+                    SurveySession.started_at < stale_threshold,
+                )
+                .values(status="abandoned", completed_at=now)
+            )
+            await db.commit()
+
+        count = res1.rowcount + res2.rowcount
+        logger.info(f"Ручная очистка: завершено {count} истёкших/зависших сессий")
+        return JSONResponse({"success": True, "closed": count, "timestamp": now.isoformat()})
+
     # --- Инициализация SQLAdmin ---
     admin = Admin(
         app,
