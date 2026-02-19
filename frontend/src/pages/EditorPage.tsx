@@ -23,11 +23,13 @@ const EditorPage = () => {
         if (response.ok) {
           setIsAuthenticated(true);
         } else {
-          // Перенаправляем на админку для входа
-          window.location.href = '/admin/login';
+          // Перенаправляем на страницу входа, сохраняя текущий URL для возврата
+          const returnUrl = encodeURIComponent(window.location.pathname);
+          window.location.href = `/admin/login?next=${returnUrl}`;
         }
       } catch {
-        window.location.href = '/admin/login';
+        const returnUrl = encodeURIComponent(window.location.pathname);
+        window.location.href = `/admin/login?next=${returnUrl}`;
       } finally {
         setIsChecking(false);
       }

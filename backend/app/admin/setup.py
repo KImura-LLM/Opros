@@ -615,6 +615,41 @@ def setup_admin(app):
             {"request": request, "admin": AdminStub()},
         )
     
+    @app.get("/admin/api/session", include_in_schema=False)
+    async def admin_api_session(request: Request):
+        """Проверка статуса сессии администратора. Используется фронтендом (EditorPage)."""
+        from fastapi.responses import JSONResponse
+        if request.session.get("admin_authenticated", False):
+            return JSONResponse({"authenticated": True})
+        return JSONResponse({"authenticated": False}, status_code=401)
+
+    @app.post("/admin/login", include_in_schema=False)
+    async def admin_login_with_next(request: Request):
+        """
+        Кастомный обработчик логина с поддержкой параметра ?next= для редиректа.
+        Регистрируется ДО создания Admin(), чтобы перехватить стандартный хендлер SQLAdmin.
+        """
+        from starlette.responses import RedirectResponse as RR
+
+        form = await request.form()
+        username = form.get("username")
+        password = form.get("password")
+        next_url = request.query_params.get("next", "").strip()
+
+        if username == settings.ADMIN_USERNAME and password == settings.ADMIN_PASSWORD:
+            request.session.update({"admin_authenticated": True})
+            logger.info(f"Администратор вошёл в систему, редирект: {next_url or '/admin/'}")
+            # Редирект на указанную страницу (только внутренние ссылки)
+            redirect_to = next_url if (next_url and next_url.startswith("/")) else "/admin/"
+            return RR(url=redirect_to, status_code=303)
+
+        logger.warning("Неудачная попытка входа в админ-панель")
+        # Неверные данные — возврат на форму с ошибкой
+        fail_url = "/admin/login"
+        if next_url:
+            fail_url += f"?next={next_url}"
+        return RR(url=fail_url, status_code=302)
+
     @app.get("/admin/api/logs", include_in_schema=False)
     async def admin_api_logs(
         request: Request,
