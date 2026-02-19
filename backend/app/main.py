@@ -51,12 +51,12 @@ async def periodic_session_cleanup():
     """Периодическая очистка истёкших сессий"""
     from datetime import datetime, timezone
     from sqlalchemy import select, update
-    from app.core.database import AsyncSessionLocal
+    from app.core.database import async_session_maker
     from app.models import SurveySession
     
     while True:
         try:
-            async with AsyncSessionLocal() as db:
+            async with async_session_maker() as db:
                 now = datetime.now(timezone.utc)
                 
                 # Находим истёкшие сессии
@@ -107,6 +107,11 @@ async def lifespan(app: FastAPI):
     
     # Запуск фоновой задачи очистки истёкших сессий
     cleanup_task = asyncio.create_task(periodic_session_cleanup())
+    # Логирование необработанных исключений фоновой задачи
+    cleanup_task.add_done_callback(
+        lambda t: logger.error(f"💥 Фоновая задача очистки упала с ошибкой: {t.exception()}")
+        if not t.cancelled() and t.exception() else None
+    )
     logger.info("⏰ Запущена фоновая задача очистки истёкших сессий (каждые 15 мин)")
     
     yield
