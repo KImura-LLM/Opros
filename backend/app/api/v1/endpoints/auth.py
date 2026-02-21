@@ -13,10 +13,10 @@ from loguru import logger
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.redis import get_redis, RedisClient
-from app.core.security import verify_token, get_token_hash, create_access_token
+from app.core.security import verify_token, create_access_token
 from app.core.log_utils import mask_name
-from app.models import SurveyConfig, SurveySession
-from app.schemas import TokenValidationRequest, TokenValidationResponse
+from app.models import SurveySession
+from app.schemas import TokenValidationResponse
 from app.services.bitrix24 import Bitrix24Client
 
 router = APIRouter()

@@ -1,10 +1,6 @@
 # Schemas module
 from app.schemas.schemas import (
-    SurveyConfigSchema,
     SurveyConfigResponse,
-    SurveyNodeSchema,
-    SurveyOptionSchema,
-    TokenValidationRequest,
     TokenValidationResponse,
     SurveyStartRequest,
     SurveyStartResponse,
@@ -13,16 +9,10 @@ from app.schemas.schemas import (
     SurveyProgressResponse,
     SurveyCompleteRequest,
     SurveyCompleteResponse,
-    ErrorResponse,
-    SuccessResponse,
 )
 
 __all__ = [
-    "SurveyConfigSchema",
     "SurveyConfigResponse",
-    "SurveyNodeSchema",
-    "SurveyOptionSchema",
-    "TokenValidationRequest",
     "TokenValidationResponse",
     "SurveyStartRequest",
     "SurveyStartResponse",
@@ -31,6 +21,4 @@ __all__ = [
     "SurveyProgressResponse",
     "SurveyCompleteRequest",
     "SurveyCompleteResponse",
-    "ErrorResponse",
-    "SuccessResponse",
 ]
