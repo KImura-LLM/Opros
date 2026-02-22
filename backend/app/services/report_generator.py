@@ -1200,7 +1200,7 @@ class ReportGenerator:
         body {{
             font-family: Arial, sans-serif;
             font-size: 9pt;
-            line-height: 1.35;
+            line-height: 1.6;
             color: #1a1a1a;
             background: #fff;
         }}
@@ -1212,10 +1212,10 @@ class ReportGenerator:
         .report-header {{
             display: flex;
             justify-content: space-between;
-            align-items: baseline;
+            align-items: center;
             border-bottom: 1.5pt solid #1d4ed8;
-            padding-bottom: 3px;
-            margin-bottom: 5px;
+            padding-bottom: 5px;
+            margin-bottom: 8px;
         }}
         .report-header h1 {{
             font-size: 11pt;
@@ -1227,46 +1227,55 @@ class ReportGenerator:
             font-size: 8pt;
             color: #555;
             text-align: right;
+            line-height: 1.7;
         }}
         /* ── Блоки ── */
         .block {{
             border: 0.75pt solid #cbd5e1;
-            border-radius: 3px;
-            margin-bottom: 4px;
+            border-radius: 4px;
+            margin-bottom: 7px;
             page-break-inside: avoid;
         }}
         .block-title {{
             background: #eff6ff;
             border-bottom: 0.75pt solid #bfdbfe;
-            padding: 2px 6px;
+            padding: 4px 8px;
             font-size: 9pt;
             font-weight: 700;
             color: #1e40af;
+            letter-spacing: 0.2px;
         }}
         .block-body {{
-            padding: 3px 6px;
+            padding: 5px 8px 6px;
         }}
         /* ── Подблоки внутри (h2) ── */
         .block-body h2 {{
             font-size: 8.5pt;
             font-weight: 700;
             color: #374151;
-            margin-top: 4px;
-            margin-bottom: 1px;
+            margin-top: 7px;
+            margin-bottom: 2px;
             border-bottom: 0.5pt solid #e5e7eb;
-            padding-bottom: 1px;
+            padding-bottom: 2px;
         }}
         .block-body h2:first-child {{ margin-top: 0; }}
-        .block-body p, .block-body li {{
+        .block-body p {{
             font-size: 8.5pt;
-            margin-bottom: 1px;
+            margin-bottom: 3px;
             color: #1a1a1a;
+            line-height: 1.55;
         }}
         .block-body ul {{
-            margin: 0 0 2px 12px;
+            margin: 2px 0 4px 14px;
             padding: 0;
         }}
-        .block-body li {{ list-style: disc; }}
+        .block-body li {{
+            font-size: 8.5pt;
+            margin-bottom: 2px;
+            color: #1a1a1a;
+            line-height: 1.55;
+            list-style: disc;
+        }}
         /* ── Алерты ── */
         .alert-block {{
             background: #fff7ed;
@@ -1280,17 +1289,20 @@ class ReportGenerator:
         .alert-item {{
             background: #fff;
             border-left: 2pt solid #f59e0b;
-            padding: 2px 5px;
-            margin-bottom: 2px;
+            padding: 4px 7px;
+            margin-bottom: 4px;
             font-size: 8pt;
+            line-height: 1.5;
+            border-radius: 0 2px 2px 0;
         }}
+        .alert-item:last-child {{ margin-bottom: 0; }}
         /* Интенсивность */
         .badge {{
             display: inline-block;
             background: #fee2e2;
             color: #991b1b;
             border-radius: 2px;
-            padding: 0 4px;
+            padding: 1px 5px;
             font-size: 8pt;
             font-weight: 600;
         }}
