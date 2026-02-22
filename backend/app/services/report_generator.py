@@ -881,77 +881,84 @@ class ReportGenerator:
         patient_name: Optional[str],
         answers: Dict[str, Any],
     ) -> str:
-        """Генерация читаемого HTML-отчёта для v2 опросника."""
-        content_parts = []
-        
-        # Заголовок
+        """Генерация читаемого HTML-отчёта для v2 опросника — три блока, один лист А4."""
         name = patient_name or "Не указано"
         date = datetime.now().strftime("%d.%m.%Y %H:%M")
-        
-        content_parts.append(f"""
-        <div class="header">
-            <h1>📋 ПОДРОБНАЯ АНКЕТА ПАЦИЕНТА</h1>
-            <p class="subtitle">Клинический опрос v2.0</p>
-            <div class="patient-info">
-                <div><strong>Пациент:</strong> {name}</div>
-                <div><strong>Дата:</strong> {date}</div>
-            </div>
-        </div>
-        """)
-        
-        # Блок 1: Жалобы и боль
+
+        # ── БЛОК 1: ОСНОВНЫЕ ЖАЛОБЫ ──────────────────────────────────────
+        block1_rows: List[str] = []
+
+        # Локализация и характер боли
         pain_block = self._generate_v2_readable_pain_block(answers)
         if pain_block:
-            content_parts.append(f'<div class="section">{pain_block}</div>')
-        
-        # Свободное описание
-        free_complaint = answers.get("free_complaint", {})
-        free_text = free_complaint.get("text", "").strip()
+            block1_rows.append(pain_block)
+
+        # Жалобы своими словами
+        free_text = answers.get("free_complaint", {}).get("text", "").strip()
         if free_text:
-            content_parts.append(f'<div class="section"><h2>📝 Жалобы своими словами</h2><p>{free_text}</p></div>')
-        
+            block1_rows.append(f'<p><strong>Описание:</strong> {free_text}</p>')
+
         # Температура
         temp_block = self._generate_v2_readable_temperature(answers)
         if temp_block:
-            content_parts.append(f'<div class="section">{temp_block}</div>')
-        
+            block1_rows.append(temp_block)
+
         # Дыхательная система
         resp_block = self._generate_v2_readable_respiratory(answers)
         if resp_block:
-            content_parts.append(f'<div class="section">{resp_block}</div>')
-        
-        # Сердечно-сосудистая
+            block1_rows.append(resp_block)
+
+        # Сердечно-сосудистая система
         cardio_block = self._generate_v2_readable_cardio(answers)
         if cardio_block:
-            content_parts.append(f'<div class="section">{cardio_block}</div>')
-        
+            block1_rows.append(cardio_block)
+
         # ЖКТ
         gastro_block = self._generate_v2_readable_gastro(answers)
         if gastro_block:
-            content_parts.append(f'<div class="section">{gastro_block}</div>')
-        
-        # Мочевыделительная
+            block1_rows.append(gastro_block)
+
+        # Мочевыделительная система
         urinary_block = self._generate_v2_readable_urinary(answers)
         if urinary_block:
-            content_parts.append(f'<div class="section">{urinary_block}</div>')
-        
-        # История заболевания
+            block1_rows.append(urinary_block)
+
+        # ── БЛОК 2: ИСТОРИЯ ЗАБОЛЕВАНИЯ ──────────────────────────────────
+        block2_rows: List[str] = []
         history_block = self._generate_v2_readable_disease_history(answers)
         if history_block:
-            content_parts.append(f'<div class="section">{history_block}</div>')
-        
-        # Анамнез жизни
-        life_block = self._generate_v2_readable_life_history(answers)
-        if life_block:
-            content_parts.append(f'<div class="section">{life_block}</div>')
-        
-        # Алерты
+            block2_rows.append(history_block)
+
+        # Алерты — в блок истории болезни
         alerts = self._generate_v2_readable_alerts(answers)
         if alerts:
-            content_parts.append(f'<div class="section alert-section">{alerts}</div>')
-        
-        # Собираем HTML документ (используем те же стили)
-        html = self._wrap_in_html_document(name, content_parts)
+            block2_rows.append(alerts)
+
+        # ── БЛОК 3: АНАМНЕЗ ЖИЗНИ ────────────────────────────────────────
+        block3_rows: List[str] = []
+        life_block = self._generate_v2_readable_life_history(answers)
+        if life_block:
+            block3_rows.append(life_block)
+
+        def wrap_block(title: str, icon: str, rows: List[str], extra_class: str = "") -> str:
+            """Обёртка одного тематического блока."""
+            if not rows:
+                return ""
+            inner = "".join(rows)
+            return (
+                f'<div class="block {extra_class}">'
+                f'<div class="block-title">{icon} {title}</div>'
+                f'<div class="block-body">{inner}</div>'
+                f'</div>'
+            )
+
+        section_html = "".join([
+            wrap_block("Основные жалобы", "🩺", block1_rows),
+            wrap_block("История заболевания", "📋", block2_rows),
+            wrap_block("Анамнез жизни", "💊", block3_rows),
+        ])
+
+        html = self._wrap_in_html_document_compact(name, date, section_html)
         return html
     
     def _generate_v2_readable_pain_block(self, answers: Dict[str, Any]) -> Optional[str]:
@@ -965,12 +972,12 @@ class ReportGenerator:
         scale_value = pain_int.get("value")
         
         if isinstance(pain_selected, list) and "no_pain" in pain_selected:
-            return "<h2>📌 Основные жалобы</h2><p>Боль отсутствует (профилактика/другое)</p>"
+            return "<p>Боль отсутствует (профилактика/другое)</p>"
         
         if not locations and not pain_selected and scale_value is None:
             return None
         
-        parts = ["<h2>🩺 Основные жалобы и характеристика боли</h2>"]
+        parts = ["<h2>Локализация и характеристика боли</h2>"]
         
         if locations:
             loc_map = {"head": "Голова", "throat": "Горло", "chest": "Грудная клетка", "abdomen": "Живот", "back": "Поясница", "joints": "Суставы"}
@@ -978,7 +985,7 @@ class ReportGenerator:
             parts.append(f"<p><strong>Локализация:</strong> {', '.join(loc_names)}</p>")
         
         if body_intensity:
-            parts.append(f'<p><strong>Интенсивность:</strong> <span class="intensity-badge">{body_intensity}/10</span></p>')
+            parts.append(f'<p><strong>Интенсивность:</strong> <span class="badge">{body_intensity}/10</span></p>')
         
         if isinstance(pain_selected, list) and pain_selected:
             char_map = {"sharp": "Острая", "dull": "Тупая/Ноющая", "pressing": "Сжимающая", "stabbing": "Колющая", "burning": "Жгучая", "cramping": "Приступообразная", "constant": "Постоянная"}
@@ -987,7 +994,7 @@ class ReportGenerator:
                 parts.append(f"<p><strong>Характер:</strong> {', '.join(chars)}</p>")
         
         if scale_value is not None:
-            parts.append(f'<p><strong>Интенсивность (шкала):</strong> <span class="intensity-badge">{scale_value}/10</span></p>')
+            parts.append(f'<p><strong>Интенсивность (шкала):</strong> <span class="badge">{scale_value}/10</span></p>')
         
         return "".join(parts)
     
@@ -996,7 +1003,7 @@ class ReportGenerator:
         temp = answers.get("temperature_filter", {})
         if temp.get("selected") != "yes":
             return None
-        parts = ["<h2>🌡️ Температура</h2><p>Повышена</p><ul>"]
+        parts = ["<h2>🌡️ Температура</h2><p><strong>Статус:</strong> Повышена</p><ul>"]
         details = answers.get("temperature_details", {}).get("selected", [])
         det_map = {"chills": "Озноб", "sweating": "Потливость", "temp_morning": "Выше утром", "temp_evening": "Выше вечером"}
         if isinstance(details, list):
@@ -1010,7 +1017,7 @@ class ReportGenerator:
         """Дыхательная для v2 readable."""
         if answers.get("resp_filter", {}).get("selected") != "yes":
             return None
-        parts = ["<h2>🫁 Дыхательная система</h2><ul>"]
+        parts = ["<h2>Дыхательная система</h2><ul>"]
         cough = answers.get("resp_cough", {}).get("selected")
         if cough:
             c_map = {"dry": "Сухой кашель", "wet": "Кашель с мокротой", "no_cough": "Кашля нет"}
@@ -1032,7 +1039,7 @@ class ReportGenerator:
         """Кардио для v2 readable."""
         if answers.get("cardio_filter", {}).get("selected") != "yes":
             return None
-        parts = ["<h2>❤️ Сердечно-сосудистая система</h2><ul>"]
+        parts = ["<h2>Сердечно-сосудистая система</h2><ul>"]
         irrad = answers.get("cardio_pain_irradiation", {}).get("selected")
         if irrad:
             i_map = {"left_arm": "В левую руку/лопатку", "neck_jaw": "В шею/челюсть", "nowhere": "Никуда"}
@@ -1056,7 +1063,7 @@ class ReportGenerator:
         """ЖКТ для v2 readable."""
         if answers.get("gastro_filter", {}).get("selected") != "yes":
             return None
-        parts = ["<h2>🍽️ Пищеварительная система</h2><ul>"]
+        parts = ["<h2>Пищеварительная система</h2><ul>"]
         meal = answers.get("gastro_meal_relation", {}).get("selected")
         if meal:
             m_map = {"hungry": "Голодные боли", "right_after": "Сразу после еды", "delayed": "Через 1–2 ч.", "no_relation": "Не связано"}
@@ -1081,7 +1088,7 @@ class ReportGenerator:
         """Мочевыделительная для v2 readable."""
         if answers.get("urinary_filter", {}).get("selected") != "yes":
             return None
-        parts = ["<h2>💧 Мочевыделительная система</h2><ul>"]
+        parts = ["<h2>Мочевыделительная система</h2><ul>"]
         details = answers.get("urinary_details", {}).get("selected", [])
         d_map = {"dysuria": "Рези/жжение", "urine_color": "Изменение цвета мочи", "nocturia": "Никтурия", "difficulty_start": "Затруднение с началом"}
         if isinstance(details, list):
@@ -1099,7 +1106,7 @@ class ReportGenerator:
         history_text = answers.get("disease_history", {}).get("text", "").strip()
         if not onset_val and not history_text:
             return None
-        parts = ["<h2>📋 История заболевания</h2>"]
+        parts = ["<h2>Хронология</h2>"]
         if onset_val:
             o_map = {"acute": "Остро (часы/дни)", "chronic_exacerbation": "Давно, сейчас обострение"}
             parts.append(f"<p><strong>Начало:</strong> {o_map.get(onset_val, onset_val)}</p>")
@@ -1111,7 +1118,7 @@ class ReportGenerator:
     
     def _generate_v2_readable_life_history(self, answers: Dict[str, Any]) -> Optional[str]:
         """Анамнез жизни для v2 readable."""
-        parts = ["<h2>💊 Анамнез жизни</h2><ul>"]
+        parts = ["<ul>"]
         has = False
         
         allergy = answers.get("allergy", {}).get("selected")
@@ -1170,17 +1177,144 @@ class ReportGenerator:
             return None
         
         # Преобразуем в readable формат
-        parts = ["<h2>🚨 Системный анализ для врача</h2>"]
-        parts.append("<p><em>Автоматически выявленные риски:</em></p>")
+        parts = ["<h2>🚨 Системный анализ (для врача)</h2>"]
         
         # Разбираем alert строку на отдельные элементы
         alert_items = raw_alerts.replace("🚨 <b>СИСТЕМНЫЙ АНАЛИЗ (Для врача):</b><br>", "").split("<br>")
         for item in alert_items:
             if item.strip():
-                parts.append(f'<div class="alert-item"><p>{item.strip()}</p></div>')
+                parts.append(f'<div class="alert-item">{item.strip()}</div>')
         
         return "".join(parts)
     
+    def _wrap_in_html_document_compact(self, patient_name: str, date: str, sections_html: str) -> str:
+        """Компактный HTML-документ для вывода на одном листе А4."""
+        return f"""<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Анкета — {patient_name}</title>
+    <style>
+        @page {{ size: A4; margin: 8mm 10mm; }}
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            font-family: Arial, sans-serif;
+            font-size: 9pt;
+            line-height: 1.35;
+            color: #1a1a1a;
+            background: #fff;
+        }}
+        .page {{
+            width: 190mm;
+            margin: 0 auto;
+        }}
+        /* ── Шапка ── */
+        .report-header {{
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            border-bottom: 1.5pt solid #1d4ed8;
+            padding-bottom: 3px;
+            margin-bottom: 5px;
+        }}
+        .report-header h1 {{
+            font-size: 11pt;
+            font-weight: 700;
+            color: #1d4ed8;
+            letter-spacing: 0.3px;
+        }}
+        .report-meta {{
+            font-size: 8pt;
+            color: #555;
+            text-align: right;
+        }}
+        /* ── Блоки ── */
+        .block {{
+            border: 0.75pt solid #cbd5e1;
+            border-radius: 3px;
+            margin-bottom: 4px;
+            page-break-inside: avoid;
+        }}
+        .block-title {{
+            background: #eff6ff;
+            border-bottom: 0.75pt solid #bfdbfe;
+            padding: 2px 6px;
+            font-size: 9pt;
+            font-weight: 700;
+            color: #1e40af;
+        }}
+        .block-body {{
+            padding: 3px 6px;
+        }}
+        /* ── Подблоки внутри (h2) ── */
+        .block-body h2 {{
+            font-size: 8.5pt;
+            font-weight: 700;
+            color: #374151;
+            margin-top: 4px;
+            margin-bottom: 1px;
+            border-bottom: 0.5pt solid #e5e7eb;
+            padding-bottom: 1px;
+        }}
+        .block-body h2:first-child {{ margin-top: 0; }}
+        .block-body p, .block-body li {{
+            font-size: 8.5pt;
+            margin-bottom: 1px;
+            color: #1a1a1a;
+        }}
+        .block-body ul {{
+            margin: 0 0 2px 12px;
+            padding: 0;
+        }}
+        .block-body li {{ list-style: disc; }}
+        /* ── Алерты ── */
+        .alert-block {{
+            background: #fff7ed;
+            border: 0.75pt solid #fed7aa;
+        }}
+        .alert-block .block-title {{
+            background: #fff7ed;
+            border-bottom-color: #fed7aa;
+            color: #9a3412;
+        }}
+        .alert-item {{
+            background: #fff;
+            border-left: 2pt solid #f59e0b;
+            padding: 2px 5px;
+            margin-bottom: 2px;
+            font-size: 8pt;
+        }}
+        /* Интенсивность */
+        .badge {{
+            display: inline-block;
+            background: #fee2e2;
+            color: #991b1b;
+            border-radius: 2px;
+            padding: 0 4px;
+            font-size: 8pt;
+            font-weight: 600;
+        }}
+        strong {{ font-weight: 700; }}
+        @media print {{
+            body {{ background: white; }}
+            .block {{ page-break-inside: avoid; }}
+        }}
+    </style>
+</head>
+<body>
+<div class="page">
+    <div class="report-header">
+        <h1>📋 АНКЕТА ПАЦИЕНТА</h1>
+        <div class="report-meta">
+            <div><strong>Пациент:</strong> {patient_name}</div>
+            <div><strong>Дата:</strong> {date}</div>
+        </div>
+    </div>
+    {sections_html}
+</div>
+</body>
+</html>"""
+
     def _wrap_in_html_document(self, patient_name: str, content_parts: List[str]) -> str:
         """Обёртка контента в полный HTML документ с CSS стилями."""
         return f"""
