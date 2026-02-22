@@ -19,7 +19,6 @@ class ReportGenerator:
     - Основной жалобой
     - Скринингом систем (только положительные находки)
     - Факторами риска
-    - Системными алертами для врача
     """
     
     def __init__(self, config: dict):
@@ -92,11 +91,6 @@ class ReportGenerator:
         if risk_factors:
             report_parts.append(risk_factors)
         
-        # Системный анализ (алерты)
-        alerts = self._generate_alerts(answers)
-        if alerts:
-            report_parts.append(alerts)
-        
         return "<br><br>".join(report_parts)
     
     def _generate_html_report_v2(
@@ -155,11 +149,6 @@ class ReportGenerator:
         life_block = self._generate_v2_life_history_block(answers)
         if life_block:
             report_parts.append(life_block)
-        
-        # Системный анализ (алерты)
-        alerts = self._generate_v2_alerts(answers)
-        if alerts:
-            report_parts.append(alerts)
         
         return "<br><br>".join(report_parts)
     
@@ -558,99 +547,6 @@ class ReportGenerator:
         
         return "<br>".join(parts)
     
-    def _generate_v2_alerts(self, answers: Dict[str, Any]) -> Optional[str]:
-        """Генерация блока системных алертов для v2."""
-        alerts = []
-        
-        # ХОБЛ: дыхательные симптомы + стаж курения > 10 лет
-        resp_filter = answers.get("resp_filter", {})
-        smoking_details = answers.get("smoking_details", {})
-        smoking_years = smoking_details.get("smoking_years", 0)
-        
-        if resp_filter.get("selected") == "yes" and smoking_years and smoking_years > 10:
-            alerts.append(
-                f"⚠️ <b>Подозрение на ХОБЛ:</b> Стаж курения {smoking_years} лет + "
-                f"респираторные симптомы. <u>Рекомендовано: Спирометрия</u>"
-            )
-        
-        # Кровь в мокроте
-        sputum = answers.get("resp_sputum_color", {})
-        if sputum.get("selected") == "bloody":
-            alerts.append(
-                "❗ <b>Кровохарканье:</b> Кровь в мокроте. "
-                "<u>Рекомендовано: Рентген/КТ грудной клетки, консультация пульмонолога</u>"
-            )
-        
-        # Кардио: боль при нагрузке + иррадиация + не купируется
-        cardio_filter = answers.get("cardio_filter", {})
-        if cardio_filter.get("selected") == "yes":
-            trigger = answers.get("cardio_trigger", {}).get("selected")
-            irrad = answers.get("cardio_pain_irradiation", {}).get("selected")
-            nitro = answers.get("cardio_nitro", {}).get("selected")
-            edema = answers.get("cardio_edema", {}).get("selected")
-            
-            findings = []
-            if trigger == "exercise":
-                findings.append("Боли при нагрузке (типичная стенокардия)")
-            if irrad in ("left_arm", "neck_jaw"):
-                findings.append(f"Иррадиация: {'левая рука/лопатка' if irrad == 'left_arm' else 'шея/челюсть'}")
-            if nitro == "yes":
-                findings.append("Купируется нитроглицерином")
-            if edema and edema != "no":
-                findings.append("Отёки")
-            
-            # Наследственность
-            heredity = answers.get("heredity", {})
-            her_selected = heredity.get("selected", [])
-            if isinstance(her_selected, list) and "cardio" in her_selected:
-                findings.append("Отягощённая наследственность (кардио)")
-            
-            if findings:
-                alerts.append(
-                    f"⚠️ <b>Кардио-риск:</b> {', '.join(findings)}. "
-                    f"<u>Рекомендовано: ЭКГ, консультация кардиолога</u>"
-                )
-        
-        # Гастро: голодные боли
-        gastro_filter = answers.get("gastro_filter", {})
-        if gastro_filter.get("selected") == "yes":
-            meal = answers.get("gastro_meal_relation", {}).get("selected")
-            blood = answers.get("gastro_blood", {}).get("selected")
-            dyspepsia = answers.get("gastro_dyspepsia", {})
-            dysp_sel = dyspepsia.get("selected", [])
-            
-            if meal == "hungry":
-                alerts.append(
-                    "⚠️ <b>Гастропатология:</b> «Голодные» боли (подозрение на язвенную болезнь). "
-                    "<u>Рекомендовано: ФГДС, УЗИ ОБП</u>"
-                )
-            
-            if blood == "yes":
-                alerts.append(
-                    "❗ <b>ЖКТ-кровотечение:</b> Кровь в стуле (чёрный/дёгтеобразный). "
-                    "<u>Рекомендовано: СРОЧНО — колоноскопия, общий анализ крови</u>"
-                )
-            
-            if isinstance(dysp_sel, list) and "coffee_ground_vomit" in dysp_sel:
-                alerts.append(
-                    "❗ <b>Подозрение на ЖКТ-кровотечение:</b> Рвота «кофейной гущей». "
-                    "<u>Рекомендовано: СРОЧНО — ФГДС</u>"
-                )
-        
-        # Онконастороженность
-        heredity = answers.get("heredity", {})
-        her_selected = heredity.get("selected", [])
-        if isinstance(her_selected, list) and "oncology" in her_selected:
-            alerts.append(
-                "❗ <b>Онконастороженность:</b> Онкология в семейном анамнезе. "
-                "<u>Рекомендовано: Тщательный осмотр, пальпация лимфоузлов</u>"
-            )
-        
-        if not alerts:
-            return None
-        
-        return "🚨 <b>СИСТЕМНЫЙ АНАЛИЗ (Для врача):</b><br>" + "<br>".join(alerts)
-    
     def generate_readable_html_report(
         self,
         patient_name: Optional[str],
@@ -714,11 +610,6 @@ class ReportGenerator:
         risk_factors = self._generate_readable_risk_factors(answers)
         if risk_factors:
             content_parts.append(f'<div class="section">{risk_factors}</div>')
-        
-        # Системный анализ
-        alerts = self._generate_readable_alerts(answers)
-        if alerts:
-            content_parts.append(f'<div class="section alert-section">{alerts}</div>')
         
         # Собираем полный HTML документ
         html = f"""
@@ -814,15 +705,6 @@ class ReportGenerator:
         .section li {{
             margin-bottom: 6px;
             color: #475569;
-        }}
-        
-        .alert-section {{
-            background: #fef2f2;
-            border-left-color: #dc2626;
-        }}
-        
-        .alert-section h2 {{
-            color: #991b1b;
         }}
         
         .alert-item {{
@@ -928,11 +810,6 @@ class ReportGenerator:
         history_block = self._generate_v2_readable_disease_history(answers)
         if history_block:
             block2_rows.append(history_block)
-
-        # Алерты — в блок истории болезни
-        alerts = self._generate_v2_readable_alerts(answers)
-        if alerts:
-            block2_rows.append(alerts)
 
         # ── БЛОК 3: АНАМНЕЗ ЖИЗНИ ────────────────────────────────────────
         block3_rows: List[str] = []
@@ -1169,24 +1046,6 @@ class ReportGenerator:
             return None
         return "".join(parts)
     
-    def _generate_v2_readable_alerts(self, answers: Dict[str, Any]) -> Optional[str]:
-        """Алерты для v2 readable."""
-        # Используем те же алерты что и для Bitrix HTML
-        raw_alerts = self._generate_v2_alerts(answers)
-        if not raw_alerts:
-            return None
-        
-        # Преобразуем в readable формат
-        parts = ["<h2>🚨 Системный анализ (для врача)</h2>"]
-        
-        # Разбираем alert строку на отдельные элементы
-        alert_items = raw_alerts.replace("🚨 <b>СИСТЕМНЫЙ АНАЛИЗ (Для врача):</b><br>", "").split("<br>")
-        for item in alert_items:
-            if item.strip():
-                parts.append(f'<div class="alert-item">{item.strip()}</div>')
-        
-        return "".join(parts)
-    
     def _wrap_in_html_document_compact(self, patient_name: str, date: str, sections_html: str) -> str:
         """Компактный HTML-документ для вывода на одном листе А4."""
         return f"""<!DOCTYPE html>
@@ -1377,8 +1236,6 @@ class ReportGenerator:
         .section p {{ margin-bottom: 8px; color: #475569; }}
         .section ul {{ margin-left: 20px; margin-top: 10px; }}
         .section li {{ margin-bottom: 6px; color: #475569; }}
-        .alert-section {{ background: #fef2f2; border-left-color: #dc2626; }}
-        .alert-section h2 {{ color: #991b1b; }}
         .alert-item {{
             background: white;
             padding: 12px;
@@ -1472,12 +1329,6 @@ class ReportGenerator:
             lines.append(risk_factors)
             lines.append("")
         
-        # Системный анализ
-        alerts = self._generate_text_alerts(answers)
-        if alerts:
-            lines.append(alerts)
-            lines.append("")
-        
         lines.append("=" * 70)
         lines.append("Конец отчёта")
         lines.append("=" * 70)
@@ -1562,13 +1413,6 @@ class ReportGenerator:
         life_html = self._generate_v2_life_history_block(answers)
         if life_html:
             clean = life_html.replace("<br>", "\n").replace("<b>", "").replace("</b>", "")
-            lines.append(clean)
-            lines.append("")
-        
-        # Алерты
-        alerts_html = self._generate_v2_alerts(answers)
-        if alerts_html:
-            clean = alerts_html.replace("<br>", "\n").replace("<b>", "").replace("</b>", "").replace("<u>", "").replace("</u>", "")
             lines.append(clean)
             lines.append("")
         
@@ -1756,123 +1600,6 @@ class ReportGenerator:
         
         return "<br>".join(parts)
     
-    def _generate_alerts(self, answers: Dict[str, Any]) -> Optional[str]:
-        """Генерация блока системных алертов для врача."""
-        alerts = []
-        
-        # Анализ на ХОБЛ
-        copd_alert = self._check_copd_risk(answers)
-        if copd_alert:
-            alerts.append(copd_alert)
-        
-        # Анализ на кардио-риск
-        cardio_alert = self._check_cardio_risk(answers)
-        if cardio_alert:
-            alerts.append(cardio_alert)
-        
-        # Анализ на гастро
-        gastro_alert = self._check_gastro_risk(answers)
-        if gastro_alert:
-            alerts.append(gastro_alert)
-        
-        # Онконастороженность
-        onco_alert = self._check_onco_risk(answers)
-        if onco_alert:
-            alerts.append(onco_alert)
-        
-        if not alerts:
-            return None
-        
-        return "🚨 <b>СИСТЕМНЫЙ АНАЛИЗ (Для врача):</b><br>" + "<br>".join(alerts)
-    
-    def _check_copd_risk(self, answers: Dict[str, Any]) -> Optional[str]:
-        """Проверка риска ХОБЛ."""
-        screening = answers.get("systems_screening", {})
-        selected_systems = screening.get("selected", [])
-        
-        respiratory_details = answers.get("respiratory_details", {})
-        smoking_years = respiratory_details.get("smoking_years", 0)
-        resp_symptoms = respiratory_details.get("selected", [])
-        
-        # Условие: дыхательные симптомы + стаж курения > 10 лет
-        has_respiratory = "respiratory" in selected_systems or any(
-            s in resp_symptoms for s in ["wet_cough", "dry_cough", "dyspnea_walking"]
-        )
-        
-        if has_respiratory and smoking_years and smoking_years > 10:
-            pack_years = smoking_years  # Упрощённо, без учёта пачек в день
-            return (
-                f"⚠️ <b>Подозрение на ХОБЛ:</b> Стаж курения {smoking_years} лет + "
-                f"респираторные симптомы. <u>Рекомендовано: Спирометрия</u>"
-            )
-        
-        return None
-    
-    def _check_cardio_risk(self, answers: Dict[str, Any]) -> Optional[str]:
-        """Проверка кардио-риска."""
-        screening = answers.get("systems_screening", {})
-        selected_systems = screening.get("selected", [])
-        
-        if "cardio" not in selected_systems:
-            return None
-        
-        cardio_details = answers.get("cardio_details", {})
-        timing = cardio_details.get("selected")
-        edema = cardio_details.get("edema")
-        
-        # Наследственность
-        risk_factors = answers.get("risk_factors", {})
-        has_family_cardio = "cardiovascular" in risk_factors.get("selected", [])
-        
-        alerts = []
-        
-        if timing == "exercise":
-            alerts.append("Боли при нагрузке (типичная стенокардия)")
-        if edema and edema != "none":
-            alerts.append("Отёки")
-        if has_family_cardio:
-            alerts.append("Отягощённый семейный анамнез")
-        
-        if alerts:
-            return (
-                f"⚠️ <b>Кардио-риск:</b> {', '.join(alerts)}. "
-                f"<u>Рекомендовано: ЭКГ, консультация кардиолога</u>"
-            )
-        
-        return None
-    
-    def _check_gastro_risk(self, answers: Dict[str, Any]) -> Optional[str]:
-        """Проверка гастро-риска."""
-        screening = answers.get("systems_screening", {})
-        selected_systems = screening.get("selected", [])
-        
-        if "gastro" not in selected_systems:
-            return None
-        
-        gastro_details = answers.get("gastro_details", {})
-        symptoms = gastro_details.get("selected", [])
-        
-        if "hungry_pain" in symptoms:
-            return (
-                "⚠️ <b>Гастропатология:</b> 'Голодные' боли (подозрение на язвенную болезнь). "
-                "<u>Рекомендовано: ФГДС, УЗИ ОБП</u>"
-            )
-        
-        return None
-    
-    def _check_onco_risk(self, answers: Dict[str, Any]) -> Optional[str]:
-        """Проверка онконастороженности."""
-        risk_factors = answers.get("risk_factors", {})
-        selected = risk_factors.get("selected", [])
-        
-        if "oncology" in selected:
-            return (
-                "❗ <b>Онконастороженность:</b> Онкология в семейном анамнезе. "
-                "<u>Рекомендовано: Тщательный осмотр, пальпация лимфоузлов</u>"
-            )
-        
-        return None
-    
     # ============================================
     # Методы для читаемого HTML формата
     # ============================================
@@ -2045,137 +1772,6 @@ class ReportGenerator:
         
         return "".join(parts)
     
-    def _generate_readable_alerts(self, answers: Dict[str, Any]) -> Optional[str]:
-        """Генерация блока системных алертов для читаемого формата."""
-        alerts = []
-        
-        # Анализ на ХОБЛ
-        copd_alert = self._check_copd_risk_readable(answers)
-        if copd_alert:
-            alerts.append(copd_alert)
-        
-        # Анализ на кардио-риск
-        cardio_alert = self._check_cardio_risk_readable(answers)
-        if cardio_alert:
-            alerts.append(cardio_alert)
-        
-        # Анализ на гастро
-        gastro_alert = self._check_gastro_risk_readable(answers)
-        if gastro_alert:
-            alerts.append(gastro_alert)
-        
-        # Онконастороженность
-        onco_alert = self._check_onco_risk_readable(answers)
-        if onco_alert:
-            alerts.append(onco_alert)
-        
-        if not alerts:
-            return None
-        
-        parts = ["<h2>🚨 Системный анализ для врача</h2>"]
-        parts.append("<p><em>Автоматически выявленные риски и рекомендации:</em></p>")
-        parts.extend(alerts)
-        
-        return "".join(parts)
-    
-    def _check_copd_risk_readable(self, answers: Dict[str, Any]) -> Optional[str]:
-        """Проверка риска ХОБЛ для читаемого формата."""
-        screening = answers.get("systems_screening", {})
-        selected_systems = screening.get("selected", [])
-        
-        respiratory_details = answers.get("respiratory_details", {})
-        smoking_years = respiratory_details.get("smoking_years", 0)
-        resp_symptoms = respiratory_details.get("selected", [])
-        
-        has_respiratory = "respiratory" in selected_systems or any(
-            s in resp_symptoms for s in ["wet_cough", "dry_cough", "dyspnea_walking"]
-        )
-        
-        if has_respiratory and smoking_years and smoking_years > 10:
-            return f"""
-            <div class="alert-item">
-                <p><strong>⚠️ Подозрение на ХОБЛ</strong></p>
-                <p>Стаж курения {smoking_years} лет + респираторные симптомы.</p>
-                <p><strong>Рекомендовано:</strong> Спирометрия, консультация пульмонолога</p>
-            </div>
-            """
-        
-        return None
-    
-    def _check_cardio_risk_readable(self, answers: Dict[str, Any]) -> Optional[str]:
-        """Проверка кардио-риска для читаемого формата."""
-        screening = answers.get("systems_screening", {})
-        selected_systems = screening.get("selected", [])
-        
-        if "cardio" not in selected_systems:
-            return None
-        
-        cardio_details = answers.get("cardio_details", {})
-        timing = cardio_details.get("selected")
-        edema = cardio_details.get("edema")
-        
-        risk_factors = answers.get("risk_factors", {})
-        has_family_cardio = "cardiovascular" in risk_factors.get("selected", [])
-        
-        findings = []
-        
-        if timing == "exercise":
-            findings.append("Боли при нагрузке (типичная стенокардия)")
-        if edema and edema != "none":
-            findings.append("Отёки")
-        if has_family_cardio:
-            findings.append("Отягощённый семейный анамнез")
-        
-        if findings:
-            findings_text = ", ".join(findings)
-            return f"""
-            <div class="alert-item">
-                <p><strong>⚠️ Кардиоваскулярный риск</strong></p>
-                <p>{findings_text}.</p>
-                <p><strong>Рекомендовано:</strong> ЭКГ, консультация кардиолога</p>
-            </div>
-            """
-        
-        return None
-    
-    def _check_gastro_risk_readable(self, answers: Dict[str, Any]) -> Optional[str]:
-        """Проверка гастро-риска для читаемого формата."""
-        screening = answers.get("systems_screening", {})
-        selected_systems = screening.get("selected", [])
-        
-        if "gastro" not in selected_systems:
-            return None
-        
-        gastro_details = answers.get("gastro_details", {})
-        symptoms = gastro_details.get("selected", [])
-        
-        if "hungry_pain" in symptoms:
-            return """
-            <div class="alert-item">
-                <p><strong>⚠️ Гастропатология</strong></p>
-                <p>'Голодные' боли (подозрение на язвенную болезнь).</p>
-                <p><strong>Рекомендовано:</strong> ФГДС, УЗИ ОБП</p>
-            </div>
-            """
-        
-        return None
-    
-    def _check_onco_risk_readable(self, answers: Dict[str, Any]) -> Optional[str]:
-        """Проверка онконастороженности для читаемого формата."""
-        risk_factors = answers.get("risk_factors", {})
-        selected = risk_factors.get("selected", [])
-        
-        if "oncology" in selected:
-            return """
-            <div class="alert-item">
-                <p><strong>❗ Онконастороженность</strong></p>
-                <p>Онкология в семейном анамнезе.</p>
-                <p><strong>Рекомендовано:</strong> Тщательный осмотр, пальпация лимфоузлов</p>
-            </div>
-            """
-        
-        return None
-    
     # ============================================
     # Методы для текстового формата
     # ============================================
@@ -2341,42 +1937,5 @@ class ReportGenerator:
         allergy_details = risk_data.get("allergy_details")
         if allergy_details:
             lines.append(f"    └ Детали: {allergy_details}")
-        
-        return "\n".join(lines)
-    
-    def _generate_text_alerts(self, answers: Dict[str, Any]) -> Optional[str]:
-        """Генерация блока системных алертов для текстового формата."""
-        alerts = []
-        
-        # Анализ на ХОБЛ
-        copd_alert = self._check_copd_risk(answers)
-        if copd_alert:
-            # Удаляем HTML теги
-            clean_alert = copd_alert.replace("<b>", "").replace("</b>", "").replace("<u>", "").replace("</u>", "")
-            alerts.append(f"  • {clean_alert}")
-        
-        # Анализ на кардио-риск
-        cardio_alert = self._check_cardio_risk(answers)
-        if cardio_alert:
-            clean_alert = cardio_alert.replace("<b>", "").replace("</b>", "").replace("<u>", "").replace("</u>", "")
-            alerts.append(f"  • {clean_alert}")
-        
-        # Анализ на гастро
-        gastro_alert = self._check_gastro_risk(answers)
-        if gastro_alert:
-            clean_alert = gastro_alert.replace("<b>", "").replace("</b>", "").replace("<u>", "").replace("</u>", "")
-            alerts.append(f"  • {clean_alert}")
-        
-        # Онконастороженность
-        onco_alert = self._check_onco_risk(answers)
-        if onco_alert:
-            clean_alert = onco_alert.replace("<b>", "").replace("</b>", "").replace("<u>", "").replace("</u>", "")
-            alerts.append(f"  • {clean_alert}")
-        
-        if not alerts:
-            return None
-        
-        lines = ["🚨 СИСТЕМНЫЙ АНАЛИЗ (Для врача)"]
-        lines.extend(alerts)
         
         return "\n".join(lines)
