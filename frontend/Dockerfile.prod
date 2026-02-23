@@ -23,8 +23,9 @@ RUN npm run build
 # ============================================
 FROM alpine:latest
 
-# Копирование собранных файлов
-COPY --from=builder /app/dist /app/dist
+# Копирование собранных файлов в /dist-built (НЕ в /app/dist, чтобы volume не перекрыл их)
+COPY --from=builder /app/dist /dist-built
 
-# Команда - просто держим контейнер для volume
-CMD ["sh", "-c", "cp -r /app/dist/* /output/ 2>/dev/null || true && tail -f /dev/null"]
+# CMD: копируем файлы из образа в volume, смонтированный на /app/dist
+# Используем /dist-built, т.к. volume монтируется на /app/dist и перекрыл бы файлы там
+CMD ["sh", "-c", "cp -rf /dist-built/. /app/dist/ && echo 'Frontend files copied to volume' && tail -f /dev/null"]
