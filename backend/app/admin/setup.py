@@ -24,6 +24,17 @@ class AdminAuth(AuthenticationBackend):
     Простая Basic Auth через Cookie.
     """
     
+    def __init__(self, secret_key: str) -> None:
+        """
+        Инициализация без дублирующего SessionMiddleware.
+        Сессии управляются единым SessionMiddleware, подключённым в main.py.
+        Без этого переопределения AuthenticationBackend добавляет свой
+        SessionMiddleware к под-приложению SQLAdmin, что создаёт конфликт
+        двух сессионных cookie и приводит к потере данных аутентификации.
+        """
+        self.secret_key = secret_key
+        self.middlewares = []
+    
     async def login(self, request: Request) -> bool:
         """Обработка входа."""
         form = await request.form()
