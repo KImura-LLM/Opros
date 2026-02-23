@@ -157,7 +157,9 @@ app.add_middleware(
     secret_key=settings.SECRET_KEY,
     session_cookie="admin_session",
     max_age=3600,  # 1 час
-    same_site="strict",
+    # lax — стандарт для admin-панелей: защищает от CSRF,
+    # но не ломает redirect-цепочки POST→303→GET в браузерах
+    same_site="lax",
     https_only=not settings.DEBUG,
 )
 
