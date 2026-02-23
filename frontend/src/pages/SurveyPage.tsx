@@ -110,7 +110,7 @@ const SurveyPage: React.FC = () => {
 
     // Consent screen
     if (currentNode.type === 'consent_screen') {
-      return currentAnswer.selected === true
+      return (currentAnswer.selected as unknown) === true
     }
     
     return true
@@ -398,7 +398,7 @@ const SurveyPage: React.FC = () => {
             <label className="flex items-start gap-3 p-4 bg-white border-2 border-slate-200 rounded-xl cursor-pointer hover:border-primary-400 transition-colors">
               <input
                 type="checkbox"
-                checked={!!(currentAnswer.selected as boolean)}
+                checked={currentAnswer.selected === true}
                 onChange={(e) =>
                   setCurrentAnswer((prev) => ({ ...prev, selected: e.target.checked }))
                 }

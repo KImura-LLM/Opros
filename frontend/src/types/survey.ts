@@ -69,7 +69,7 @@ export interface SurveyConfig {
 
 // Ответ пользователя (общий тип)
 export interface AnswerData {
-  selected?: string | string[]
+  selected?: string | string[] | boolean
   value?: number
   text?: string
   locations?: string[]
