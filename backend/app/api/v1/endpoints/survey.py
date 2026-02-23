@@ -554,6 +554,26 @@ async def complete_survey(
             comment=report_text,
         )
     
+    # Обновление пользовательского поля «Опрос пройден» = «да» в CRM
+    try:
+        field_updated = await bitrix_client.update_entity_field(
+            entity_id=session.lead_id,
+            entity_type=session.entity_type,
+            fields={"UF_CRM_1771857760": "да"},
+        )
+        if field_updated:
+            logger.info(
+                f"Поле UF_CRM_1771857760 обновлено ('да') в Битрикс24: "
+                f"lead_id={session.lead_id}, entity_type={session.entity_type}"
+            )
+        else:
+            logger.warning(
+                f"Не удалось обновить поле UF_CRM_1771857760 в Битрикс24: "
+                f"lead_id={session.lead_id}, entity_type={session.entity_type}"
+            )
+    except Exception as e:
+        logger.error(f"Ошибка обновления поля UF_CRM_1771857760 в Битрикс24: {e}")
+
     # Обновление статуса сессии
     session.status = "completed"
     session.completed_at = datetime.now(timezone.utc)

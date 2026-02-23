@@ -161,7 +161,72 @@ class Bitrix24Client:
         except Exception as e:
             logger.error(f"Ошибка обновления сделки в Битрикс24: {e}")
             return False
-    
+
+    async def update_lead_field(
+        self,
+        lead_id: int,
+        fields: dict,
+    ) -> bool:
+        """
+        Обновление полей лида.
+
+        Метод API: crm.lead.update
+
+        Args:
+            lead_id: ID лида
+            fields: Словарь полей для обновления
+
+        Returns:
+            True если успешно
+        """
+        if not self.webhook_url:
+            logger.warning("BITRIX24_WEBHOOK_URL не настроен")
+            return False
+
+        method_url = f"{self.webhook_url.rstrip('/')}/crm.lead.update"
+
+        payload = {
+            "id": lead_id,
+            "fields": fields,
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(method_url, json=payload)
+                response.raise_for_status()
+
+                result = response.json()
+                return bool(result.get("result", False))
+
+        except Exception as e:
+            logger.error(f"Ошибка обновления лида в Битрикс24: {e}")
+            return False
+
+    async def update_entity_field(
+        self,
+        entity_id: int,
+        entity_type: str,
+        fields: dict,
+    ) -> bool:
+        """
+        Универсальное обновление полей сущности (сделка или лид).
+
+        Маршрутизирует вызов на crm.deal.update или crm.lead.update
+        в зависимости от типа сущности.
+
+        Args:
+            entity_id: ID сделки или лида
+            entity_type: Тип сущности ('DEAL' или 'LEAD')
+            fields: Словарь полей для обновления
+
+        Returns:
+            True если успешно
+        """
+        entity_type_upper = (entity_type or "DEAL").upper()
+        if entity_type_upper == "LEAD":
+            return await self.update_lead_field(lead_id=entity_id, fields=fields)
+        return await self.update_deal_field(deal_id=entity_id, fields=fields)
+
     async def get_deal(self, deal_id: int) -> Optional[dict]:
         """
         Получение данных сделки.
