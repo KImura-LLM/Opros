@@ -6,7 +6,6 @@ import React from 'react'
 import { motion } from 'framer-motion'
 import { Check } from 'lucide-react'
 import clsx from 'clsx'
-import { getIcon } from '@/utils/icons'
 import type { SurveyOption } from '@/types'
 
 interface MultiChoiceProps {
@@ -14,6 +13,9 @@ interface MultiChoiceProps {
   value: string[]
   onChange: (value: string[]) => void
   maxSelection?: number
+  // Значение варианта-исключения: при его выборе снимаются все остальные,
+  // и наоборот — при выборе любого другого этот вариант снимается
+  exclusiveOption?: string
 }
 
 export const MultiChoice: React.FC<MultiChoiceProps> = ({
@@ -21,16 +23,19 @@ export const MultiChoice: React.FC<MultiChoiceProps> = ({
   value,
   onChange,
   maxSelection,
+  exclusiveOption,
 }) => {
   const handleToggle = (optionValue: string) => {
-    // Особая логика для "none" - сбрасывает все остальные
-    if (optionValue === 'none') {
-      onChange(['none'])
+    // Если выбирается вариант-исключение — сбрасываем всё остальное
+    if (exclusiveOption && optionValue === exclusiveOption) {
+      onChange([exclusiveOption])
       return
     }
 
-    // Если выбирается что-то кроме "none", убираем "none"
-    let newValue = value.filter((v) => v !== 'none')
+    // Если выбирается что-то другое — убираем вариант-исключение
+    let newValue = exclusiveOption
+      ? value.filter((v) => v !== exclusiveOption)
+      : [...value]
 
     if (newValue.includes(optionValue)) {
       // Убираем выбор
@@ -51,7 +56,6 @@ export const MultiChoice: React.FC<MultiChoiceProps> = ({
       {options.map((option, index) => {
         const optionValue = option.value || option.id
         const isSelected = value.includes(optionValue)
-        const Icon = option.icon ? getIcon(option.icon) : null
 
         return (
           <motion.button
@@ -65,20 +69,6 @@ export const MultiChoice: React.FC<MultiChoiceProps> = ({
               isSelected && 'selected'
             )}
           >
-            {/* Иконка */}
-            {Icon && (
-              <div
-                className={clsx(
-                  'w-10 h-10 rounded-lg flex items-center justify-center transition-colors',
-                  isSelected
-                    ? 'bg-primary-100 text-primary-600'
-                    : 'bg-slate-100 text-slate-500'
-                )}
-              >
-                <Icon className="w-5 h-5" />
-              </div>
-            )}
-
             {/* Текст */}
             <span className="flex-1 text-left text-slate-700 font-medium">
               {option.text}

@@ -1,4 +1,4 @@
-{
+﻿{
   "id": 1,
   "name": "Предварительный опрос пациента",
   "version": "1.0",
@@ -19,20 +19,17 @@
         {
           "id": "pain",
           "text": "Беспокоит боль (острая или хроническая)",
-          "value": "pain",
-          "icon": "activity"
+          "value": "pain"
         },
         {
           "id": "discomfort",
           "text": "Общее недомогание / Дискомфорт (без острой боли)",
-          "value": "discomfort",
-          "icon": "thermometer"
+          "value": "discomfort"
         },
         {
           "id": "checkup",
           "text": "Плановый осмотр / Справка / Анализы",
-          "value": "checkup",
-          "icon": "clipboard-check"
+          "value": "checkup"
         }
       ],
       "logic": [
@@ -111,38 +108,32 @@
         {
           "id": "respiratory",
           "text": "Кашель, мокрота, одышка",
-          "value": "respiratory",
-          "icon": "wind"
+          "value": "respiratory"
         },
         {
           "id": "cardio",
           "text": "Боли в сердце, сердцебиение, отеки ног",
-          "value": "cardio",
-          "icon": "heart"
+          "value": "cardio"
         },
         {
           "id": "gastro",
           "text": "Боли в животе, тошнота, изжога, проблемы со стулом",
-          "value": "gastro",
-          "icon": "utensils"
+          "value": "gastro"
         },
         {
           "id": "neuro",
           "text": "Головные боли, головокружение, плохой сон",
-          "value": "neuro",
-          "icon": "brain"
+          "value": "neuro"
         },
         {
           "id": "urinary",
           "text": "Боли в пояснице, проблемы с мочеиспусканием",
-          "value": "urinary",
-          "icon": "droplet"
+          "value": "urinary"
         },
         {
           "id": "none",
           "text": "Ничего из перечисленного",
-          "value": "none",
-          "icon": "check-circle"
+          "value": "none"
         }
       ],
       "logic": [
@@ -310,32 +301,27 @@
         {
           "id": "allergy",
           "text": "Аллергия на лекарства или продукты",
-          "value": "allergy",
-          "icon": "alert-triangle"
+          "value": "allergy"
         },
         {
           "id": "diabetes",
           "text": "Сахарный диабет у меня или родителей",
-          "value": "diabetes",
-          "icon": "droplet"
+          "value": "diabetes"
         },
         {
           "id": "oncology",
           "text": "Онкология у кровных родственников",
-          "value": "oncology",
-          "icon": "alert-circle"
+          "value": "oncology"
         },
         {
           "id": "cardiovascular",
           "text": "Инфаркты/Инсульты у родителей до 60 лет",
-          "value": "cardiovascular",
-          "icon": "heart"
+          "value": "cardiovascular"
         },
         {
           "id": "none",
           "text": "Нет особенностей",
-          "value": "none",
-          "icon": "check-circle"
+          "value": "none"
         }
       ],
       "additional_fields": [

@@ -215,6 +215,7 @@ const flowToSurveyStructure = (
       placeholder: node.data.placeholder,
       max_length: node.data.max_length,
       is_final: node.data.is_final,
+      exclusive_option: node.data.exclusive_option,
       position: node.position,
     };
   });

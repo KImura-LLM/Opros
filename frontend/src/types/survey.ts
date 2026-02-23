@@ -7,7 +7,6 @@ export interface SurveyOption {
   id: string
   text: string
   value: string
-  icon?: string
 }
 
 // Дополнительное поле ввода
@@ -38,9 +37,11 @@ export interface SurveyNode {
     | 'multi_choice'
     | 'multi_choice_with_input'
     | 'scale_1_10'
+    | 'slider'
     | 'body_map'
     | 'text_input'
     | 'number_input'
+    | 'consent_screen'
   question_text: string
   description?: string
   options?: SurveyOption[]
@@ -51,6 +52,8 @@ export interface SurveyNode {
   max_value?: number
   placeholder?: string
   is_final?: boolean
+  // Значение варианта-исключения (сбрасывает все остальные при выборе)
+  exclusive_option?: string
 }
 
 // Конфигурация опросника

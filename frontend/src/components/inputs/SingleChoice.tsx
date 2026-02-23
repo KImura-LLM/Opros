@@ -6,7 +6,6 @@ import React from 'react'
 import { motion } from 'framer-motion'
 import { Check } from 'lucide-react'
 import clsx from 'clsx'
-import { getIcon } from '@/utils/icons'
 import type { SurveyOption } from '@/types'
 
 interface SingleChoiceProps {
@@ -25,7 +24,6 @@ export const SingleChoice: React.FC<SingleChoiceProps> = ({
       {options.map((option, index) => {
         const optionValue = option.value || option.id
         const isSelected = value === optionValue
-        const Icon = option.icon ? getIcon(option.icon) : null
 
         return (
           <motion.button
@@ -39,20 +37,6 @@ export const SingleChoice: React.FC<SingleChoiceProps> = ({
               isSelected && 'selected'
             )}
           >
-            {/* Иконка */}
-            {Icon && (
-              <div
-                className={clsx(
-                  'w-10 h-10 rounded-lg flex items-center justify-center transition-colors',
-                  isSelected
-                    ? 'bg-primary-100 text-primary-600'
-                    : 'bg-slate-100 text-slate-500'
-                )}
-              >
-                <Icon className="w-5 h-5" />
-              </div>
-            )}
-
             {/* Текст */}
             <span className="flex-1 text-left text-slate-700 font-medium">
               {option.text}

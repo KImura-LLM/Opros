@@ -92,8 +92,8 @@ const SurveyPage: React.FC = () => {
       return Array.isArray(locations) && locations.length > 0 && intensity !== undefined
     }
     
-    // Scale 1-10
-    if (currentNode.type === 'scale_1_10') {
+    // Scale 1-10 / slider
+    if (currentNode.type === 'scale_1_10' || currentNode.type === 'slider') {
       return currentAnswer.value !== undefined && currentAnswer.value !== null
     }
     
@@ -106,6 +106,11 @@ const SurveyPage: React.FC = () => {
     // Number input
     if (currentNode.type === 'number_input') {
       return currentAnswer.value !== undefined && currentAnswer.value !== null
+    }
+
+    // Consent screen
+    if (currentNode.type === 'consent_screen') {
+      return currentAnswer.selected === true
     }
     
     return true
@@ -290,6 +295,7 @@ const SurveyPage: React.FC = () => {
               onChange={(value) =>
                 setCurrentAnswer((prev) => ({ ...prev, selected: value }))
               }
+              exclusiveOption={currentNode.exclusive_option}
             />
             
             {/* Дополнительные поля */}
@@ -355,9 +361,10 @@ const SurveyPage: React.FC = () => {
         )
 
       case 'scale_1_10':
+      case 'slider':
         return (
           <PainScale
-            value={(currentAnswer.value as number) || 5}
+            value={(currentAnswer.value as number) || currentNode.min_value || 1}
             onChange={(value) => setCurrentAnswer({ value })}
             min={currentNode.min_value || 1}
             max={currentNode.max_value || 10}
@@ -383,6 +390,25 @@ const SurveyPage: React.FC = () => {
             min={currentNode.min_value}
             max={currentNode.max_value}
           />
+        )
+
+      case 'consent_screen':
+        return (
+          <div className="space-y-4">
+            <label className="flex items-start gap-3 p-4 bg-white border-2 border-slate-200 rounded-xl cursor-pointer hover:border-primary-400 transition-colors">
+              <input
+                type="checkbox"
+                checked={!!(currentAnswer.selected as boolean)}
+                onChange={(e) =>
+                  setCurrentAnswer((prev) => ({ ...prev, selected: e.target.checked }))
+                }
+                className="mt-0.5 w-5 h-5 text-primary-600 rounded focus:ring-primary-500"
+              />
+              <span className="text-slate-700 font-medium">
+                Я даю согласие на обработку персональных данных
+              </span>
+            </label>
+          </div>
         )
 
       default:

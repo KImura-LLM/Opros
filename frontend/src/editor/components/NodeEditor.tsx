@@ -12,7 +12,7 @@ import {
   ChevronUp,
 } from 'lucide-react';
 import { useEditorStore } from '../store';
-import { NODE_TYPE_CONFIG, SurveyNodeData, NodeOption, NodeType } from '../types';
+import { NODE_TYPE_CONFIG, SurveyNodeData, NodeOption, NodeType, AdditionalField } from '../types';
 
 // Время debounce в миллисекундах
 const DEBOUNCE_DELAY = 500;
@@ -28,6 +28,8 @@ const NodeEditor = () => {
     basic: true,
     options: true,
     settings: false,
+    exclusive: false,
+    additional_fields: true,
   });
   
   // Debounce таймер для автосохранения
@@ -69,12 +71,14 @@ const NodeEditor = () => {
         description: nodeData.description,
         required: nodeData.required,
         options: nodeData.options ? [...nodeData.options] : [],
+        additional_fields: nodeData.additional_fields ? [...nodeData.additional_fields] : [],
         min_value: nodeData.min_value,
         max_value: nodeData.max_value,
         step: nodeData.step,
         placeholder: nodeData.placeholder,
         max_length: nodeData.max_length,
         is_final: nodeData.is_final,
+        exclusive_option: nodeData.exclusive_option,
       });
     }
   }, [selectedNodeId, nodeData]);
@@ -140,6 +144,40 @@ const NodeEditor = () => {
   
   const handleOptionsBlur = () => {
     updateNode(selectedNodeId!, { options: localData.options });
+  };
+
+  // --- Дополнительные поля ввода ---
+  const handleAddAdditionalField = (type: 'text' | 'number') => {
+    const newField: AdditionalField = {
+      id: `field_${Date.now()}`,
+      type,
+      label: type === 'text' ? 'Текстовое поле' : 'Числовое поле',
+      placeholder: '',
+    };
+    const newFields = [...(localData.additional_fields || []), newField];
+    setLocalData((prev: Partial<SurveyNodeData>) => ({ ...prev, additional_fields: newFields }));
+    updateNode(selectedNodeId!, { additional_fields: newFields });
+  };
+
+  const handleUpdateAdditionalField = (
+    index: number,
+    field: Partial<AdditionalField>
+  ) => {
+    const newFields = [...(localData.additional_fields || [])];
+    newFields[index] = { ...newFields[index], ...field };
+    setLocalData((prev: Partial<SurveyNodeData>) => ({ ...prev, additional_fields: newFields }));
+  };
+
+  const handleAdditionalFieldBlur = () => {
+    updateNode(selectedNodeId!, { additional_fields: localData.additional_fields });
+  };
+
+  const handleDeleteAdditionalField = (index: number) => {
+    const newFields = (localData.additional_fields || []).filter(
+      (_: AdditionalField, i: number) => i !== index
+    );
+    setLocalData((prev: Partial<SurveyNodeData>) => ({ ...prev, additional_fields: newFields }));
+    updateNode(selectedNodeId!, { additional_fields: newFields });
   };
   
   const toggleSection = (section: string) => {
@@ -278,6 +316,142 @@ const NodeEditor = () => {
         </div>
       )}
       
+      {/* Дополнительные поля ввода (только для multi_choice_with_input) */}
+      {nodeData.type === 'multi_choice_with_input' && (
+        <div className="border-b border-gray-100">
+          <button
+            onClick={() => toggleSection('additional_fields')}
+            className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50"
+          >
+            <span className="font-medium text-sm text-gray-700">
+              Доп. поля ввода ({localData.additional_fields?.length || 0})
+            </span>
+            {expandedSections.additional_fields ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </button>
+
+          {expandedSections.additional_fields && (
+            <div className="px-4 pb-4 space-y-3">
+              <p className="text-xs text-gray-500">
+                Поля, которые появятся ниже вариантов выбора.
+              </p>
+
+              {(localData.additional_fields || []).map((field: AdditionalField, index: number) => (
+                <div key={field.id} className="p-3 bg-gray-50 rounded-lg space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-gray-500 uppercase">
+                      {field.type === 'text' ? '↔ Текст' : '# Число'}
+                    </span>
+                    <button
+                      onClick={() => handleDeleteAdditionalField(index)}
+                      className="p-1 text-red-500 hover:bg-red-50 rounded"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+
+                  <input
+                    type="text"
+                    value={field.label}
+                    onChange={(e) => handleUpdateAdditionalField(index, { label: e.target.value })}
+                    onBlur={handleAdditionalFieldBlur}
+                    placeholder="Название поля"
+                    className="w-full px-2 py-1 text-sm border border-gray-200 rounded focus:ring-2 focus:ring-blue-500"
+                  />
+
+                  <input
+                    type="text"
+                    value={field.placeholder || ''}
+                    onChange={(e) => handleUpdateAdditionalField(index, { placeholder: e.target.value })}
+                    onBlur={handleAdditionalFieldBlur}
+                    placeholder="Placeholder (placeholder)"
+                    className="w-full px-2 py-1 text-sm border border-gray-200 rounded focus:ring-2 focus:ring-blue-500"
+                  />
+
+                  {field.type === 'number' && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="number"
+                        value={field.min ?? ''}
+                        onChange={(e) => handleUpdateAdditionalField(index, { min: parseInt(e.target.value) || undefined })}
+                        onBlur={handleAdditionalFieldBlur}
+                        placeholder="Мин"
+                        className="w-full px-2 py-1 text-sm border border-gray-200 rounded focus:ring-2 focus:ring-blue-500"
+                      />
+                      <input
+                        type="number"
+                        value={field.max ?? ''}
+                        onChange={(e) => handleUpdateAdditionalField(index, { max: parseInt(e.target.value) || undefined })}
+                        onBlur={handleAdditionalFieldBlur}
+                        placeholder="Макс"
+                        className="w-full px-2 py-1 text-sm border border-gray-200 rounded focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleAddAdditionalField('text')}
+                  className="flex-1 py-2 text-sm text-purple-600 hover:bg-purple-50 rounded-lg flex items-center justify-center gap-1 border border-dashed border-purple-300"
+                >
+                  <Plus size={14} /> Текст
+                </button>
+                <button
+                  onClick={() => handleAddAdditionalField('number')}
+                  className="flex-1 py-2 text-sm text-purple-600 hover:bg-purple-50 rounded-lg flex items-center justify-center gap-1 border border-dashed border-purple-300"
+                >
+                  <Plus size={14} /> Число
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Настройка взаимоисключающего варианта для multi_choice */}
+      {(nodeData.type === 'multi_choice' || nodeData.type === 'multi_choice_with_input') &&
+        (localData.options || []).length > 0 && (
+        <div className="border-b border-gray-100">
+          <button
+            onClick={() => toggleSection('exclusive')}
+            className="w-full px-4 py-3 flex items-center justify-between hover:bg-gray-50"
+          >
+            <span className="font-medium text-sm text-gray-700">Настройки исключения</span>
+            {expandedSections.exclusive ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </button>
+
+          {expandedSections.exclusive && (
+            <div className="px-4 pb-4 space-y-3">
+              <p className="text-xs text-gray-500">
+                Выбранный вариант снимает все остальные при выборе—и наоборот.
+              </p>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 mb-1">
+                  Вариант-исключение
+                </label>
+                <select
+                  value={localData.exclusive_option || ''}
+                  onChange={(e) => {
+                    const val = e.target.value || undefined;
+                    handleChange('exclusive_option', val);
+                    updateNode(selectedNodeId!, { exclusive_option: val });
+                  }}
+                  className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="">— не задан —</option>
+                  {(localData.options || []).map((opt: NodeOption) => (
+                    <option key={opt.id} value={opt.value || opt.id}>
+                      {opt.text}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Настройки для slider */}
       {config.has_min_max && (
         <div className="border-b border-gray-100">

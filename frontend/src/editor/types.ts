@@ -26,7 +26,6 @@ export interface NodeOption {
   id: string;
   text: string;
   value?: string;
-  icon?: string;
 }
 
 // Правило перехода
@@ -70,6 +69,9 @@ export interface SurveyNodeData {
   
   // Для info_screen
   is_final?: boolean;
+  
+  // Значение варианта-исключения для multi_choice (сбрасывает все остальные при выборе)
+  exclusive_option?: string;
   
   // Позиция на canvas
   position?: NodePosition;

@@ -204,11 +204,12 @@ const PreviewModal = ({ isOpen, onClose }: PreviewModalProps) => {
         return (
           <div className="space-y-2">
             {nodeData.options?.map(option => {
-              const isSelected = currentAnswer?.selected === option.id;
+              const optionValue = option.value || option.id;
+              const isSelected = currentAnswer?.selected === optionValue;
               return (
                 <button
                   key={option.id}
-                  onClick={() => handleAnswer(option.id, 'selected')}
+                  onClick={() => handleAnswer(optionValue, 'selected')}
                   className={`
                     w-full text-left p-4 rounded-lg border-2 transition-all
                     ${isSelected
@@ -238,21 +239,38 @@ const PreviewModal = ({ isOpen, onClose }: PreviewModalProps) => {
       );
         
       case 'multi_choice':
-      case 'multi_choice_with_input':
+      case 'multi_choice_with_input': {
         const selectedValues = (currentAnswer?.selected as string[]) || [];
+        const exclusiveOption = nodeData.exclusive_option;
+
+        const handleMultiToggle = (optionValue: string) => {
+          // Вариант-исключение сбрасывает все остальные
+          if (exclusiveOption && optionValue === exclusiveOption) {
+            handleAnswer([exclusiveOption], 'selected');
+            return;
+          }
+          // При выборе любого другого снимаем вариант-исключение
+          let newValues = exclusiveOption
+            ? selectedValues.filter(v => v !== exclusiveOption)
+            : [...selectedValues];
+
+          if (newValues.includes(optionValue)) {
+            newValues = newValues.filter(v => v !== optionValue);
+          } else {
+            newValues = [...newValues, optionValue];
+          }
+          handleAnswer(newValues, 'selected');
+        };
+
         return (
           <div className="space-y-2">
             {nodeData.options?.map(option => {
-              const isSelected = selectedValues.includes(option.id);
+              const optionValue = option.value || option.id;
+              const isSelected = selectedValues.includes(optionValue);
               return (
                 <button
                   key={option.id}
-                  onClick={() => {
-                    const newValues = isSelected
-                      ? selectedValues.filter(v => v !== option.id)
-                      : [...selectedValues, option.id];
-                    handleAnswer(newValues, 'selected');
-                  }}
+                  onClick={() => handleMultiToggle(optionValue)}
                   className={`
                     w-full text-left p-4 rounded-lg border-2 transition-all
                     ${isSelected
@@ -272,12 +290,16 @@ const PreviewModal = ({ isOpen, onClose }: PreviewModalProps) => {
                       {isSelected && <CheckCircle size={14} className="text-white" />}
                     </div>
                     <span>{option.text}</span>
+                    {exclusiveOption && optionValue === exclusiveOption && (
+                      <span className="ml-auto text-xs text-gray-400 italic">исключает остальные</span>
+                    )}
                   </div>
                 </button>
               );
             })}
           </div>
         );
+      }
         
       case 'text_input':
         return (
@@ -327,7 +349,6 @@ const PreviewModal = ({ isOpen, onClose }: PreviewModalProps) => {
               id: o.id,
               text: o.text,
               value: o.value || o.id,
-              icon: o.icon
             }))}
             value={(currentAnswer?.locations as string[]) || []}
             onChange={(val) => handleAnswer(val, 'locations')}
@@ -366,8 +387,13 @@ const PreviewModal = ({ isOpen, onClose }: PreviewModalProps) => {
     if (!answerData) return false;
     
     // Проверка в зависимости от типа
-    if (nodeData.type === 'single_choice' || nodeData.type === 'consent_screen') {
+    if (nodeData.type === 'single_choice') {
       return !!answerData.selected;
+    }
+
+    if (nodeData.type === 'consent_screen') {
+      // selected хранит boolean — пропускаем только если true
+      return answerData.selected === true;
     }
     
     if (nodeData.type === 'multi_choice' || nodeData.type === 'multi_choice_with_input') {

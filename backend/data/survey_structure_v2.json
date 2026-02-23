@@ -1,4 +1,4 @@
-{
+﻿{
   "id": 2,
   "name": "Подробный клинический опросник пациента",
   "version": "2.0",
@@ -56,14 +56,14 @@
       "description": "Можно выбрать несколько вариантов",
       "required": true,
       "options": [
-        { "id": "sharp", "text": "Острая / Кинжальная", "value": "sharp", "icon": "zap" },
-        { "id": "dull", "text": "Тупая / Ноющая", "value": "dull", "icon": "minus-circle" },
-        { "id": "pressing", "text": "Сжимающая / Давящая", "value": "pressing", "icon": "arrow-down-circle" },
-        { "id": "stabbing", "text": "Колющая", "value": "stabbing", "icon": "crosshair" },
-        { "id": "burning", "text": "Жгучая", "value": "burning", "icon": "flame" },
+        { "id": "sharp", "text": "Острая / Кинжальная", "value": "sharp" },
+        { "id": "dull", "text": "Тупая / Ноющая", "value": "dull" },
+        { "id": "pressing", "text": "Сжимающая / Давящая", "value": "pressing" },
+        { "id": "stabbing", "text": "Колющая", "value": "stabbing" },
+        { "id": "burning", "text": "Жгучая", "value": "burning" },
         { "id": "cramping", "text": "Приступообразная (схватками)", "value": "cramping" },
-        { "id": "constant", "text": "Постоянная", "value": "constant", "icon": "clock" },
-        { "id": "no_pain", "text": "Боли нет (профилактика/другое)", "value": "no_pain", "icon": "check-circle" }
+        { "id": "constant", "text": "Постоянная", "value": "constant" },
+        { "id": "no_pain", "text": "Боли нет (профилактика/другое)", "value": "no_pain" }
       ],
       "logic": [
         {
@@ -115,8 +115,8 @@
       "question_text": "Было ли у вас повышение температуры тела в последнее время?",
       "required": true,
       "options": [
-        { "id": "temp_yes", "text": "Да", "value": "yes", "icon": "thermometer" },
-        { "id": "temp_no", "text": "Нет", "value": "no", "icon": "check-circle" }
+        { "id": "temp_yes", "text": "Да", "value": "yes" },
+        { "id": "temp_no", "text": "Нет", "value": "no" }
       ],
       "logic": [
         {
@@ -140,10 +140,10 @@
       "question_text": "Уточните симптомы, сопровождающие повышение температуры:",
       "required": true,
       "options": [
-        { "id": "chills", "text": "Озноб", "value": "chills", "icon": "thermometer" },
-        { "id": "sweating", "text": "Повышенная потливость", "value": "sweating", "icon": "droplet" },
-        { "id": "temp_morning", "text": "Температура выше утром", "value": "temp_morning", "icon": "sunrise" },
-        { "id": "temp_evening", "text": "Температура выше вечером", "value": "temp_evening", "icon": "sunset" }
+        { "id": "chills", "text": "Озноб", "value": "chills" },
+        { "id": "sweating", "text": "Повышенная потливость", "value": "sweating" },
+        { "id": "temp_morning", "text": "Температура выше утром", "value": "temp_morning" },
+        { "id": "temp_evening", "text": "Температура выше вечером", "value": "temp_evening" }
       ],
       "logic": [
         {
@@ -160,8 +160,8 @@
       "question_text": "Беспокоит ли вас кашель, одышка или боли в грудной клетке при дыхании?",
       "required": true,
       "options": [
-        { "id": "resp_yes", "text": "Да", "value": "yes", "icon": "wind" },
-        { "id": "resp_no", "text": "Нет", "value": "no", "icon": "check-circle" }
+        { "id": "resp_yes", "text": "Да", "value": "yes" },
+        { "id": "resp_no", "text": "Нет", "value": "no" }
       ],
       "logic": [
         {
@@ -231,7 +231,7 @@
         { "id": "on_exercise", "text": "При физической нагрузке", "value": "on_exercise" },
         { "id": "lying_down", "text": "Лёжа в постели", "value": "lying_down" },
         { "id": "asthma_attacks", "text": "Бывают приступы удушья", "value": "asthma_attacks" },
-        { "id": "no_dyspnea", "text": "Одышки нет", "value": "no_dyspnea", "icon": "check-circle" }
+        { "id": "no_dyspnea", "text": "Одышки нет", "value": "no_dyspnea" }
       ],
       "logic": [
         {
@@ -248,8 +248,8 @@
       "question_text": "Бывают ли у вас боли за грудиной, перебои в сердце или отёки?",
       "required": true,
       "options": [
-        { "id": "cardio_yes", "text": "Да", "value": "yes", "icon": "heart" },
-        { "id": "cardio_no", "text": "Нет", "value": "no", "icon": "check-circle" }
+        { "id": "cardio_yes", "text": "Да", "value": "yes" },
+        { "id": "cardio_no", "text": "Нет", "value": "no" }
       ],
       "logic": [
         {
@@ -346,8 +346,8 @@
       "question_text": "Есть ли жалобы на боли в животе, тошноту, изжогу или проблемы со стулом?",
       "required": true,
       "options": [
-        { "id": "gastro_yes", "text": "Да", "value": "yes", "icon": "utensils" },
-        { "id": "gastro_no", "text": "Нет", "value": "no", "icon": "check-circle" }
+        { "id": "gastro_yes", "text": "Да", "value": "yes" },
+        { "id": "gastro_no", "text": "Нет", "value": "no" }
       ],
       "logic": [
         {
@@ -396,7 +396,7 @@
         { "id": "nausea", "text": "Тошнота / Рвота", "value": "nausea" },
         { "id": "coffee_ground_vomit", "text": "Рвота «кофейной гущей» (тёмная)", "value": "coffee_ground_vomit" },
         { "id": "bloating", "text": "Вздутие живота", "value": "bloating" },
-        { "id": "none_dyspepsia", "text": "Ничего из перечисленного", "value": "none", "icon": "check-circle" }
+        { "id": "none_dyspepsia", "text": "Ничего из перечисленного", "value": "none" }
       ],
       "logic": [
         {
@@ -448,8 +448,8 @@
       "question_text": "Есть ли проблемы с мочеиспусканием или боли в пояснице?",
       "required": true,
       "options": [
-        { "id": "urinary_yes", "text": "Да", "value": "yes", "icon": "droplet" },
-        { "id": "urinary_no", "text": "Нет", "value": "no", "icon": "check-circle" }
+        { "id": "urinary_yes", "text": "Да", "value": "yes" },
+        { "id": "urinary_no", "text": "Нет", "value": "no" }
       ],
       "logic": [
         {
@@ -534,8 +534,8 @@
       "question_text": "Есть ли у вас аллергия на лекарства или продукты?",
       "required": true,
       "options": [
-        { "id": "allergy_yes", "text": "Да", "value": "yes", "icon": "alert-triangle" },
-        { "id": "allergy_no", "text": "Нет", "value": "no", "icon": "check-circle" }
+        { "id": "allergy_yes", "text": "Да", "value": "yes" },
+        { "id": "allergy_no", "text": "Нет", "value": "no" }
       ],
       "logic": [
         {
@@ -654,12 +654,12 @@
       "description": "Можно выбрать несколько вариантов",
       "required": true,
       "options": [
-        { "id": "her_cardio", "text": "Инфаркт / Инсульт", "value": "cardio", "icon": "heart" },
-        { "id": "her_diabetes", "text": "Сахарный диабет", "value": "diabetes", "icon": "droplet" },
-        { "id": "her_oncology", "text": "Онкология", "value": "oncology", "icon": "alert-circle" },
+        { "id": "her_cardio", "text": "Инфаркт / Инсульт", "value": "cardio" },
+        { "id": "her_diabetes", "text": "Сахарный диабет", "value": "diabetes" },
+        { "id": "her_oncology", "text": "Онкология", "value": "oncology" },
         { "id": "her_tuberculosis", "text": "Туберкулёз", "value": "tuberculosis" },
-        { "id": "her_mental", "text": "Психические расстройства", "value": "mental", "icon": "brain" },
-        { "id": "her_none", "text": "Нет / Не знаю", "value": "none", "icon": "check-circle" }
+        { "id": "her_mental", "text": "Психические расстройства", "value": "mental" },
+        { "id": "her_none", "text": "Нет / Не знаю", "value": "none" }
       ],
       "logic": [
         {

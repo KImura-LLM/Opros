@@ -71,7 +71,6 @@ class NodeOption(BaseModel):
     id: str
     text: str
     value: Optional[str] = None
-    icon: Optional[str] = None
 
 
 class NodeLogic(BaseModel):
@@ -115,6 +114,9 @@ class SurveyNode(BaseModel):
     
     # Для info_screen
     is_final: Optional[bool] = None
+    
+    # Значение варианта-исключения для multi_choice (сбрасывает остальные при выборе)
+    exclusive_option: Optional[str] = None
     
     # Позиция на canvas (для React Flow)
     position: Optional[NodePosition] = None
