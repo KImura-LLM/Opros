@@ -241,8 +241,8 @@ async def bitrix_webhook(
         bitrix_client = Bitrix24Client()
         patient_display = patient_name or "Пациент"
         comment_html = (
-            f"🔗 <b>Ссылка на опрос для пациента:</b> {patient_display}<br><br>"
-            f"<a href=\"{survey_url}\">{survey_url}</a><br><br>"
+            f"🔗 Ссылка на опрос для пациента: {patient_display}\n"
+            f"{survey_url}\n\n"
             f"⏰ Действительна {settings.JWT_EXPIRATION_HOURS} часов."
         )
         sent = await bitrix_client.send_comment(
