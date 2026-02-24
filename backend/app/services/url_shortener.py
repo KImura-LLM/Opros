@@ -130,8 +130,8 @@ async def shorten_url(long_url: str, provider: str = "clckru") -> str:
 """
 from app.services.url_shortener import shorten_url
 
-# В эндпоинте генерации ссылки:
-survey_url = f"{settings.FRONTEND_URL}/?token={token}"
+# В эндпоинте генерации ссылки (новый формат с коротким кодом):
+survey_url = f"{settings.FRONTEND_URL}/s/{short_code}"
 short_url = await shorten_url(survey_url, provider="clckru")
 
 # Записать в Битрикс24:

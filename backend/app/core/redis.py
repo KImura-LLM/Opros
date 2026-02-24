@@ -174,6 +174,58 @@ class RedisClient:
         key = f"token:blacklist:{token_hash}"
         return await self.client.exists(key) > 0
 
+    # ==========================================
+    # Методы для коротких ссылок (short code → JWT)
+    # ==========================================
+
+    async def save_short_code(
+        self,
+        short_code: str,
+        jwt_token: str,
+        ttl: int = None,
+    ) -> None:
+        """
+        Сохранение маппинга короткого кода на JWT токен.
+        
+        Args:
+            short_code: Короткий код для URL (16 символов Base62)
+            jwt_token: Полный JWT токен
+            ttl: Время жизни в секундах (по умолчанию = JWT_EXPIRATION_HOURS)
+        """
+        await self.connect()
+        key = f"link:{short_code}"
+        if ttl is None:
+            ttl = settings.JWT_EXPIRATION_HOURS * 3600
+        
+        await self.client.setex(key, ttl, jwt_token)
+        logger.debug(f"Сохранён короткий код {short_code} (TTL={ttl}с)")
+
+    async def get_jwt_by_short_code(self, short_code: str) -> Optional[str]:
+        """
+        Получение JWT токена по короткому коду.
+        
+        Args:
+            short_code: Короткий код из URL
+            
+        Returns:
+            JWT токен или None если код не найден / истёк
+        """
+        await self.connect()
+        key = f"link:{short_code}"
+        return await self.client.get(key)
+
+    async def delete_short_code(self, short_code: str) -> None:
+        """
+        Удаление короткого кода (после инвалидации токена).
+        
+        Args:
+            short_code: Короткий код
+        """
+        await self.connect()
+        key = f"link:{short_code}"
+        await self.client.delete(key)
+        logger.debug(f"Удалён короткий код {short_code}")
+
 
 # Глобальный экземпляр клиента
 redis_client = RedisClient()

@@ -16,6 +16,8 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import create_access_token
 from app.core.log_utils import mask_name
+from app.core.redis import get_redis, RedisClient
+from app.core.security import generate_short_code
 from app.services.bitrix24 import Bitrix24Client
 
 
@@ -70,6 +72,7 @@ class BitrixWebhookErrorResponse(BaseModel):
 async def bitrix_webhook(
     request: Request,
     db: AsyncSession = Depends(get_db),
+    redis: RedisClient = Depends(get_redis),
 ):
     """
     Принимает запрос от Битрикс24 (робот / бизнес-процесс / REST-событие).
@@ -220,8 +223,12 @@ async def bitrix_webhook(
         entity_type=entity_type,
     )
     
-    # Формирование URL для прохождения опроса
-    survey_url = f"{settings.FRONTEND_URL}/?token={token}"
+    # Генерация короткого кода и сохранение маппинга в Redis
+    short_code = generate_short_code()
+    await redis.save_short_code(short_code, token)
+    
+    # Формирование URL для прохождения опроса (новый формат: /s/{code})
+    survey_url = f"{settings.FRONTEND_URL}/s/{short_code}"
     
     logger.info(
         f"Сгенерирована ссылка для опроса: "
@@ -278,6 +285,7 @@ async def bitrix_webhook(
 async def generate_survey_link(
     data: BitrixWebhookRequest,
     request: Request,
+    redis: RedisClient = Depends(get_redis),
 ):
     """
     Явный эндпоинт для генерации ссылки с JSON-телом.
@@ -315,7 +323,11 @@ async def generate_survey_link(
         entity_type=entity_type,
     )
     
-    survey_url = f"{settings.FRONTEND_URL}/?token={token}"
+    # Генерация короткого кода и сохранение маппинга в Redis
+    short_code = generate_short_code()
+    await redis.save_short_code(short_code, token)
+    
+    survey_url = f"{settings.FRONTEND_URL}/s/{short_code}"
     
     logger.info(
         f"Сгенерирована ссылка (generate-link): "

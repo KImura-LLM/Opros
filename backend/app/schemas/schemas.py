@@ -28,6 +28,7 @@ class TokenValidationResponse(BaseModel):
     patient_name: Optional[str] = None
     message: Optional[str] = None
     expires_at: Optional[datetime] = None
+    resolved_token: Optional[str] = None  # JWT токен (при использовании короткого кода)
 
 
 class SurveyConfigResponse(BaseModel):

@@ -92,6 +92,7 @@ export interface TokenValidationResponse {
   patient_name?: string
   message?: string
   expires_at?: string
+  resolved_token?: string  // JWT при использовании короткого кода
 }
 
 export interface SurveyStartResponse {

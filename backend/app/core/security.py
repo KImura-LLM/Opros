@@ -9,12 +9,18 @@
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 import hashlib
+import secrets
+import string
 
 from jose import JWTError, jwt
 from pydantic import BaseModel
 from loguru import logger
 
 from app.core.config import settings
+
+# Алфавит Base62 (URL-safe, без спецсимволов)
+_SHORT_CODE_ALPHABET = string.ascii_letters + string.digits  # a-zA-Z0-9
+SHORT_CODE_LENGTH = 16  # 16 символов Base62 ≈ 95 бит энтропии
 
 
 class TokenPayload(BaseModel):
@@ -137,3 +143,19 @@ def get_token_hash(token: str) -> str:
         SHA256 хэш токена
     """
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def generate_short_code(length: int = SHORT_CODE_LENGTH) -> str:
+    """
+    Генерация короткого безопасного кода для URL.
+    
+    16 символов Base62 ≈ 95 бит энтропии — достаточно для magic link
+    с ограниченным временем жизни (Redis TTL).
+    
+    Args:
+        length: Длина кода (по умолчанию 16)
+        
+    Returns:
+        Строка из символов a-zA-Z0-9
+    """
+    return ''.join(secrets.choice(_SHORT_CODE_ALPHABET) for _ in range(length))

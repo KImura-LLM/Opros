@@ -3,7 +3,7 @@
  */
 
 import React, { useEffect, useState } from 'react'
-import { useNavigate, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Loader2, AlertCircle } from 'lucide-react'
 import { validateToken, startSurvey } from '@/api'
@@ -13,7 +13,10 @@ import { useSurveyStore } from '@/store'
 const HomePage: React.FC = () => {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const token = searchParams.get('token')
+  const { code } = useParams<{ code: string }>()
+  
+  // Приоритет: короткий код из пути /s/:code, затем ?token= для обратной совместимости
+  const token = code || searchParams.get('token')
 
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -35,11 +38,14 @@ const HomePage: React.FC = () => {
       .then((response) => {
         if (response.valid) {
           setPatientName(response.patient_name || null)
-          setToken(token)
+          // Используем resolved_token (JWT) если пришёл короткий код,
+          // иначе используем оригинальный токен (он уже JWT)
+          const jwtToken = response.resolved_token || token
+          setToken(jwtToken)
           if (response.session_id) {
             setSession(response.session_id, response.patient_name || undefined, response.expires_at)
           }
-          // Очищаем токен из URL (безопасность: не оставляем JWT в истории браузера)
+          // Очищаем токен из URL (безопасность: не оставляем данные в истории браузера)
           window.history.replaceState({}, '', window.location.pathname)
         } else {
           setError('Ссылка недействительна или срок её действия истёк.')
@@ -58,7 +64,10 @@ const HomePage: React.FC = () => {
 
     setIsStarting(true)
     try {
-      const response = await startSurvey(token, true)
+      // Используем JWT из store (resolved_token), а не короткий код из URL
+      const storeToken = useSurveyStore.getState().token
+      const jwtToken = storeToken || token
+      const response = await startSurvey(jwtToken, true)
       setSession(response.session_id, response.patient_name || undefined, response.expires_at)
       setConfig(response.survey_config)
       navigate('/survey')

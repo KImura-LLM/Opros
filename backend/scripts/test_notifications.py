@@ -69,7 +69,7 @@ async def test_survey_link_telegram(chat_id: str):
     """Тест отправки ссылки на опрос в Telegram"""
     print(f"\n🔹 Тестирование отправки ссылки на опрос")
     
-    test_url = f"{settings.FRONTEND_URL}/?token=test_token_123456"
+    test_url = f"{settings.FRONTEND_URL}/s/testCode1234abcd"
     
     success = await send_survey_link_telegram(
         chat_id=chat_id,
@@ -114,7 +114,7 @@ async def main():
             print("\n⚠️  Для теста отправки опроса укажите --chat-id")
     
     if args.channel in ("url-shortener", "all"):
-        test_url = args.url or f"{settings.FRONTEND_URL}/?token=test_very_long_token_123456789"
+        test_url = args.url or f"{settings.FRONTEND_URL}/s/testLongCode1234"
         await test_url_shortener(test_url, args.provider)
     
     print("\n" + "=" * 60)

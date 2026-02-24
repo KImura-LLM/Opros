@@ -17,6 +17,7 @@ function App() {
       <AnimatePresence mode="wait">
         <Routes location={location} key={location.pathname}>
           <Route path="/" element={<HomePage />} />
+          <Route path="/s/:code" element={<HomePage />} />
           <Route path="/survey" element={<SurveyPage />} />
           <Route path="/complete" element={<CompletePage />} />
           <Route path="/error" element={<ErrorPage />} />

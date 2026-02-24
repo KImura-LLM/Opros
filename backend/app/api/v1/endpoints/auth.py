@@ -3,8 +3,10 @@
 # ============================================
 """
 Валидация JWT токенов из Magic Link.
+Поддерживает как короткие коды (из /s/{code}), так и прямые JWT (для обратной совместимости).
 """
 
+import re
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -13,13 +15,16 @@ from loguru import logger
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.redis import get_redis, RedisClient
-from app.core.security import verify_token, create_access_token
+from app.core.security import verify_token, create_access_token, generate_short_code
 from app.core.log_utils import mask_name
 from app.models import SurveySession
 from app.schemas import TokenValidationResponse
 from app.services.bitrix24 import Bitrix24Client
 
 router = APIRouter()
+
+# Паттерн короткого кода: только буквы и цифры, фиксированная длина
+_SHORT_CODE_PATTERN = re.compile(r'^[a-zA-Z0-9]{12,24}$')
 
 
 @router.get("/validate", response_model=TokenValidationResponse)
@@ -30,18 +35,37 @@ async def validate_token(
     redis: RedisClient = Depends(get_redis),
 ):
     """
-    Валидация JWT токена из URL.
+    Валидация токена из URL.
+    
+    Поддерживает два формата:
+    - Короткий код (16 символов Base62) — новый формат из /s/{code}
+    - Полный JWT токен — старый формат для обратной совместимости
     
     Проверяет:
-    - Подпись токена
+    - Подпись токена (JWT)
     - Срок действия
     - Не в blacklist
     
     Returns:
         TokenValidationResponse с данными сессии
     """
-    # Декодирование и валидация токена
-    token_data = verify_token(token)
+    jwt_token = token  # По умолчанию считаем, что передан JWT
+    
+    # Определяем: это короткий код или JWT?
+    # JWT всегда содержит точки (header.payload.signature), короткий код — нет
+    if _SHORT_CODE_PATTERN.match(token) and '.' not in token:
+        # Это короткий код — ищем JWT в Redis
+        jwt_token = await redis.get_jwt_by_short_code(token)
+        if jwt_token is None:
+            logger.warning(f"Короткий код не найден или истёк: {token[:8]}...")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Ссылка недействительна или срок её действия истёк",
+            )
+        logger.debug(f"Короткий код {token[:8]}... → JWT найден в Redis")
+    
+    # Декодирование и валидация JWT токена
+    token_data = verify_token(jwt_token)
     
     if token_data is None:
         logger.warning("Попытка валидации невалидного токена")
@@ -78,6 +102,7 @@ async def validate_token(
             session_id=existing_session.id,
             patient_name=existing_session.patient_name,
             message="Сессия восстановлена",
+            resolved_token=jwt_token if jwt_token != token else None,
         )
     
     # Если имя отсутствует в токене (компактный JWT) — загружаем из CRM
@@ -100,6 +125,7 @@ async def validate_token(
         session_id=None,
         patient_name=patient_name,
         message="Токен действителен",
+        resolved_token=jwt_token if jwt_token != token else None,
     )
 
 
@@ -108,6 +134,7 @@ async def generate_token(
     lead_id: int,
     patient_name: str = None,
     entity_type: str = "DEAL",
+    redis: RedisClient = Depends(get_redis),
 ):
     """
     Генерация JWT токена для тестирования.
@@ -120,7 +147,7 @@ async def generate_token(
         entity_type: Тип сущности (DEAL/LEAD)
         
     Returns:
-        JWT токен и URL для прохождения опроса
+        Короткий код, URL для прохождения опроса и полный JWT (для отладки)
     """
     from app.core.config import settings
     
@@ -130,15 +157,18 @@ async def generate_token(
             detail="Этот эндпоинт доступен только в режиме разработки",
         )
     
-    token = create_access_token(
+    jwt_token = create_access_token(
         lead_id=lead_id,
         patient_name=patient_name,
         entity_type=entity_type,
     )
     
+    # Генерация короткого кода и сохранение маппинга в Redis
+    short_code = generate_short_code()
+    await redis.save_short_code(short_code, jwt_token)
+    
     return {
-        "token": token,
-        "url": f"{settings.FRONTEND_URL}/?token={token}",
-        "link": f"http://localhost:5173/?token={token}",
+        "code": short_code,
+        "url": f"{settings.FRONTEND_URL}/s/{short_code}",
         "expires_in_hours": settings.JWT_EXPIRATION_HOURS,
     }
