@@ -11,8 +11,10 @@ HTTP-клиент для отправки данных в Битрикс24.
 
 import base64
 import httpx
+from datetime import datetime
 from io import BytesIO
 from typing import Optional
+from zoneinfo import ZoneInfo
 from loguru import logger
 
 from app.core.config import settings
@@ -529,3 +531,128 @@ class Bitrix24Client:
         except Exception as e:
             logger.error(f"Ошибка получения лида из Битрикс24: {e}")
             return None
+
+    async def create_deal_activity(
+        self,
+        entity_id: int,
+        entity_type: str = "DEAL",
+        responsible_id: Optional[int] = None,
+    ) -> bool:
+        """
+        Создание дела (Activity) в ленте сделки Битрикс24 со сроком «сегодня».
+
+        Метод API: crm.activity.add
+
+        Дело создаётся с:
+        - заголовком «Прошел опрос (требуется действие)»
+        - сроком выполнения: сегодня 23:59:59 (Europe/Moscow)
+        - статусом COMPLETED = N
+        - ответственным из сделки (ASSIGNED_BY_ID) или дефолтным из настроек
+
+        Args:
+            entity_id: ID сделки или лида
+            entity_type: Тип сущности ('DEAL' или 'LEAD')
+            responsible_id: ID ответственного (если None — берётся из сделки или настроек)
+
+        Returns:
+            True если дело создано, False при ошибке
+        """
+        if not self.webhook_url:
+            logger.warning("BITRIX24_WEBHOOK_URL не настроен, пропускаем создание дела")
+            return False
+
+        entity_type_upper = (entity_type or "DEAL").upper()
+        # OWNER_TYPE_ID: 2 = DEAL, 1 = LEAD
+        owner_type_id = 2 if entity_type_upper == "DEAL" else 1
+
+        # Получаем ответственного из сделки (ASSIGNED_BY_ID)
+        if responsible_id is None and entity_type_upper == "DEAL":
+            try:
+                deal_data = await self.get_deal(entity_id)
+                if deal_data:
+                    assigned_by = deal_data.get("ASSIGNED_BY_ID")
+                    if assigned_by:
+                        responsible_id = int(assigned_by)
+                        logger.info(
+                            f"Ответственный для дела взят из сделки: "
+                            f"deal_id={entity_id}, responsible_id={responsible_id}"
+                        )
+            except Exception as e:
+                logger.warning(
+                    f"Не удалось получить ответственного из сделки {entity_id}: {e}"
+                )
+
+        # Fallback на дефолтного ответственного из настроек
+        if not responsible_id:
+            default_resp = getattr(settings, "BITRIX24_DEFAULT_RESPONSIBLE_ID", 0)
+            if default_resp:
+                responsible_id = default_resp
+                logger.info(
+                    f"Используется дефолтный ответственный для дела: responsible_id={responsible_id}"
+                )
+
+        # Срок выполнения: сегодня 23:59:59 по Europe/Moscow
+        moscow_tz = ZoneInfo("Europe/Moscow")
+        today = datetime.now(tz=moscow_tz).date()
+        deadline_dt = datetime(today.year, today.month, today.day, 23, 59, 59, tzinfo=moscow_tz)
+        deadline_str = deadline_dt.strftime("%Y-%m-%d %H:%M:%S")
+
+        method_url = f"{self.webhook_url.rstrip('/')}/crm.activity.add"
+
+        fields: dict = {
+            "OWNER_TYPE_ID": owner_type_id,
+            "OWNER_ID": entity_id,
+            "TYPE_ID": 6,  # 6 = Task (дело)
+            "SUBJECT": "Прошел опрос (требуется действие)",
+            "DESCRIPTION": (
+                "Нужно скопировать ссылку сделки и прикрепить "
+                "в декстру в комментарий пациента."
+            ),
+            "DESCRIPTION_TYPE": 1,  # 1 = Plain text
+            "DEADLINE": deadline_str,
+            "COMPLETED": "N",
+        }
+
+        if responsible_id:
+            fields["RESPONSIBLE_ID"] = responsible_id
+
+        payload = {"fields": fields}
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(method_url, json=payload)
+                response.raise_for_status()
+
+                result = response.json()
+
+                if result.get("result"):
+                    activity_id = result["result"]
+                    logger.info(
+                        f"Дело создано в Битрикс24: activity_id={activity_id}, "
+                        f"entity_type={entity_type_upper}, entity_id={entity_id}, "
+                        f"deadline={deadline_str}"
+                    )
+                    return True
+
+                error = result.get("error_description", result.get("error", "Неизвестная ошибка"))
+                logger.error(
+                    f"Ошибка создания дела в Битрикс24 (crm.activity.add): {error} "
+                    f"(entity_id={entity_id}, response={result})"
+                )
+                return False
+
+        except httpx.HTTPStatusError as e:
+            logger.error(
+                f"HTTP ошибка при создании дела в Битрикс24: {e} (entity_id={entity_id})"
+            )
+            return False
+        except httpx.RequestError as e:
+            logger.error(
+                f"Ошибка соединения при создании дела в Битрикс24: {e} (entity_id={entity_id})"
+            )
+            return False
+        except Exception as e:
+            logger.error(
+                f"Неожиданная ошибка при создании дела в Битрикс24: {e} (entity_id={entity_id})"
+            )
+            return False
