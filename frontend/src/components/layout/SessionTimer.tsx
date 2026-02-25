@@ -59,19 +59,7 @@ export const SessionTimer = ({ expiresAt, onExpire }: SessionTimerProps) => {
     return 'text-gray-600'
   }
 
-  if (timeLeft === 0) {
-    return (
-      <div className="flex items-center gap-2 text-red-600 text-sm font-medium">
-        <Clock size={16} />
-        <span>Время истекло</span>
-      </div>
-    )
-  }
-
-  return (
-    <div className={`flex items-center gap-2 text-sm font-medium ${getColor()}`}>
-      <Clock size={16} />
-      <span>Осталось: {formatTime(timeLeft)}</span>
-    </div>
-  )
+  // Таймер работает в фоне (onExpire срабатывает при истечении),
+  // но визуальное отображение скрыто
+  return null
 }
