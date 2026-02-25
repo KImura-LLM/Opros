@@ -1,8 +1,9 @@
 /**
- * Компонент таймера обратного отсчёта до истечения сессии
+ * Компонент таймера обратного отсчёта до истечения сессии.
+ * Работает в фоне — визуально не отображается.
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 
 interface SessionTimerProps {
   expiresAt: string // ISO timestamp
@@ -10,34 +11,22 @@ interface SessionTimerProps {
 }
 
 export const SessionTimer = ({ expiresAt, onExpire }: SessionTimerProps) => {
-  const [timeLeft, setTimeLeft] = useState<number>(0)
-
   useEffect(() => {
     const calculateTimeLeft = () => {
-      const now = new Date().getTime()
-      const expiry = new Date(expiresAt).getTime()
-      const diff = expiry - now
-
+      const diff = new Date(expiresAt).getTime() - Date.now()
       return diff > 0 ? diff : 0
     }
 
-    // Обновление каждую секунду
+    // Обновление каждую секунду — вызывает onExpire при истечении
     const timer = setInterval(() => {
-      const remaining = calculateTimeLeft()
-      setTimeLeft(remaining)
-
-      if (remaining === 0 && onExpire) {
+      if (calculateTimeLeft() === 0 && onExpire) {
         onExpire()
       }
     }, 1000)
 
-    // Начальное значение
-    setTimeLeft(calculateTimeLeft())
-
     return () => clearInterval(timer)
   }, [expiresAt, onExpire])
 
-  // Таймер работает в фоне (onExpire срабатывает при истечении),
-  // но визуальное отображение скрыто
+  // Таймер работает в фоне, визуально не отображается
   return null
 }
