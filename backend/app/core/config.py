@@ -54,12 +54,12 @@ class Settings(BaseSettings):
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/0"
     
     # Сессии
-    SESSION_TTL: int = 86400  # 24 часа в секундах
+    SESSION_TTL: int = 604800  # 24 часа в секундах
     
     # JWT
     JWT_SECRET_KEY: str = "jwt-secret-change-me"
     JWT_ALGORITHM: str = "HS256"
-    JWT_EXPIRATION_HOURS: int = 48
+    JWT_EXPIRATION_HOURS: int = 168
     
     # Битрикс24
     BITRIX24_WEBHOOK_URL: str = ""  # Исходящий вебхук (для отправки данных В Битрикс24)
