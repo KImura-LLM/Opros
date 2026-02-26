@@ -236,25 +236,10 @@ async def bitrix_webhook(
         f"entity_type={entity_type}"
     )
     
-    # Автоматическая отправка ссылки в комментарий сделки/лида в Битрикс24
+    # Обновление данных сделки в Битрикс24
     if settings.BITRIX24_WEBHOOK_URL:
         bitrix_client = Bitrix24Client()
-        patient_display = patient_name or "Пациент"
-        comment_html = (
-            f"🔗 Ссылка на опрос для пациента: {patient_display}\n"
-            f"{survey_url}\n\n"
-            f"⏰ Действительна {settings.JWT_EXPIRATION_HOURS} часов."
-        )
-        sent = await bitrix_client.send_comment(
-            entity_id=lead_id,
-            entity_type=entity_type,
-            comment=comment_html,
-        )
-        if sent:
-            logger.info(f"Ссылка на опрос записана в комментарий сделки {lead_id} в Битрикс24")
-        else:
-            logger.warning(f"Не удалось записать ссылку в комментарий сделки {lead_id}")
-        
+
         # Запись ссылки в пользовательское поле UF_CRM_1771160085 (для отправки через SMS/WhatsApp)
         if entity_type == "DEAL":
             updated = await bitrix_client.update_deal_field(
