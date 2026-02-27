@@ -142,6 +142,27 @@ class SurveyStructureUpdate(BaseModel):
     nodes: Optional[List[SurveyNode]] = None
 
 
+class AnalysisTrigger(BaseModel):
+    """Триггер срабатывания правила анализа."""
+    node_id: str = Field(..., description="ID вопроса из опросника")
+    option_value: str = Field(..., description="Значение варианта ответа, при выборе которого срабатывает триггер")
+    match_mode: str = Field("exact", description="Режим сравнения: 'exact' — точное совпадение, 'contains' — подстрока, 'gte' — числовое ≥")
+
+
+class AnalysisRule(BaseModel):
+    """Правило системного анализа для врача."""
+    id: str = Field(..., description="Уникальный ID правила")
+    name: str = Field("", description="Краткое название правила")
+    triggers: List[AnalysisTrigger] = Field(default_factory=list, description="Список триггеров")
+    trigger_mode: str = Field("any", description="Режим срабатывания: 'any' (хотя бы один) или 'all' (все)")
+    message: str = Field(..., description="Текст сообщения для врача")
+
+
+class AnalysisRulesPayload(BaseModel):
+    """Набор правил системного анализа для одного опросника."""
+    rules: List[AnalysisRule] = Field(default_factory=list)
+
+
 class ValidationError(BaseModel):
     """Ошибка валидации."""
     type: str  # error, warning
@@ -764,3 +785,73 @@ async def get_node_types():
             "can_be_final": False,
         },
     ]
+
+
+# ==========================================
+# Правила системного анализа для врача
+# ==========================================
+
+@router.get("/surveys/{survey_id}/analysis-rules", response_model=AnalysisRulesPayload)
+async def get_analysis_rules(
+    request: Request,
+    survey_id: int,
+    db: AsyncSession = Depends(get_db),
+    _auth: bool = Depends(verify_admin_session),
+):
+    """
+    Получить правила системного анализа для опросника.
+    Правила хранятся в json_config["analysis_rules"].
+    """
+    result = await db.execute(
+        select(SurveyConfig).where(SurveyConfig.id == survey_id)
+    )
+    config = result.scalar_one_or_none()
+
+    if not config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Опросник не найден"
+        )
+
+    json_config = config.json_config or {}
+    raw_rules = json_config.get("analysis_rules", [])
+
+    return AnalysisRulesPayload(rules=[AnalysisRule(**r) for r in raw_rules])
+
+
+@router.put("/surveys/{survey_id}/analysis-rules", response_model=AnalysisRulesPayload)
+async def save_analysis_rules(
+    request: Request,
+    survey_id: int,
+    payload: AnalysisRulesPayload,
+    db: AsyncSession = Depends(get_db),
+    _auth: bool = Depends(verify_admin_session),
+):
+    """
+    Сохранить (перезаписать) правила системного анализа для опросника.
+    """
+    result = await db.execute(
+        select(SurveyConfig).where(SurveyConfig.id == survey_id)
+    )
+    config = result.scalar_one_or_none()
+
+    if not config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Опросник не найден"
+        )
+
+    # Обновляем json_config, сохраняя остальные поля
+    json_config = dict(config.json_config or {})
+    json_config["analysis_rules"] = [r.model_dump() for r in payload.rules]
+
+    # SQLAlchemy не отслеживает мутации JSONB — присваиваем заново
+    config.json_config = json_config
+    config.updated_at = datetime.now(timezone.utc)
+
+    await db.commit()
+    await db.refresh(config)
+
+    logger.info(f"Сохранены правила анализа для опросника {survey_id}: {len(payload.rules)} правил(о)")
+
+    return payload

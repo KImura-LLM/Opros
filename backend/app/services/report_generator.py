@@ -40,6 +40,155 @@ class ReportGenerator:
         if v2_nodes & set(self.nodes.keys()):
             return 2
         return 1
+
+    # ============================================
+    # Системный анализ для врача
+    # ============================================
+
+    def _check_trigger(self, trigger: dict, answer: Any) -> bool:
+        """
+        Проверка, сработал ли отдельный триггер для данного ответа.
+
+        Поддерживаемые форматы answer_data:
+        - {"selected": "value"}           — single_choice
+        - {"selected": ["v1", "v2"]}     — multi_choice
+        - {"value": 7}                    — slider / scale
+        - {"locations": ["head", ...]}    — body_map
+        - {"selected": true/false}        — consent / boolean
+        - {"text": "свободный текст"}    — text_input
+        """
+        if not answer or not isinstance(answer, dict):
+            return False
+
+        option_value = trigger.get("option_value", "")
+        match_mode = trigger.get("match_mode", "exact")
+
+        # ── Режим «contains» — поиск подстроки (регистронезависимо) ──
+        if match_mode == "contains":
+            search = option_value.lower().strip()
+            if not search:
+                return False
+            # Проверяем text (text_input)
+            text = answer.get("text", "")
+            if isinstance(text, str) and search in text.lower():
+                return True
+            # Проверяем selected (если строка)
+            selected = answer.get("selected")
+            if isinstance(selected, str) and search in selected.lower():
+                return True
+            # Проверяем additional_fields
+            additional = answer.get("additional_fields", {})
+            if isinstance(additional, dict):
+                for val in additional.values():
+                    if isinstance(val, str) and search in val.lower():
+                        return True
+            return False
+
+        # ── Режим «gte» — числовое сравнение ≥ порога (слайдер / шкала) ──
+        if match_mode == "gte":
+            value = answer.get("value")
+            if value is not None:
+                try:
+                    return float(value) >= float(option_value)
+                except (ValueError, TypeError):
+                    return False
+            return False
+
+        # ── Режим «exact» (по умолчанию) ──
+        # Проверка поля selected (single_choice, multi_choice, consent)
+        selected = answer.get("selected")
+        if selected is not None:
+            if isinstance(selected, list):
+                return option_value in selected
+            if isinstance(selected, bool):
+                return str(selected).lower() == option_value.lower()
+            return str(selected) == option_value
+
+        # Проверка поля value (slider / scale)
+        value = answer.get("value")
+        if value is not None:
+            try:
+                return float(value) >= float(option_value)
+            except (ValueError, TypeError):
+                return str(value) == option_value
+
+        # Проверка поля locations (body_map)
+        locations = answer.get("locations")
+        if isinstance(locations, list):
+            return option_value in locations
+
+        return False
+
+    def _evaluate_analysis_rules(self, answers: Dict[str, Any]) -> List[str]:
+        """
+        Оценка правил системного анализа по ответам пользователя.
+
+        Returns:
+            Список текстовых сообщений для врача (от сработавших правил).
+        """
+        rules = self.config.get("analysis_rules", [])
+        if not rules:
+            return []
+
+        triggered_messages: List[str] = []
+
+        for rule in rules:
+            triggers = rule.get("triggers", [])
+            if not triggers:
+                continue
+
+            mode = rule.get("trigger_mode", "any")  # "any" или "all"
+            message = rule.get("message", "").strip()
+            if not message:
+                continue
+
+            results = []
+            for t in triggers:
+                node_id = t.get("node_id", "")
+                answer = answers.get(node_id)
+                results.append(self._check_trigger(t, answer))
+
+            if mode == "all":
+                fired = all(results)
+            else:  # "any"
+                fired = any(results)
+
+            if fired:
+                triggered_messages.append(message)
+
+        return triggered_messages
+
+    def _generate_analysis_block_html(self, answers: Dict[str, Any]) -> Optional[str]:
+        """
+        Генерация HTML-блока «Системный анализ для врача» (формат Битрикс24).
+        """
+        messages = self._evaluate_analysis_rules(answers)
+        if not messages:
+            return None
+
+        items = "".join(f"<br>• {m}" for m in messages)
+        return (
+            "⚠️ <b>СИСТЕМНЫЙ АНАЛИЗ ДЛЯ ВРАЧА:</b>"
+            f"{items}"
+        )
+
+    def _generate_analysis_block_readable(self, answers: Dict[str, Any]) -> Optional[str]:
+        """
+        Генерация читаемого HTML-блока анализа для предпросмотра / PDF.
+        """
+        messages = self._evaluate_analysis_rules(answers)
+        if not messages:
+            return None
+
+        items_html = "".join(
+            f'<li>{m}</li>' for m in messages
+        )
+        return (
+            '<div class="block analysis-block">'
+            '<div class="block-title">⚠️ СИСТЕМНЫЙ АНАЛИЗ ДЛЯ ВРАЧА</div>'
+            f'<div class="block-body"><ul>{items_html}</ul></div>'
+            '</div>'
+        )
     
     def generate_html_report(
         self,
@@ -70,6 +219,11 @@ class ReportGenerator:
         
         # Заголовок
         report_parts.append(self._generate_header(patient_name))
+        
+        # Системный анализ для врача (в самый верх, перед остальными результатами)
+        analysis_block = self._generate_analysis_block_html(answers)
+        if analysis_block:
+            report_parts.append(analysis_block)
         
         # Основная жалоба
         main_complaint = self._generate_main_complaint(answers)
@@ -103,6 +257,11 @@ class ReportGenerator:
         
         # Заголовок
         report_parts.append(self._generate_header(patient_name))
+        
+        # Системный анализ для врача (в самый верх, перед остальными результатами)
+        analysis_block = self._generate_analysis_block_html(answers)
+        if analysis_block:
+            report_parts.append(analysis_block)
         
         # Блок 1: Локализация и характеристика боли
         pain_block = self._generate_v2_pain_block(answers)
@@ -591,6 +750,11 @@ class ReportGenerator:
         </div>
         """)
         
+        # Системный анализ для врача (в самый верх, перед остальными результатами)
+        analysis_html = self._generate_analysis_block_readable(answers)
+        if analysis_html:
+            content_parts.append(analysis_html)
+        
         # Основная жалоба
         main_complaint = self._generate_readable_main_complaint(answers)
         if main_complaint:
@@ -829,7 +993,11 @@ class ReportGenerator:
                 f'</div>'
             )
 
+        # ── БЛОК 0: СИСТЕМНЫЙ АНАЛИЗ ДЛЯ ВРАЧА ─────────────────────────
+        analysis_html = self._generate_analysis_block_readable(answers) or ""
+
         section_html = "".join([
+            analysis_html,
             wrap_block("Основные жалобы", "🩺", block1_rows),
             wrap_block("История заболевания", "📋", block2_rows),
             wrap_block("Анамнез жизни", "💊", block3_rows),
@@ -1134,6 +1302,27 @@ class ReportGenerator:
             color: #1a1a1a;
             line-height: 1.55;
             list-style: disc;
+        }}
+        /* ── Системный анализ для врача ── */
+        .analysis-block {{
+            border: 1.5pt solid #f59e0b;
+            background: #fffbeb;
+            margin-bottom: 8px;
+        }}
+        .analysis-block .block-title {{
+            background: #fef3c7;
+            border-bottom: 1pt solid #fcd34d;
+            color: #92400e;
+            font-size: 9.5pt;
+        }}
+        .analysis-block .block-body ul {{
+            margin: 3px 0 3px 16px;
+        }}
+        .analysis-block .block-body li {{
+            color: #78350f;
+            font-weight: 500;
+            font-size: 8.5pt;
+            margin-bottom: 3px;
         }}
         /* ── Алерты ── */
         .alert-block {{

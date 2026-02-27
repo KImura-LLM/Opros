@@ -106,12 +106,13 @@ class SurveyConfigAdmin(ModelView, model=SurveyConfig):
         SurveyConfig.is_active,
         SurveyConfig.created_at,
         "edit_link",  # Кастомная колонка для кнопки редактора
+        "analysis_link",  # Кастомная колонка для кнопки системного анализа
     ]
     
     # Форматтер для списка
     @staticmethod
     def _edit_link_formatter(model, prop):
-        """Рендеринг кнопки редактора."""
+        """Рендеринг кнопки визуального редактора."""
         from markupsafe import Markup
         # Используем FRONTEND_URL из настроек
         editor_url = f"{settings.FRONTEND_URL}/editor/{model.id}"
@@ -137,16 +138,49 @@ class SurveyConfigAdmin(ModelView, model=SurveyConfig):
                onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(59, 130, 246, 0.3)';"
             >
                 <i class="fa-solid fa-diagram-project"></i>
-                Редактор
+                Визуальный редактор
+            </a>
+        ''')
+    
+    @staticmethod
+    def _analysis_link_formatter(model, prop):
+        """Рендеринг кнопки редактора системного анализа."""
+        from markupsafe import Markup
+        analysis_url = f"{settings.FRONTEND_URL}/analysis-editor/{model.id}"
+        
+        return Markup(f'''
+            <a href="{analysis_url}" 
+               target="_blank"
+               style="
+                   display: inline-flex;
+                   align-items: center;
+                   gap: 6px;
+                   padding: 6px 12px;
+                   background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+                   color: white;
+                   border-radius: 6px;
+                   font-size: 12px;
+                   font-weight: 500;
+                   text-decoration: none;
+                   transition: all 0.2s;
+                   box-shadow: 0 2px 4px rgba(245, 158, 11, 0.3);
+               "
+               onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 4px 8px rgba(245, 158, 11, 0.4)';"
+               onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 2px 4px rgba(245, 158, 11, 0.3)';"
+            >
+                <i class="fa-solid fa-stethoscope"></i>
+                Системный анализ
             </a>
         ''')
     
     column_formatters = {
         "edit_link": _edit_link_formatter.__func__,
+        "analysis_link": _analysis_link_formatter.__func__,
     }
     
     column_labels = {
         "edit_link": "Визуальный редактор",
+        "analysis_link": "Системный анализ",
     }
 
 

@@ -8,6 +8,7 @@ import SurveyPage from '@/pages/SurveyPage'
 import CompletePage from '@/pages/CompletePage'
 import ErrorPage from '@/pages/ErrorPage'
 import EditorPage from '@/pages/EditorPage'
+import AnalysisEditorPage from '@/pages/AnalysisEditorPage'
 
 function App() {
   const location = useLocation()
@@ -24,6 +25,9 @@ function App() {
           
           {/* Редактор опросника (для админ-панели) */}
           <Route path="/editor/:surveyId" element={<EditorPage />} />
+          
+          {/* Редактор системного анализа (для админ-панели) */}
+          <Route path="/analysis-editor/:surveyId" element={<AnalysisEditorPage />} />
         </Routes>
       </AnimatePresence>
     </div>
