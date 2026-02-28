@@ -359,7 +359,7 @@ const RuleEditor = ({
 
         <div className="mt-4">
           <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
-            Режим срабатывания триггеров
+            Режим срабатывания между вопросами
           </label>
           <div className="flex gap-3">
             <label
@@ -378,7 +378,7 @@ const RuleEditor = ({
                 className="sr-only"
               />
               <span className="font-medium">Любой</span>
-              <span className="text-xs opacity-70">хотя бы один</span>
+              <span className="text-xs opacity-70">хотя бы один ответ</span>
             </label>
 
             <label
@@ -396,10 +396,15 @@ const RuleEditor = ({
                 onChange={() => onUpdateMode('all')}
                 className="sr-only"
               />
-              <span className="font-medium">Все</span>
-              <span className="text-xs opacity-70">все сразу</span>
+              <span className="font-medium">Все вопросы</span>
+              <span className="text-xs opacity-70">хотя бы по одному в каждом</span>
             </label>
           </div>
+          <p className="mt-2 text-xs text-slate-400 leading-relaxed">
+            {rule.trigger_mode === 'any'
+              ? 'Правило сработает, если хотя бы один из выбранных ответов совпадёт.'
+              : 'Правило сработает, если в каждом вопросе с триггерами совпадёт хотя бы один ответ (ИЛИ внутри вопроса, И между вопросами).'}
+          </p>
         </div>
       </div>
 
@@ -510,7 +515,8 @@ const QuestionBlock = ({
   sliderTriggerValue,
 }: QuestionBlockProps) => {
   const isSlider = SLIDER_TYPES.has(question.type);
-  const anyOptionActive = question.options.some((o) => isActive(o.value || o.id));
+  const activeOptionCount = question.options.filter((o) => isActive(o.value || o.id)).length;
+  const anyOptionActive = activeOptionCount > 0;
   const hasTextTrigger = textTriggerValue !== null;
   const hasSliderTrigger = sliderTriggerValue !== null;
   const anyActive = anyOptionActive || hasTextTrigger || hasSliderTrigger;
@@ -587,26 +593,57 @@ const QuestionBlock = ({
 
       {/* Варианты ответа (чекбоксы) — для вопросов с options */}
       {question.options.length > 0 && (
-        <div className="ml-1 grid grid-cols-1 sm:grid-cols-2 gap-1">
-          {question.options.map((opt) => {
-            const val = opt.value || opt.id;
-            const active = isActive(val);
-            return (
-              <label
-                key={opt.id}
-                className={`flex items-center gap-2 px-2.5 py-1.5 rounded-md cursor-pointer text-sm transition-colors
-                  ${active ? 'bg-amber-50 text-amber-900' : 'text-slate-600 hover:bg-slate-50'}`}
-              >
-                <input
-                  type="checkbox"
-                  checked={active}
-                  onChange={() => onToggle(val)}
-                  className="rounded border-slate-300 text-amber-500 focus:ring-amber-400 w-4 h-4"
-                />
-                <span>{opt.text}</span>
-              </label>
-            );
-          })}
+        <div className="ml-1">
+          {/* Заголовок секции с OR-индикатором */}
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="text-[10px] text-slate-400 uppercase tracking-wide font-semibold">
+              Варианты
+            </span>
+            {activeOptionCount > 1 ? (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold text-orange-700 bg-orange-100 border border-orange-200 px-1.5 py-0.5 rounded">
+                <span className="opacity-60">🔀</span>
+                {activeOptionCount} выбрано · ИЛИ
+              </span>
+            ) : (
+              <span className="text-[10px] text-slate-300 italic">
+                можно выбрать несколько (логика ИЛИ)
+              </span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+            {question.options.map((opt, idx) => {
+              const val = opt.value || opt.id;
+              const active = isActive(val);
+              const isLastActive =
+                active &&
+                activeOptionCount > 1 &&
+                question.options
+                  .slice(idx + 1)
+                  .every((o) => !isActive(o.value || o.id));
+              return (
+                <div key={opt.id} className="relative">
+                  <label
+                    className={`flex items-center gap-2 px-2.5 py-1.5 rounded-md cursor-pointer text-sm transition-colors
+                      ${active ? 'bg-amber-50 text-amber-900 ring-1 ring-amber-200' : 'text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={active}
+                      onChange={() => onToggle(val)}
+                      className="rounded border-slate-300 text-amber-500 focus:ring-amber-400 w-4 h-4"
+                    />
+                    <span>{opt.text}</span>
+                    {active && activeOptionCount > 1 && !isLastActive && (
+                      <span className="ml-auto text-[9px] font-bold text-orange-400 shrink-0">
+                        ИЛИ
+                      </span>
+                    )}
+                  </label>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 

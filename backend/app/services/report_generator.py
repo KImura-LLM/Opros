@@ -142,16 +142,29 @@ class ReportGenerator:
             if not message:
                 continue
 
-            results = []
-            for t in triggers:
-                node_id = t.get("node_id", "")
-                answer = answers.get(node_id)
-                results.append(self._check_trigger(t, answer))
-
             if mode == "all":
-                fired = all(results)
+                # Группируем триггеры по node_id (вопросу).
+                # Правило срабатывает, если в КАЖДОМ вопросе-группе
+                # сработал ХОТЯ БЫ ОДИН триггер (логика «ИЛИ» внутри вопроса,
+                # «И» между вопросами).
+                groups: Dict[str, List] = {}
+                for t in triggers:
+                    nid = t.get("node_id", "")
+                    groups.setdefault(nid, []).append(t)
+
+                fired = all(
+                    any(
+                        self._check_trigger(t, answers.get(t.get("node_id", "")))
+                        for t in grp
+                    )
+                    for grp in groups.values()
+                )
             else:  # "any"
-                fired = any(results)
+                # Любой отдельный триггер из любого вопроса — достаточно.
+                fired = any(
+                    self._check_trigger(t, answers.get(t.get("node_id", "")))
+                    for t in triggers
+                )
 
             if fired:
                 triggered_messages.append(message)
