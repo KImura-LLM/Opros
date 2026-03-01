@@ -506,7 +506,11 @@ async def update_survey(
             }
         )
     
-    # Обновление
+    # Обновление — сохраняем поля, которыми управляет не визуальный редактор
+    # (analysis_rules и прочие расширения json_config)
+    existing_config = dict(config.json_config or {})
+    json_config["analysis_rules"] = existing_config.get("analysis_rules", [])
+
     config.name = structure.name
     config.description = structure.description
     config.json_config = json_config
