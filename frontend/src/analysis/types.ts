@@ -26,12 +26,19 @@ export interface AnalysisTrigger {
  * Правило системного анализа.
  * Содержит набор триггеров и текст сообщения для врача.
  */
+/**
+ * Допустимые цвета для правила (цветовая индикация в отчёте).
+ */
+export type RuleColor = 'red' | 'orange' | 'yellow' | 'green';
+
 export interface AnalysisRule {
   id: string;
   name: string;
   triggers: AnalysisTrigger[];
   trigger_mode: 'any' | 'all';
   message: string;
+  /** Цвет фона триггера в отчёте */
+  color?: RuleColor;
 }
 
 /**

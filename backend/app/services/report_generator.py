@@ -414,38 +414,187 @@ class ReportGenerator:
 
         return triggered_messages
 
+    def _evaluate_analysis_rules_with_color(self, answers: Dict[str, Any]) -> List[Dict[str, str]]:
+        """
+        Оценка правил системного анализа по ответам пользователя (с цветом).
+
+        Returns:
+            Список словарей {'message': str, 'color': str, 'name': str}
+            для сработавших правил.
+        """
+        rules = self.config.get("analysis_rules", [])
+        if not rules:
+            return []
+
+        triggered: List[Dict[str, str]] = []
+
+        for rule in rules:
+            triggers = rule.get("triggers", [])
+            if not triggers:
+                continue
+
+            mode = rule.get("trigger_mode", "any")
+            message = rule.get("message", "").strip()
+            if not message:
+                continue
+
+            if mode == "all":
+                groups: Dict[str, List] = {}
+                for t in triggers:
+                    nid = t.get("node_id", "")
+                    groups.setdefault(nid, []).append(t)
+
+                fired = all(
+                    any(
+                        self._check_trigger(t, answers.get(t.get("node_id", "")))
+                        for t in grp
+                    )
+                    for grp in groups.values()
+                )
+            else:
+                fired = any(
+                    self._check_trigger(t, answers.get(t.get("node_id", "")))
+                    for t in triggers
+                )
+
+            if fired:
+                triggered.append({
+                    "message": message,
+                    "color": rule.get("color", "red"),
+                    "name": rule.get("name", ""),
+                })
+
+        return triggered
+
+    # Палитра цветов для триггеров (HTML Битрикс24)
+    TRIGGER_COLOR_MAP = {
+        "red":    {"bg": "#fef2f2", "border": "#fca5a5", "text": "#991b1b", "emoji": "🔴"},
+        "orange": {"bg": "#fff7ed", "border": "#fdba74", "text": "#9a3412", "emoji": "🟠"},
+        "yellow": {"bg": "#fefce8", "border": "#fde047", "text": "#854d0e", "emoji": "🟡"},
+        "green":  {"bg": "#f0fdf4", "border": "#86efac", "text": "#166534", "emoji": "🟢"},
+    }
+
     def _generate_analysis_block_html(self, answers: Dict[str, Any]) -> Optional[str]:
         """
         Генерация HTML-блока «Системный анализ для врача» (формат Битрикс24).
+        Каждый триггер — отдельный абзац с цветовым фоном.
         """
-        messages = self._evaluate_analysis_rules(answers)
-        if not messages:
+        triggered = self._evaluate_analysis_rules_with_color(answers)
+        if not triggered:
             return None
 
-        items = "".join(f"<br>• {m}" for m in messages)
-        return (
-            "⚠️ <b>СИСТЕМНЫЙ АНАЛИЗ ДЛЯ ВРАЧА:</b>"
-            f"{items}"
-        )
+        parts = ["⚠️ <b>СИСТЕМНЫЙ АНАЛИЗ ДЛЯ ВРАЧА:</b><br>"]
+        for item in triggered:
+            color = item.get("color", "red")
+            palette = self.TRIGGER_COLOR_MAP.get(color, self.TRIGGER_COLOR_MAP["red"])
+            name = item.get("name", "")
+            message = item.get("message", "")
+            label = f"<b>{name}</b>: " if name else ""
+            parts.append(
+                f'<div style="background:{palette["bg"]};border-left:4px solid {palette["border"]};'
+                f'padding:8px 12px;margin-bottom:8px;border-radius:4px;color:{palette["text"]}">'
+                f'{palette["emoji"]} {label}{message}</div>'
+            )
+        return "".join(parts)
 
     def _generate_analysis_block_readable(self, answers: Dict[str, Any]) -> Optional[str]:
         """
         Генерация читаемого HTML-блока анализа для предпросмотра / PDF.
+        Каждый триггер — отдельная карточка с цветовым фоном.
         """
-        messages = self._evaluate_analysis_rules(answers)
-        if not messages:
+        triggered = self._evaluate_analysis_rules_with_color(answers)
+        if not triggered:
             return None
 
-        items_html = "".join(
-            f'<li>{m}</li>' for m in messages
-        )
+        items_html = ""
+        for item in triggered:
+            color = item.get("color", "red")
+            palette = self.TRIGGER_COLOR_MAP.get(color, self.TRIGGER_COLOR_MAP["red"])
+            name = item.get("name", "")
+            message = item.get("message", "")
+            label = f"<strong>{name}:</strong> " if name else ""
+            items_html += (
+                f'<div class="analysis-trigger-card" style="background:{palette["bg"]};'
+                f'border-left:4px solid {palette["border"]};padding:10px 14px;'
+                f'margin-bottom:10px;border-radius:6px;color:{palette["text"]};'
+                f'font-size:8.5pt;line-height:1.55">'
+                f'{palette["emoji"]} {label}{message}</div>'
+            )
         return (
             '<div class="block analysis-block">'
             '<div class="block-title">⚠️ СИСТЕМНЫЙ АНАЛИЗ ДЛЯ ВРАЧА</div>'
-            f'<div class="block-body"><ul>{items_html}</ul></div>'
+            f'<div class="block-body">{items_html}</div>'
             '</div>'
         )
     
+    # ============================================
+    # Группировка вопросов для структурированного отчёта
+    # ============================================
+
+    def _get_groups(self) -> List[dict]:
+        """Получение списка групп из конфигурации опросника."""
+        return self.config.get("groups", []) or []
+
+    def _group_node_ids(self) -> Dict[str, str]:
+        """
+        Построение маппинга node_id -> group_id из конфигурации.
+
+        Returns:
+            Словарь {node_id: group_id}
+        """
+        mapping: Dict[str, str] = {}
+        for node in self.config.get("nodes", []):
+            gid = node.get("group_id")
+            if gid:
+                mapping[node["id"]] = gid
+        return mapping
+
+    def _generate_grouped_answers(
+        self, answers: Dict[str, Any], fmt: str = "html"
+    ) -> tuple:
+        """
+        Генерация ответов, разделённых на группированные и негруппированные.
+
+        Args:
+            answers: Словарь ответов {node_id: answer_data}
+            fmt: Формат вывода — "html", "readable", "text"
+
+        Returns:
+            (группированные_блоки, негруппированные_ответы)
+            – grouped: список туплов (group_name, items)
+            – ungrouped: список форматированных строк
+        """
+        groups = self._get_groups()
+        node_group_map = self._group_node_ids()
+        group_map = {g["id"]: g["name"] for g in groups}
+
+        # Собираем ответы по группам в порядке конфигурации
+        grouped: Dict[str, List[str]] = {g["id"]: [] for g in groups}
+        ungrouped: List[str] = []
+
+        for node in self.config.get("nodes", []):
+            node_id = node.get("id", "")
+            if node_id not in answers:
+                continue
+            line = self._format_answer_for_report(node_id, answers[node_id], fmt=fmt)
+            if not line:
+                continue
+
+            gid = node_group_map.get(node_id)
+            if gid and gid in grouped:
+                grouped[gid].append(line)
+            else:
+                ungrouped.append(line)
+
+        # Собираем непустые группы с сохранением порядка
+        result_groups = []
+        for g in groups:
+            items = grouped.get(g["id"], [])
+            if items:
+                result_groups.append((group_map[g["id"]], items))
+
+        return result_groups, ungrouped
+
     def generate_html_report(
         self,
         patient_name: Optional[str],
@@ -517,25 +666,32 @@ class ReportGenerator:
     ) -> str:
         """Генерация HTML-отчёта для v2 опросника (подробный клинический).
 
-        Ответы выводятся в порядке узлов конфигурации опросника.
+        Ответы группируются по настроенным группам, затем остаток — в «Результаты опроса».
         """
         report_parts = []
-        
+
         # Заголовок
         report_parts.append(self._generate_header(patient_name))
-        
-        # Системный анализ для врача (в самый верх, перед остальными результатами)
+
+        # Системный анализ для врача
         analysis_block = self._generate_analysis_block_html(answers)
         if analysis_block:
             report_parts.append(analysis_block)
-        
-        # Все ответы в порядке конфигурации опросника
-        items = self._generate_ordered_answers(answers, fmt="html")
-        if items:
+
+        # Группированные блоки (строго над «Результаты опроса»)
+        grouped, ungrouped = self._generate_grouped_answers(answers, fmt="html")
+
+        for group_name, items in grouped:
             report_parts.append(
-                "📋 <b>РЕЗУЛЬТАТЫ ОПРОСА:</b><br>" + "<br>".join(items)
+                f"📁 <b>{group_name.upper()}:</b><br>" + "<br>".join(items)
             )
-        
+
+        # Остальные ответы (без группы) — блок «Результаты опроса»
+        if ungrouped:
+            report_parts.append(
+                "📋 <b>РЕЗУЛЬТАТЫ ОПРОСА:</b><br>" + "<br>".join(ungrouped)
+            )
+
         return "<br><br>".join(report_parts)
     
     def generate_readable_html_report(
@@ -770,28 +926,42 @@ class ReportGenerator:
     ) -> str:
         """Генерация читаемого HTML-отчёта для v2 опросника — один лист А4.
 
-        Ответы выводятся в порядке узлов конфигурации опросника.
+        Ответы группируются по настроенным группам, остаток в «Результаты опроса».
         """
         name = patient_name or "Не указано"
         date = datetime.now().strftime("%d.%m.%Y %H:%M")
 
-        # ── Системный анализ для врача ───────────────────────────────────
+        # Системный анализ для врача
         analysis_html = self._generate_analysis_block_readable(answers) or ""
 
-        # ── Все ответы в порядке конфигурации ────────────────────────────
-        items = self._generate_ordered_answers(answers, fmt="readable")
-        answers_html = ""
-        if items:
-            answers_html = (
+        # Группировка ответов
+        grouped, ungrouped = self._generate_grouped_answers(answers, fmt="readable")
+
+        # Блоки групп (строго над «Результаты опроса»)
+        groups_html = ""
+        for group_name, items in grouped:
+            groups_html += (
                 '<div class="block">'
-                '<div class="block-title">📋 Результаты опроса</div>'
+                f'<div class="block-title">📁 {group_name}</div>'
                 '<div class="block-body"><ul>'
                 + "".join(items)
                 + '</ul></div>'
                 '</div>'
             )
 
-        section_html = analysis_html + answers_html
+        # Блок «Результаты опроса» (скрывается если пустой)
+        answers_html = ""
+        if ungrouped:
+            answers_html = (
+                '<div class="block">'
+                '<div class="block-title">📋 Результаты опроса</div>'
+                '<div class="block-body"><ul>'
+                + "".join(ungrouped)
+                + '</ul></div>'
+                '</div>'
+            )
+
+        section_html = analysis_html + groups_html + answers_html
         html = self._wrap_in_html_document_compact(name, date, section_html)
         return html
     
@@ -1054,11 +1224,18 @@ class ReportGenerator:
         lines.append("=" * 70)
         lines.append("")
         
-        # Все ответы в порядке конфигурации опросника
-        items = self._generate_ordered_answers(answers, fmt="text")
-        if items:
-            lines.append("📋 РЕЗУЛЬТАТЫ ОПРОСА:")
+        # Группированные ответы
+        grouped, ungrouped = self._generate_grouped_answers(answers, fmt="text")
+
+        for group_name, items in grouped:
+            lines.append(f"📁 {group_name.upper()}:")
             lines.extend(items)
+            lines.append("")
+
+        # Остаток — «Результаты опроса» (скрывается если пустой)
+        if ungrouped:
+            lines.append("📋 РЕЗУЛЬТАТЫ ОПРОСА:")
+            lines.extend(ungrouped)
             lines.append("")
         
         lines.append("=" * 70)

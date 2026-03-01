@@ -8,3 +8,4 @@ export { default as NodeEditor } from './NodeEditor';
 export { default as Toolbar } from './Toolbar';
 export { default as PreviewModal } from './PreviewModal';
 export { default as EdgeEditor } from './EdgeEditor';
+export { default as GroupsPanel } from './GroupsPanel';

@@ -18,7 +18,7 @@ import { NODE_TYPE_CONFIG, SurveyNodeData, NodeOption, NodeType, AdditionalField
 const DEBOUNCE_DELAY = 500;
 
 const NodeEditor = () => {
-  const { nodes, selectedNodeId, updateNode, selectNode, edges } = useEditorStore();
+  const { nodes, selectedNodeId, updateNode, selectNode, edges, groups, assignNodeToGroup } = useEditorStore();
   
   const selectedNode = nodes.find(n => n.id === selectedNodeId);
   const nodeData = selectedNode?.data as SurveyNodeData | undefined;
@@ -560,6 +560,29 @@ const NodeEditor = () => {
         </div>
       )}
       
+      {/* Группа вопроса (для итогового отчёта) */}
+      <div className="px-4 py-4 border-b border-gray-100">
+        <label className="block text-xs font-medium text-gray-600 mb-2">
+          Группа отчёта
+        </label>
+        <select
+          value={nodeData.group_id || ''}
+          onChange={(e) => {
+            const val = e.target.value || null;
+            assignNodeToGroup(selectedNodeId!, val);
+          }}
+          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white"
+        >
+          <option value="">— без группы —</option>
+          {groups.map(g => (
+            <option key={g.id} value={g.id}>{g.name}</option>
+          ))}
+        </select>
+        <p className="text-xs text-gray-400 mt-1">
+          Вопросы одной группы объединяются в отчёте для врача
+        </p>
+      </div>
+
       {/* Связи */}
       <div className="px-4 py-4">
         <h4 className="text-xs font-medium text-gray-600 mb-2">

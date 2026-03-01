@@ -54,6 +54,14 @@ export interface SurveyNode {
   is_final?: boolean
   // Значение варианта-исключения (сбрасывает все остальные при выборе)
   exclusive_option?: string
+  // Группа вопроса (для структурированного итогового отчёта)
+  group_id?: string
+}
+
+// Группа вопросов (для структурирования отчёта)
+export interface QuestionGroup {
+  id: string
+  name: string
 }
 
 // Конфигурация опросника
@@ -65,6 +73,7 @@ export interface SurveyConfig {
   start_node: string
   branch_mapping?: Record<string, string>
   nodes: SurveyNode[]
+  groups?: QuestionGroup[]
 }
 
 // Ответ пользователя (общий тип)

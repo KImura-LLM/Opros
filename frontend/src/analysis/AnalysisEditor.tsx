@@ -17,6 +17,17 @@ import {
   Type,
 } from 'lucide-react';
 import { useAnalysisStore } from './store';
+import type { RuleColor } from './types';
+
+// ── Палитра цветов правил (для отчёта) ──
+const RULE_COLOR_MAP: Record<string, { dot: string; bg: string; border: string; text: string; label: string; emoji: string }> = {
+  red:    { dot: '#ef4444', bg: '#fef2f2', border: '#fca5a5', text: '#991b1b', label: '🔴 Красный',   emoji: '🔴' },
+  orange: { dot: '#f97316', bg: '#fff7ed', border: '#fdba74', text: '#9a3412', label: '🟠 Оранжевый', emoji: '🟠' },
+  yellow: { dot: '#eab308', bg: '#fefce8', border: '#fde047', text: '#854d0e', label: '🟡 Жёлтый',    emoji: '🟡' },
+  green:  { dot: '#22c55e', bg: '#f0fdf4', border: '#86efac', text: '#166534', label: '🟢 Зелёный',   emoji: '🟢' },
+};
+
+const RULE_COLORS = ['red', 'orange', 'yellow', 'green'] as const;
 
 // ── Типы узлов: читаемые названия ──
 const NODE_TYPE_LABELS: Record<string, string> = {
@@ -52,6 +63,7 @@ const AnalysisEditor = ({ surveyId }: AnalysisEditorProps) => {
     updateRuleName,
     updateRuleMessage,
     updateRuleTriggerMode,
+    updateRuleColor,
     toggleTrigger,
     isTriggerActive,
     setTextTrigger,
@@ -203,15 +215,22 @@ const AnalysisEditor = ({ surveyId }: AnalysisEditorProps) => {
                           : 'hover:bg-slate-50 border-l-2 border-transparent'
                       }`}
                   >
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-slate-800 truncate">
-                        {rule.name || 'Без названия'}
-                      </p>
-                      <p className="text-xs text-slate-400 mt-0.5">
-                        {rule.triggers.length}{' '}
-                        {triggerDeclension(rule.triggers.length)} ·{' '}
-                        {rule.trigger_mode === 'all' ? 'ВСЕ' : 'ЛЮБОЙ'}
-                      </p>
+                    <div className="min-w-0 flex-1 flex items-center gap-2">
+                      <span
+                        className="shrink-0 w-3 h-3 rounded-full"
+                        style={{ background: RULE_COLOR_MAP[rule.color || 'red']?.dot }}
+                        title={RULE_COLOR_MAP[rule.color || 'red']?.label}
+                      />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-slate-800 truncate">
+                          {rule.name || 'Без названия'}
+                        </p>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          {rule.triggers.length}{' '}
+                          {triggerDeclension(rule.triggers.length)} ·{' '}
+                          {rule.trigger_mode === 'all' ? 'ВСЕ' : 'ЛЮБОЙ'}
+                        </p>
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-1 shrink-0 ml-2">
@@ -260,6 +279,7 @@ const AnalysisEditor = ({ surveyId }: AnalysisEditorProps) => {
               onUpdateName={(name) => updateRuleName(selectedRule.id, name)}
               onUpdateMessage={(msg) => updateRuleMessage(selectedRule.id, msg)}
               onUpdateMode={(mode) => updateRuleTriggerMode(selectedRule.id, mode)}
+              onUpdateColor={(color) => updateRuleColor(selectedRule.id, color)}
               onToggleTrigger={(nodeId, optionValue) =>
                 toggleTrigger(selectedRule.id, nodeId, optionValue)
               }
@@ -303,6 +323,7 @@ interface RuleEditorProps {
     triggers: { node_id: string; option_value: string; match_mode?: 'exact' | 'contains' | 'gte' }[];
     trigger_mode: 'any' | 'all';
     message: string;
+    color?: string;
   };
   questions: {
     id: string;
@@ -316,6 +337,7 @@ interface RuleEditorProps {
   onUpdateName: (name: string) => void;
   onUpdateMessage: (msg: string) => void;
   onUpdateMode: (mode: 'any' | 'all') => void;
+  onUpdateColor: (color: RuleColor) => void;
   onToggleTrigger: (nodeId: string, optionValue: string) => void;
   onSetTextTrigger: (nodeId: string, text: string) => void;
   onRemoveTextTrigger: (nodeId: string) => void;
@@ -332,6 +354,7 @@ const RuleEditor = ({
   onUpdateName,
   onUpdateMessage,
   onUpdateMode,
+  onUpdateColor,
   onToggleTrigger,
   onSetTextTrigger,
   onRemoveTextTrigger,
@@ -406,6 +429,48 @@ const RuleEditor = ({
               : 'Правило сработает, если в каждом вопросе с триггерами совпадёт хотя бы один ответ (ИЛИ внутри вопроса, И между вопросами).'}
           </p>
         </div>
+
+        {/* ── Цвет правила (для отчёта) ── */}
+        <div className="mt-4">
+          <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+            Цвет в отчёте
+          </label>
+          <div className="flex items-center gap-2">
+            {RULE_COLORS.map((c) => {
+              const palette = RULE_COLOR_MAP[c];
+              const active = (rule.color || 'red') === c;
+              return (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => onUpdateColor(c)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm transition-colors cursor-pointer
+                    ${active
+                      ? 'ring-2 ring-offset-1'
+                      : 'hover:bg-slate-50'
+                    }`}
+                  style={{
+                    borderColor: active ? palette.dot : undefined,
+                    background: active ? palette.bg : undefined,
+                    color: active ? palette.text : undefined,
+                    // @ts-expect-error custom css variable
+                    '--tw-ring-color': active ? palette.dot : undefined,
+                  }}
+                  title={palette.label}
+                >
+                  <span
+                    className="w-3.5 h-3.5 rounded-full border border-white/50 shrink-0"
+                    style={{ background: palette.dot }}
+                  />
+                  <span className="font-medium">{palette.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-1.5 text-xs text-slate-400">
+            Выбранный цвет будет использован для фона блока триггера в итоговом отчёте для врача.
+          </p>
+        </div>
       </div>
 
       {/* ── Дерево вопросов / триггеры ── */}
@@ -462,17 +527,32 @@ const RuleEditor = ({
       </div>
 
       {/* ── Превью ── */}
-      {rule.message.trim() && rule.triggers.length > 0 && (
-        <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-4">
-          <h4 className="text-xs font-bold text-amber-800 uppercase tracking-wide mb-2 flex items-center gap-1.5">
-            <AlertTriangle size={14} />
-            Превью блока в отчёте
-          </h4>
-          <ul className="list-disc ml-5 text-sm text-amber-900 space-y-1">
-            <li>{rule.message}</li>
-          </ul>
-        </div>
-      )}
+      {rule.message.trim() && rule.triggers.length > 0 && (() => {
+        const palette = RULE_COLOR_MAP[rule.color || 'red'];
+        return (
+          <div
+            className="rounded-xl p-4"
+            style={{
+              background: palette.bg,
+              border: `2px solid ${palette.border}`,
+            }}
+          >
+            <h4
+              className="text-xs font-bold uppercase tracking-wide mb-2 flex items-center gap-1.5"
+              style={{ color: palette.text }}
+            >
+              <AlertTriangle size={14} />
+              Превью блока в отчёте
+            </h4>
+            <div
+              className="text-sm leading-relaxed"
+              style={{ color: palette.text }}
+            >
+              {rule.message}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

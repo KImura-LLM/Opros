@@ -15,6 +15,12 @@ export type NodeType =
   | 'info_screen'
   | 'consent_screen';
 
+// Группа вопросов (для структурирования отчёта)
+export interface QuestionGroup {
+  id: string;
+  name: string;
+}
+
 // Позиция узла на canvas
 export interface NodePosition {
   x: number;
@@ -73,6 +79,9 @@ export interface SurveyNodeData {
   // Значение варианта-исключения для multi_choice (сбрасывает все остальные при выборе)
   exclusive_option?: string;
   
+  // Группа вопроса (для структурирования итогового отчёта)
+  group_id?: string;
+  
   // Позиция на canvas
   position?: NodePosition;
 }
@@ -118,6 +127,7 @@ export interface SurveyStructure {
   start_node: string;
   branch_mapping?: Record<string, string>;
   nodes: SurveyNodeData[];
+  groups?: QuestionGroup[];
 }
 
 // Элемент списка опросников

@@ -12,6 +12,7 @@ import {
   HistoryEntry,
   NodeType,
   NODE_TYPE_CONFIG,
+  QuestionGroup,
 } from './types';
 
 // API базовый URL
@@ -83,6 +84,9 @@ interface EditorStore {
   isLoading: boolean;
   error: string | null;
   
+  // Группы вопросов (для структурированного отчёта)
+  groups: QuestionGroup[];
+  
   // История
   history: HistoryEntry[];
   historyIndex: number;
@@ -110,6 +114,12 @@ interface EditorStore {
   addEdge: (sourceId: string, targetId: string, condition?: string) => void;
   deleteEdge: (edgeId: string) => void;
   updateEdge: (edgeId: string, data: { condition?: string; isDefault?: boolean }) => void;
+  
+  // Управление группами вопросов
+  addGroup: (name: string) => void;
+  updateGroup: (groupId: string, name: string) => void;
+  deleteGroup: (groupId: string) => void;
+  assignNodeToGroup: (nodeId: string, groupId: string | null) => void;
   
   // Выбор узла
   selectNode: (nodeId: string | null) => void;
@@ -216,6 +226,7 @@ const flowToSurveyStructure = (
       max_length: node.data.max_length,
       is_final: node.data.is_final,
       exclusive_option: node.data.exclusive_option,
+      group_id: node.data.group_id,
       position: node.position,
     };
   });
@@ -224,6 +235,7 @@ const flowToSurveyStructure = (
     ...survey,
     start_node: startNode,
     nodes: surveyNodes,
+    groups: survey.groups,
   };
 };
 
@@ -238,6 +250,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   isSaving: false,
   isLoading: false,
   error: null,
+  groups: [],
   history: [],
   historyIndex: -1,
   validationResult: null,
@@ -261,6 +274,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         survey,
         nodes,
         edges,
+        groups: survey.groups || [],
         isLoading: false,
         isDirty: false,
         history: [],
@@ -281,14 +295,16 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   
   // Сохранение опросника
   saveSurvey: async () => {
-    const { survey, nodes, edges, isDirty } = get();
+    const { survey, nodes, edges, isDirty, groups } = get();
     
     if (!survey || !isDirty) return;
     
     set({ isSaving: true, error: null });
     
     try {
-      const updatedSurvey = flowToSurveyStructure(nodes, edges, survey);
+      // Синхронизируем группы в survey перед конвертацией
+      const surveyWithGroups = { ...survey, groups };
+      const updatedSurvey = flowToSurveyStructure(nodes, edges, surveyWithGroups);
       
       const response = await fetchWithAuth(`${API_BASE}/surveys/${survey.id}`, {
         method: 'PUT',
@@ -527,6 +543,56 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
     }));
   },
   
+  // ============================
+  // Управление группами вопросов
+  // ============================
+  
+  // Добавление группы
+  addGroup: (name: string) => {
+    const id = `group_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+    get().pushHistory('Добавление группы');
+    set(state => ({
+      groups: [...state.groups, { id, name }],
+      isDirty: true,
+    }));
+  },
+  
+  // Обновление названия группы
+  updateGroup: (groupId: string, name: string) => {
+    get().pushHistory('Обновление группы');
+    set(state => ({
+      groups: state.groups.map(g => g.id === groupId ? { ...g, name } : g),
+      isDirty: true,
+    }));
+  },
+  
+  // Удаление группы (с очисткой group_id у всех нод)
+  deleteGroup: (groupId: string) => {
+    get().pushHistory('Удаление группы');
+    set(state => ({
+      groups: state.groups.filter(g => g.id !== groupId),
+      nodes: state.nodes.map(node =>
+        node.data.group_id === groupId
+          ? { ...node, data: { ...node.data, group_id: undefined } }
+          : node
+      ),
+      isDirty: true,
+    }));
+  },
+  
+  // Привязка ноды к группе
+  assignNodeToGroup: (nodeId: string, groupId: string | null) => {
+    get().pushHistory('Привязка к группе');
+    set(state => ({
+      nodes: state.nodes.map(node =>
+        node.id === nodeId
+          ? { ...node, data: { ...node.data, group_id: groupId || undefined } }
+          : node
+      ),
+      isDirty: true,
+    }));
+  },
+  
   // Выбор узла
   selectNode: (nodeId: string | null) => {
     set({ selectedNodeId: nodeId });
@@ -638,11 +704,13 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
   
   // Экспорт в JSON
   exportJSON: () => {
-    const { survey, nodes, edges } = get();
+    const { survey, nodes, edges, groups } = get();
     
     if (!survey) return '';
     
-    const structure = flowToSurveyStructure(nodes, edges, survey);
+    // Синхронизируем группы перед экспортом
+    const surveyWithGroups = { ...survey, groups };
+    const structure = flowToSurveyStructure(nodes, edges, surveyWithGroups);
     
     return JSON.stringify({
       name: structure.name,
@@ -727,6 +795,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
       isSaving: false,
       isLoading: false,
       error: null,
+      groups: [],
       history: [],
       historyIndex: -1,
       validationResult: null,

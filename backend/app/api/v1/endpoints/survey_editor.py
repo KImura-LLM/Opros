@@ -118,8 +118,17 @@ class SurveyNode(BaseModel):
     # Значение варианта-исключения для multi_choice (сбрасывает остальные при выборе)
     exclusive_option: Optional[str] = None
     
+    # Группа вопроса (для структурированного итогового отчёта)
+    group_id: Optional[str] = None
+    
     # Позиция на canvas (для React Flow)
     position: Optional[NodePosition] = None
+
+
+class QuestionGroup(BaseModel):
+    """Группа вопросов для структурирования итогового отчёта."""
+    id: str
+    name: str
 
 
 class SurveyStructure(BaseModel):
@@ -131,6 +140,7 @@ class SurveyStructure(BaseModel):
     start_node: str
     branch_mapping: Optional[dict] = None
     nodes: List[SurveyNode]
+    groups: Optional[List[QuestionGroup]] = None
 
 
 class SurveyStructureUpdate(BaseModel):
@@ -156,6 +166,7 @@ class AnalysisRule(BaseModel):
     triggers: List[AnalysisTrigger] = Field(default_factory=list, description="Список триггеров")
     trigger_mode: str = Field("any", description="Режим срабатывания: 'any' (хотя бы один) или 'all' (все)")
     message: str = Field(..., description="Текст сообщения для врача")
+    color: Optional[str] = Field("red", description="Цвет индикации в отчёте: 'red', 'orange', 'yellow', 'green'")
 
 
 class AnalysisRulesPayload(BaseModel):
@@ -314,27 +325,36 @@ def validate_survey_structure(structure: dict) -> ValidationResult:
 
 def convert_to_json_config(structure: SurveyStructure) -> dict:
     """Конвертация Pydantic модели в JSON config."""
-    return {
+    config = {
         "id": structure.id,
         "name": structure.name,
         "version": structure.version,
         "description": structure.description,
         "start_node": structure.start_node,
         "branch_mapping": structure.branch_mapping or {},
-        "nodes": [node.model_dump(exclude_none=True) for node in structure.nodes]
+        "nodes": [node.model_dump(exclude_none=True) for node in structure.nodes],
     }
+    # Сохраняем группы вопросов (для структурированного отчёта)
+    if structure.groups:
+        config["groups"] = [g.model_dump() for g in structure.groups]
+    return config
 
 
 def extract_structure_from_config(config: dict) -> dict:
     """Извлечение структуры из json_config."""
-    return {
+    result = {
         "name": config.get("name", ""),
         "version": config.get("version", "1.0"),
         "description": config.get("description"),
         "start_node": config.get("start_node", ""),
         "branch_mapping": config.get("branch_mapping", {}),
-        "nodes": config.get("nodes", [])
+        "nodes": config.get("nodes", []),
     }
+    # Группы вопросов
+    groups = config.get("groups")
+    if groups:
+        result["groups"] = groups
+    return result
 
 
 # ==========================================
@@ -404,7 +424,8 @@ async def get_survey(
         description=config.description,
         start_node=json_config.get("start_node", ""),
         branch_mapping=json_config.get("branch_mapping", {}),
-        nodes=[SurveyNode(**node) for node in json_config.get("nodes", [])]
+        nodes=[SurveyNode(**node) for node in json_config.get("nodes", [])],
+        groups=[QuestionGroup(**g) for g in json_config.get("groups", [])] if json_config.get("groups") else None,
     )
 
 
@@ -612,7 +633,8 @@ async def duplicate_survey(
         description=new_config.description,
         start_node=json_config.get("start_node", ""),
         branch_mapping=json_config.get("branch_mapping", {}),
-        nodes=[SurveyNode(**node) for node in json_config.get("nodes", [])]
+        nodes=[SurveyNode(**node) for node in json_config.get("nodes", [])],
+        groups=[QuestionGroup(**g) for g in json_config.get("groups", [])] if json_config.get("groups") else None,
     )
 
 
@@ -693,7 +715,8 @@ async def import_survey(
         description=config.description,
         start_node=config_data.get("start_node", ""),
         branch_mapping=config_data.get("branch_mapping", {}),
-        nodes=[SurveyNode(**node) for node in config_data.get("nodes", [])]
+        nodes=[SurveyNode(**node) for node in config_data.get("nodes", [])],
+        groups=[QuestionGroup(**g) for g in config_data.get("groups", [])] if config_data.get("groups") else None,
     )
 
 

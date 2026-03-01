@@ -6,6 +6,7 @@ import { create } from 'zustand';
 import type {
   AnalysisRule,
   AnalysisTrigger,
+  RuleColor,
   SurveyStructureMinimal,
   RawSurveyNode,
   QuestionItem,
@@ -195,6 +196,7 @@ interface AnalysisStore {
   updateRuleName: (ruleId: string, name: string) => void;
   updateRuleMessage: (ruleId: string, message: string) => void;
   updateRuleTriggerMode: (ruleId: string, mode: 'any' | 'all') => void;
+  updateRuleColor: (ruleId: string, color: RuleColor) => void;
 
   // Работа с триггерами
   toggleTrigger: (ruleId: string, nodeId: string, optionValue: string) => void;
@@ -322,6 +324,7 @@ export const useAnalysisStore = create<AnalysisStore>()((set, get) => ({
       triggers: [],
       trigger_mode: 'any',
       message: '',
+      color: 'red',
     };
 
     set((state) => ({
@@ -360,6 +363,13 @@ export const useAnalysisStore = create<AnalysisStore>()((set, get) => ({
   updateRuleTriggerMode: (ruleId: string, mode: 'any' | 'all') => {
     set((state) => ({
       rules: state.rules.map((r) => (r.id === ruleId ? { ...r, trigger_mode: mode } : r)),
+      isDirty: true,
+    }));
+  },
+
+  updateRuleColor: (ruleId: string, color: RuleColor) => {
+    set((state) => ({
+      rules: state.rules.map((r) => (r.id === ruleId ? { ...r, color } : r)),
       isDirty: true,
     }));
   },
