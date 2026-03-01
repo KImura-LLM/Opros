@@ -41,13 +41,3 @@ python-dotenv==1.0.0
 
 # Логирование
 loguru==0.7.2
-
-# Тестирование
-pytest==7.4.4
-pytest-asyncio==0.23.3
-httpx==0.26.0
-
-# Линтеры (dev)
-ruff==0.1.13
-black==24.1.0
-mypy==1.8.0

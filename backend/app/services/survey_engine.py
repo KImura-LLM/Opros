@@ -172,10 +172,7 @@ class SurveyEngine:
                 return int(actual) >= int(expected) if actual is not None else False
             elif operator == "<=":
                 return int(actual) <= int(expected) if actual is not None else False
-            
-            logger.warning(f"Неподдерживаемый формат условия: {condition}")
-            return False
-            
+
         except Exception as e:
             logger.error(f"Ошибка вычисления условия '{condition}': {e}")
             return False

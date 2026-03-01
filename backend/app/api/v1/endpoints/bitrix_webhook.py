@@ -14,10 +14,9 @@ from loguru import logger
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.security import create_access_token
+from app.core.security import create_access_token, generate_short_code
 from app.core.log_utils import mask_name
 from app.core.redis import get_redis, RedisClient
-from app.core.security import generate_short_code
 from app.services.bitrix24 import Bitrix24Client
 
 

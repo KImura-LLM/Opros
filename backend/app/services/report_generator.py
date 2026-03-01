@@ -8,7 +8,6 @@
 
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from loguru import logger
 
 
 class ReportGenerator:
@@ -40,6 +39,250 @@ class ReportGenerator:
         if v2_nodes & set(self.nodes.keys()):
             return 2
         return 1
+
+    # ============================================
+    # Известные (захардкоженные) node_id для v2
+    # Известные (захардкоженные) node_id для v1 (fallback-блок).
+    V1_HANDLED_NODE_IDS = {
+        "welcome", "finish",
+        "main_trigger", "pain_details", "systems_screening",
+        "respiratory_details", "cardio_details", "gastro_details",
+        "risk_factors",
+    }
+
+    # ============================================
+    # Универсальное форматирование ответа (fallback)
+    # ============================================
+
+    def _get_option_text(self, node: dict, value: str) -> str:
+        """
+        Получение текстового представления варианта ответа по его value.
+
+        Args:
+            node: Узел конфигурации
+            value: Значение варианта (option.value)
+
+        Returns:
+            Текст варианта или исходное значение
+        """
+        for option in node.get("options", []):
+            if option.get("value") == value:
+                return option.get("text", value)
+        return value
+
+    def _format_answer_for_report(
+        self, node_id: str, answer: dict, fmt: str = "html"
+    ) -> Optional[str]:
+        """
+        Универсальное форматирование ответа для отчёта.
+
+        Args:
+            node_id: ID узла
+            answer: Данные ответа
+            fmt: Формат вывода — "html" (Битрикс), "readable" (PDF), "text"
+
+        Returns:
+            Отформатированная строка или None
+        """
+        node = self.nodes.get(node_id)
+        if not node or not answer:
+            return None
+
+        node_type = node.get("type", "")
+        question = node.get("question_text", node_id)
+
+        # Пропускаем служебные экраны
+        if node_type == "info_screen":
+            return None
+
+        # ── Извлечение текстового представления ответа ──
+        answer_text = ""
+
+        selected = answer.get("selected")
+        if selected is not None:
+            if isinstance(selected, list):
+                # multi_choice
+                texts = [self._get_option_text(node, v) for v in selected]
+                answer_text = ", ".join(texts)
+            elif isinstance(selected, bool):
+                answer_text = "Да" if selected else "Нет"
+            else:
+                # single_choice
+                answer_text = self._get_option_text(node, str(selected))
+
+        value = answer.get("value")
+        if value is not None and not answer_text:
+            max_val = node.get("max_value")
+            if max_val is not None:
+                answer_text = f"{value}/{max_val}"
+            else:
+                answer_text = str(value)
+
+        text = answer.get("text", "")
+        if text and not answer_text:
+            answer_text = text.strip()
+
+        locations = answer.get("locations")
+        if isinstance(locations, list) and locations and not answer_text:
+            loc_map = {
+                "head": "Голова", "throat": "Горло",
+                "chest": "Грудная клетка", "abdomen": "Живот",
+                "back": "Поясница", "joints": "Суставы",
+            }
+            answer_text = ", ".join(loc_map.get(l, l) for l in locations)
+
+        # Интенсивность (body_map / карта тела)
+        intensity = answer.get("intensity")
+        if intensity is not None:
+            intensity_str = f"Интенсивность: {intensity}/10"
+            if answer_text:
+                answer_text += f"; {intensity_str}"
+            else:
+                answer_text = intensity_str
+
+        # Дополнительные поля (additional_fields)
+        extra_parts: List[str] = []
+        for field in node.get("additional_fields", []):
+            fid = field.get("id", "")
+            fval = answer.get(fid)
+            if fval is not None and str(fval).strip():
+                flabel = field.get("label", fid)
+                extra_parts.append(f"{flabel}: {fval}")
+
+        if not answer_text and not extra_parts:
+            return None
+
+        # ── Форматирование ──
+        if fmt == "text":
+            line = f"• {question}: {answer_text}"
+            if extra_parts:
+                line += " (" + "; ".join(extra_parts) + ")"
+            return line
+
+        if fmt == "readable":
+            parts = [f"<li><strong>{question}:</strong> {answer_text}"]
+            if extra_parts:
+                parts.append(" <em>(" + "; ".join(extra_parts) + ")</em>")
+            parts.append("</li>")
+            return "".join(parts)
+
+        # html (Битрикс)
+        line = f"• <b>{question}:</b> {answer_text}"
+        if extra_parts:
+            line += " <i>(" + "; ".join(extra_parts) + ")</i>"
+        return line
+
+    def _collect_unhandled_answers(
+        self, answers: Dict[str, Any], handled_ids: set
+    ) -> List[str]:
+        """
+        Возвращает список node_id ответов, которые не были обработаны
+        специализированными блоками отчёта.
+        """
+        unhandled = []
+        for node_id in answers:
+            if node_id not in handled_ids:
+                node = self.nodes.get(node_id)
+                if node and node.get("type") != "info_screen":
+                    unhandled.append(node_id)
+        return unhandled
+
+    def _generate_unhandled_block_html(
+        self, answers: Dict[str, Any], handled_ids: set
+    ) -> Optional[str]:
+        """
+        Генерация HTML-блока (Битрикс) для ответов, не покрытых
+        специализированными блоками.
+        """
+        unhandled = self._collect_unhandled_answers(answers, handled_ids)
+        if not unhandled:
+            return None
+
+        lines: List[str] = []
+        for nid in unhandled:
+            line = self._format_answer_for_report(nid, answers[nid], fmt="html")
+            if line:
+                lines.append(line)
+
+        if not lines:
+            return None
+
+        items = "<br>".join(lines)
+        return f"📝 <b>ДОПОЛНИТЕЛЬНЫЕ ВОПРОСЫ:</b><br>{items}"
+
+    def _generate_unhandled_block_readable(
+        self, answers: Dict[str, Any], handled_ids: set
+    ) -> Optional[str]:
+        """
+        Генерация readable HTML-блока (PDF) для необработанных ответов.
+        """
+        unhandled = self._collect_unhandled_answers(answers, handled_ids)
+        if not unhandled:
+            return None
+
+        items: List[str] = []
+        for nid in unhandled:
+            line = self._format_answer_for_report(nid, answers[nid], fmt="readable")
+            if line:
+                items.append(line)
+
+        if not items:
+            return None
+
+        return "<ul>" + "".join(items) + "</ul>"
+
+    def _generate_unhandled_block_text(
+        self, answers: Dict[str, Any], handled_ids: set
+    ) -> Optional[str]:
+        """
+        Генерация текстового блока для необработанных ответов.
+        """
+        unhandled = self._collect_unhandled_answers(answers, handled_ids)
+        if not unhandled:
+            return None
+
+        lines: List[str] = ["📝 ДОПОЛНИТЕЛЬНЫЕ ВОПРОСЫ"]
+        for nid in unhandled:
+            line = self._format_answer_for_report(nid, answers[nid], fmt="text")
+            if line:
+                lines.append(f"  {line}")
+
+        if len(lines) <= 1:
+            return None
+
+        return "\n".join(lines)
+
+    # ============================================
+    # Генерация ответов в порядке конфигурации
+    # ============================================
+
+    def _generate_ordered_answers(
+        self, answers: Dict[str, Any], fmt: str = "html"
+    ) -> List[str]:
+        """
+        Генерация отформатированных ответов в порядке узлов конфигурации.
+
+        Итерирует по config.nodes в порядке определения. Для каждого узла,
+        на который есть ответ, формирует строку. Пропускает info_screen.
+
+        Args:
+            answers: Словарь ответов {node_id: answer_data}
+            fmt: Формат вывода — "html" (Битрикс), "readable" (PDF), "text"
+
+        Returns:
+            Список отформатированных строк в порядке конфигурации
+        """
+        items: List[str] = []
+        for node in self.config.get("nodes", []):
+            node_id = node.get("id", "")
+            if node_id not in answers:
+                continue
+            line = self._format_answer_for_report(
+                node_id, answers[node_id], fmt=fmt
+            )
+            if line:
+                items.append(line)
+        return items
 
     # ============================================
     # Системный анализ для врача
@@ -258,6 +501,13 @@ class ReportGenerator:
         if risk_factors:
             report_parts.append(risk_factors)
         
+        # Fallback: ответы на вопросы, не покрытые специализированными блоками
+        unhandled_block = self._generate_unhandled_block_html(
+            answers, self.V1_HANDLED_NODE_IDS
+        )
+        if unhandled_block:
+            report_parts.append(unhandled_block)
+        
         return "<br><br>".join(report_parts)
     
     def _generate_html_report_v2(
@@ -265,7 +515,10 @@ class ReportGenerator:
         patient_name: Optional[str],
         answers: Dict[str, Any],
     ) -> str:
-        """Генерация HTML-отчёта для v2 опросника (подробный клинический)."""
+        """Генерация HTML-отчёта для v2 опросника (подробный клинический).
+
+        Ответы выводятся в порядке узлов конфигурации опросника.
+        """
         report_parts = []
         
         # Заголовок
@@ -276,448 +529,14 @@ class ReportGenerator:
         if analysis_block:
             report_parts.append(analysis_block)
         
-        # Блок 1: Локализация и характеристика боли
-        pain_block = self._generate_v2_pain_block(answers)
-        if pain_block:
-            report_parts.append(pain_block)
-        
-        # Свободное описание жалоб
-        free_complaint = answers.get("free_complaint", {})
-        free_text = free_complaint.get("text", "").strip()
-        if free_text:
-            report_parts.append(f"📝 <b>ЖАЛОБЫ СВОИМИ СЛОВАМИ:</b><br>{free_text}")
-        
-        # Блок 2: Общее состояние (температура)
-        temp_block = self._generate_v2_temperature_block(answers)
-        if temp_block:
-            report_parts.append(temp_block)
-        
-        # Блок 2: Дыхательная система
-        resp_block = self._generate_v2_respiratory_block(answers)
-        if resp_block:
-            report_parts.append(resp_block)
-        
-        # Блок 2: Сердечно-сосудистая система
-        cardio_block = self._generate_v2_cardio_block(answers)
-        if cardio_block:
-            report_parts.append(cardio_block)
-        
-        # Блок 2: Пищеварительная система
-        gastro_block = self._generate_v2_gastro_block(answers)
-        if gastro_block:
-            report_parts.append(gastro_block)
-        
-        # Блок 2: Мочевыделительная система
-        urinary_block = self._generate_v2_urinary_block(answers)
-        if urinary_block:
-            report_parts.append(urinary_block)
-        
-        # Блок 3: История заболевания
-        history_block = self._generate_v2_disease_history_block(answers)
-        if history_block:
-            report_parts.append(history_block)
-        
-        # Блок 4: Анамнез жизни
-        life_block = self._generate_v2_life_history_block(answers)
-        if life_block:
-            report_parts.append(life_block)
+        # Все ответы в порядке конфигурации опросника
+        items = self._generate_ordered_answers(answers, fmt="html")
+        if items:
+            report_parts.append(
+                "📋 <b>РЕЗУЛЬТАТЫ ОПРОСА:</b><br>" + "<br>".join(items)
+            )
         
         return "<br><br>".join(report_parts)
-    
-    # ============================================
-    # Методы генерации блоков для V2
-    # ============================================
-    
-    def _generate_v2_pain_block(self, answers: Dict[str, Any]) -> Optional[str]:
-        """Генерация блока боли для v2."""
-        parts = []
-        
-        # Локализация (body_map)
-        body_data = answers.get("body_location", {})
-        locations = body_data.get("locations", [])
-        body_intensity = body_data.get("intensity")
-        
-        # Характер боли
-        pain_char = answers.get("pain_character", {})
-        pain_selected = pain_char.get("selected", [])
-        
-        # Интенсивность (шкала 1-10)
-        pain_int = answers.get("pain_intensity", {})
-        scale_value = pain_int.get("value")
-        
-        # Если пациент указал "боли нет"
-        if isinstance(pain_selected, list) and "no_pain" in pain_selected:
-            return "📌 <b>ОСНОВНЫЕ ЖАЛОБЫ:</b> Боль отсутствует (профилактика/другое)"
-        
-        if not locations and not pain_selected and scale_value is None:
-            return None
-        
-        parts.append("🩺 <b>ОСНОВНЫЕ ЖАЛОБЫ И ХАРАКТЕРИСТИКА БОЛИ:</b>")
-        
-        if locations:
-            loc_map = {
-                "head": "Голова",
-                "throat": "Горло",
-                "chest": "Грудная клетка / Сердце",
-                "abdomen": "Живот",
-                "back": "Поясница / Пах",
-                "joints": "Суставы / Конечности",
-            }
-            loc_names = [loc_map.get(loc, loc) for loc in locations]
-            parts.append(f"• <b>Локализация:</b> {', '.join(loc_names)}")
-        
-        if body_intensity:
-            parts.append(f"• <b>Интенсивность (карта тела):</b> {body_intensity}/10")
-        
-        if isinstance(pain_selected, list) and pain_selected:
-            char_map = {
-                "sharp": "Острая / Кинжальная",
-                "dull": "Тупая / Ноющая",
-                "pressing": "Сжимающая / Давящая",
-                "stabbing": "Колющая",
-                "burning": "Жгучая",
-                "cramping": "Приступообразная (схватками)",
-                "constant": "Постоянная",
-            }
-            chars = [char_map.get(c, c) for c in pain_selected if c != "no_pain"]
-            if chars:
-                parts.append(f"• <b>Характер боли:</b> {', '.join(chars)}")
-        
-        if scale_value is not None:
-            parts.append(f"• <b>Интенсивность (шкала):</b> {scale_value}/10")
-        
-        return "<br>".join(parts)
-    
-    def _generate_v2_temperature_block(self, answers: Dict[str, Any]) -> Optional[str]:
-        """Генерация блока температуры для v2."""
-        temp_filter = answers.get("temperature_filter", {})
-        if temp_filter.get("selected") != "yes":
-            return None
-        
-        parts = ["🌡️ <b>ТЕМПЕРАТУРА:</b> Повышена"]
-        
-        temp_details = answers.get("temperature_details", {})
-        details_selected = temp_details.get("selected", [])
-        if isinstance(details_selected, list):
-            details_map = {
-                "chills": "Озноб",
-                "sweating": "Повышенная потливость",
-                "temp_morning": "Температура выше утром",
-                "temp_evening": "Температура выше вечером",
-            }
-            for d in details_selected:
-                if d in details_map:
-                    parts.append(f"• {details_map[d]}")
-        
-        return "<br>".join(parts)
-    
-    def _generate_v2_respiratory_block(self, answers: Dict[str, Any]) -> Optional[str]:
-        """Генерация блока дыхательной системы для v2."""
-        resp_filter = answers.get("resp_filter", {})
-        if resp_filter.get("selected") != "yes":
-            return None
-        
-        parts = ["🫁 <b>ДЫХАТЕЛЬНАЯ СИСТЕМА:</b>"]
-        
-        # Кашель
-        cough = answers.get("resp_cough", {})
-        cough_val = cough.get("selected")
-        if cough_val:
-            cough_map = {"dry": "Сухой кашель", "wet": "Кашель с мокротой", "no_cough": "Кашля нет"}
-            parts.append(f"• <b>Кашель:</b> {cough_map.get(cough_val, cough_val)}")
-        
-        # Цвет мокроты
-        sputum = answers.get("resp_sputum_color", {})
-        sputum_val = sputum.get("selected")
-        if sputum_val:
-            sputum_map = {
-                "clear": "Прозрачная",
-                "yellow_green": "Жёлто-зелёная",
-                "rusty": "Ржавая",
-                "bloody": "С кровью ⚠️",
-            }
-            parts.append(f"• <b>Мокрота:</b> {sputum_map.get(sputum_val, sputum_val)}")
-        
-        # Одышка
-        dyspnea = answers.get("resp_dyspnea", {})
-        dyspnea_selected = dyspnea.get("selected", [])
-        if isinstance(dyspnea_selected, list) and dyspnea_selected and "no_dyspnea" not in dyspnea_selected:
-            dysp_map = {
-                "at_rest": "В покое",
-                "on_exercise": "При физической нагрузке",
-                "lying_down": "Лёжа в постели",
-                "asthma_attacks": "Приступы удушья ⚠️",
-            }
-            dysp_items = [dysp_map.get(d, d) for d in dyspnea_selected if d != "no_dyspnea"]
-            if dysp_items:
-                parts.append(f"• <b>Одышка:</b> {', '.join(dysp_items)}")
-        
-        return "<br>".join(parts)
-    
-    def _generate_v2_cardio_block(self, answers: Dict[str, Any]) -> Optional[str]:
-        """Генерация блока сердечно-сосудистой системы для v2."""
-        cardio_filter = answers.get("cardio_filter", {})
-        if cardio_filter.get("selected") != "yes":
-            return None
-        
-        parts = ["❤️ <b>СЕРДЕЧНО-СОСУДИСТАЯ СИСТЕМА:</b>"]
-        
-        # Иррадиация
-        irrad = answers.get("cardio_pain_irradiation", {})
-        irrad_val = irrad.get("selected")
-        if irrad_val:
-            irrad_map = {
-                "left_arm": "В левую руку/лопатку",
-                "neck_jaw": "В шею/челюсть",
-                "nowhere": "Никуда не отдаёт",
-            }
-            parts.append(f"• <b>Иррадиация:</b> {irrad_map.get(irrad_val, irrad_val)}")
-        
-        # Триггер
-        trigger = answers.get("cardio_trigger", {})
-        trigger_val = trigger.get("selected")
-        if trigger_val:
-            trigger_map = {
-                "exercise": "Физическая нагрузка",
-                "stress": "Эмоциональный стресс",
-                "at_rest": "В покое",
-            }
-            parts.append(f"• <b>Провоцирующий фактор:</b> {trigger_map.get(trigger_val, trigger_val)}")
-        
-        # Нитроглицерин
-        nitro = answers.get("cardio_nitro", {})
-        nitro_val = nitro.get("selected")
-        if nitro_val:
-            nitro_map = {
-                "yes": "Да, проходит",
-                "no": "Нет, не проходит",
-                "never": "Не пробовал(а)",
-            }
-            parts.append(f"• <b>Купирование нитроглицерином:</b> {nitro_map.get(nitro_val, nitro_val)}")
-        
-        # Отёки
-        edema = answers.get("cardio_edema", {})
-        edema_val = edema.get("selected")
-        if edema_val and edema_val != "no":
-            edema_map = {
-                "evening_legs": "Ноги отекают к вечеру",
-                "morning_face": "Утром отекает лицо/веки",
-            }
-            parts.append(f"• <b>Отёки:</b> {edema_map.get(edema_val, edema_val)}")
-        
-        return "<br>".join(parts)
-    
-    def _generate_v2_gastro_block(self, answers: Dict[str, Any]) -> Optional[str]:
-        """Генерация блока ЖКТ для v2."""
-        gastro_filter = answers.get("gastro_filter", {})
-        if gastro_filter.get("selected") != "yes":
-            return None
-        
-        parts = ["🍽️ <b>ПИЩЕВАРИТЕЛЬНАЯ СИСТЕМА (ЖКТ):</b>"]
-        
-        # Связь с едой
-        meal = answers.get("gastro_meal_relation", {})
-        meal_val = meal.get("selected")
-        if meal_val:
-            meal_map = {
-                "hungry": "Голодные боли (натощак)",
-                "right_after": "Боли сразу после еды",
-                "delayed": "Боли через 1–2 часа после еды",
-                "no_relation": "Не связано с едой",
-            }
-            parts.append(f"• <b>Связь с едой:</b> {meal_map.get(meal_val, meal_val)}")
-        
-        # Диспепсия
-        dyspepsia = answers.get("gastro_dyspepsia", {})
-        dysp_selected = dyspepsia.get("selected", [])
-        if isinstance(dysp_selected, list) and dysp_selected and "none" not in dysp_selected:
-            dysp_map = {
-                "heartburn": "Изжога",
-                "belching": "Отрыжка",
-                "nausea": "Тошнота / Рвота",
-                "coffee_ground_vomit": "Рвота «кофейной гущей» ⚠️",
-                "bloating": "Вздутие живота",
-            }
-            symptoms = [dysp_map.get(s, s) for s in dysp_selected if s != "none"]
-            if symptoms:
-                parts.append(f"• <b>Диспепсия:</b> {', '.join(symptoms)}")
-        
-        # Стул
-        stool = answers.get("gastro_stool", {})
-        stool_val = stool.get("selected")
-        if stool_val:
-            stool_map = {
-                "constipation": "Запор (стул твёрдый, комковатый)",
-                "normal": "Норма",
-                "diarrhea": "Диарея (стул мягкий, водянистый)",
-            }
-            parts.append(f"• <b>Стул:</b> {stool_map.get(stool_val, stool_val)}")
-        
-        # Кровь в стуле
-        blood = answers.get("gastro_blood", {})
-        blood_val = blood.get("selected")
-        if blood_val == "yes":
-            parts.append("• ⚠️ <b>Кровь в стуле:</b> Да (чёрный/дёгтеобразный или алая кровь)")
-        
-        return "<br>".join(parts)
-    
-    def _generate_v2_urinary_block(self, answers: Dict[str, Any]) -> Optional[str]:
-        """Генерация блока мочевыделительной системы для v2."""
-        urinary_filter = answers.get("urinary_filter", {})
-        if urinary_filter.get("selected") != "yes":
-            return None
-        
-        parts = ["💧 <b>МОЧЕВЫДЕЛИТЕЛЬНАЯ СИСТЕМА:</b>"]
-        
-        details = answers.get("urinary_details", {})
-        details_selected = details.get("selected", [])
-        if isinstance(details_selected, list) and details_selected:
-            det_map = {
-                "dysuria": "Рези, жжение при мочеиспускании",
-                "urine_color": "Изменение цвета мочи (тёмная, красная, мутная)",
-                "nocturia": "Никтурия (ночные позывы)",
-                "difficulty_start": "Затруднения с началом мочеиспускания",
-            }
-            for d in details_selected:
-                if d in det_map:
-                    parts.append(f"• {det_map[d]}")
-        
-        return "<br>".join(parts)
-    
-    def _generate_v2_disease_history_block(self, answers: Dict[str, Any]) -> Optional[str]:
-        """Генерация блока истории заболевания для v2."""
-        parts = []
-        
-        # Начало заболевания
-        onset = answers.get("disease_onset", {})
-        onset_val = onset.get("selected")
-        duration = onset.get("duration_text", "")
-        
-        history = answers.get("disease_history", {})
-        history_text = history.get("text", "").strip()
-        
-        if not onset_val and not history_text:
-            return None
-        
-        parts.append("📋 <b>ИСТОРИЯ ЗАБОЛЕВАНИЯ (Anamnesis Morbi):</b>")
-        
-        if onset_val:
-            onset_map = {
-                "acute": "Заболел остро (часы/дни назад)",
-                "chronic_exacerbation": "Болеет давно, сейчас обострение",
-            }
-            parts.append(f"• <b>Начало:</b> {onset_map.get(onset_val, onset_val)}")
-        
-        if duration:
-            parts.append(f"• <b>Длительность:</b> {duration}")
-        
-        if history_text:
-            parts.append(f"• <b>Описание:</b> {history_text}")
-        
-        return "<br>".join(parts)
-    
-    def _generate_v2_life_history_block(self, answers: Dict[str, Any]) -> Optional[str]:
-        """Генерация блока анамнеза жизни для v2."""
-        parts = []
-        has_content = False
-        
-        parts.append("💊 <b>АНАМНЕЗ ЖИЗНИ (Anamnesis Vitae):</b>")
-        
-        # Аллергия
-        allergy = answers.get("allergy", {})
-        allergy_val = allergy.get("selected")
-        if allergy_val == "yes":
-            allergy_det = answers.get("allergy_details", {})
-            allergy_text = allergy_det.get("text", "не уточнено")
-            parts.append(f"• ⚠️ <b>Аллергия:</b> {allergy_text}")
-            has_content = True
-        elif allergy_val == "no":
-            parts.append("• <b>Аллергия:</b> Нет")
-            has_content = True
-        
-        # Курение
-        smoking = answers.get("smoking", {})
-        smoking_val = smoking.get("selected")
-        if smoking_val == "yes":
-            sm_details = answers.get("smoking_details", {})
-            sm_selected = sm_details.get("selected", [])
-            sm_years = sm_details.get("smoking_years")
-            sm_first = sm_details.get("first_cig_time", "")
-            
-            cig_map = {
-                "lt10": "<10",
-                "11_20": "11–20",
-                "21_30": "21–30",
-                "gt30": ">30",
-            }
-            cig_per_day = ""
-            if isinstance(sm_selected, list):
-                for s in sm_selected:
-                    if s in cig_map:
-                        cig_per_day = cig_map[s]
-                        break
-            
-            smoke_info = "🚬 Курит"
-            if cig_per_day:
-                smoke_info += f", {cig_per_day} сиг/день"
-            if sm_years:
-                smoke_info += f", стаж {sm_years} лет"
-            if sm_first:
-                smoke_info += f", первая сигарета: {sm_first}"
-            
-            parts.append(f"• {smoke_info}")
-            has_content = True
-        elif smoking_val == "no":
-            parts.append("• <b>Курение:</b> Нет")
-            has_content = True
-        
-        # Алкоголь
-        alcohol = answers.get("alcohol", {})
-        alc_val = alcohol.get("selected")
-        if alc_val:
-            alc_map = {
-                "no": "Не употребляет",
-                "rare": "Редко",
-                "moderate": "Умеренно",
-                "often": "Часто ⚠️",
-            }
-            parts.append(f"• <b>Алкоголь:</b> {alc_map.get(alc_val, alc_val)}")
-            has_content = True
-        
-        # Наследственность
-        heredity = answers.get("heredity", {})
-        her_selected = heredity.get("selected", [])
-        if isinstance(her_selected, list) and her_selected and "none" not in her_selected:
-            her_map = {
-                "cardio": "Инфаркт/Инсульт",
-                "diabetes": "Сахарный диабет",
-                "oncology": "Онкология",
-                "tuberculosis": "Туберкулёз",
-                "mental": "Психические расстройства",
-            }
-            items = [her_map.get(h, h) for h in her_selected if h in her_map]
-            if items:
-                parts.append(f"• <b>Наследственность:</b> {', '.join(items)}")
-                has_content = True
-        
-        # Перенесённые заболевания
-        past = answers.get("past_diseases", {})
-        past_text = past.get("text", "").strip()
-        if past_text:
-            parts.append(f"• <b>Перенесённые заболевания/операции:</b> {past_text}")
-            has_content = True
-        
-        # Профессия
-        occupation = answers.get("occupation", {})
-        occ_text = occupation.get("text", "").strip()
-        if occ_text:
-            parts.append(f"• <b>Профессия / Вредности:</b> {occ_text}")
-            has_content = True
-        
-        if not has_content:
-            return None
-        
-        return "<br>".join(parts)
     
     def generate_readable_html_report(
         self,
@@ -787,6 +606,15 @@ class ReportGenerator:
         risk_factors = self._generate_readable_risk_factors(answers)
         if risk_factors:
             content_parts.append(f'<div class="section">{risk_factors}</div>')
+        
+        # Fallback: необработанные ответы (v1)
+        unhandled_readable = self._generate_unhandled_block_readable(
+            answers, self.V1_HANDLED_NODE_IDS
+        )
+        if unhandled_readable:
+            content_parts.append(
+                f'<div class="section"><h2>📝 Дополнительные вопросы</h2>{unhandled_readable}</div>'
+            )
         
         # Собираем полный HTML документ
         html = f"""
@@ -940,292 +768,32 @@ class ReportGenerator:
         patient_name: Optional[str],
         answers: Dict[str, Any],
     ) -> str:
-        """Генерация читаемого HTML-отчёта для v2 опросника — три блока, один лист А4."""
+        """Генерация читаемого HTML-отчёта для v2 опросника — один лист А4.
+
+        Ответы выводятся в порядке узлов конфигурации опросника.
+        """
         name = patient_name or "Не указано"
         date = datetime.now().strftime("%d.%m.%Y %H:%M")
 
-        # ── БЛОК 1: ОСНОВНЫЕ ЖАЛОБЫ ──────────────────────────────────────
-        block1_rows: List[str] = []
-
-        # Локализация и характер боли
-        pain_block = self._generate_v2_readable_pain_block(answers)
-        if pain_block:
-            block1_rows.append(pain_block)
-
-        # Жалобы своими словами
-        free_text = answers.get("free_complaint", {}).get("text", "").strip()
-        if free_text:
-            block1_rows.append(f'<p><strong>Описание:</strong> {free_text}</p>')
-
-        # Температура
-        temp_block = self._generate_v2_readable_temperature(answers)
-        if temp_block:
-            block1_rows.append(temp_block)
-
-        # Дыхательная система
-        resp_block = self._generate_v2_readable_respiratory(answers)
-        if resp_block:
-            block1_rows.append(resp_block)
-
-        # Сердечно-сосудистая система
-        cardio_block = self._generate_v2_readable_cardio(answers)
-        if cardio_block:
-            block1_rows.append(cardio_block)
-
-        # ЖКТ
-        gastro_block = self._generate_v2_readable_gastro(answers)
-        if gastro_block:
-            block1_rows.append(gastro_block)
-
-        # Мочевыделительная система
-        urinary_block = self._generate_v2_readable_urinary(answers)
-        if urinary_block:
-            block1_rows.append(urinary_block)
-
-        # ── БЛОК 2: ИСТОРИЯ ЗАБОЛЕВАНИЯ ──────────────────────────────────
-        block2_rows: List[str] = []
-        history_block = self._generate_v2_readable_disease_history(answers)
-        if history_block:
-            block2_rows.append(history_block)
-
-        # ── БЛОК 3: АНАМНЕЗ ЖИЗНИ ────────────────────────────────────────
-        block3_rows: List[str] = []
-        life_block = self._generate_v2_readable_life_history(answers)
-        if life_block:
-            block3_rows.append(life_block)
-
-        def wrap_block(title: str, icon: str, rows: List[str], extra_class: str = "") -> str:
-            """Обёртка одного тематического блока."""
-            if not rows:
-                return ""
-            inner = "".join(rows)
-            return (
-                f'<div class="block {extra_class}">'
-                f'<div class="block-title">{icon} {title}</div>'
-                f'<div class="block-body">{inner}</div>'
-                f'</div>'
-            )
-
-        # ── БЛОК 0: СИСТЕМНЫЙ АНАЛИЗ ДЛЯ ВРАЧА ─────────────────────────
+        # ── Системный анализ для врача ───────────────────────────────────
         analysis_html = self._generate_analysis_block_readable(answers) or ""
 
-        section_html = "".join([
-            analysis_html,
-            wrap_block("Основные жалобы", "🩺", block1_rows),
-            wrap_block("История заболевания", "📋", block2_rows),
-            wrap_block("Анамнез жизни", "💊", block3_rows),
-        ])
+        # ── Все ответы в порядке конфигурации ────────────────────────────
+        items = self._generate_ordered_answers(answers, fmt="readable")
+        answers_html = ""
+        if items:
+            answers_html = (
+                '<div class="block">'
+                '<div class="block-title">📋 Результаты опроса</div>'
+                '<div class="block-body"><ul>'
+                + "".join(items)
+                + '</ul></div>'
+                '</div>'
+            )
 
+        section_html = analysis_html + answers_html
         html = self._wrap_in_html_document_compact(name, date, section_html)
         return html
-    
-    def _generate_v2_readable_pain_block(self, answers: Dict[str, Any]) -> Optional[str]:
-        """Блок боли для v2 readable."""
-        body_data = answers.get("body_location", {})
-        locations = body_data.get("locations", [])
-        body_intensity = body_data.get("intensity")
-        pain_char = answers.get("pain_character", {})
-        pain_selected = pain_char.get("selected", [])
-        pain_int = answers.get("pain_intensity", {})
-        scale_value = pain_int.get("value")
-        
-        if isinstance(pain_selected, list) and "no_pain" in pain_selected:
-            return "<p>Боль отсутствует (профилактика/другое)</p>"
-        
-        if not locations and not pain_selected and scale_value is None:
-            return None
-        
-        parts = ["<h2>Локализация и характеристика боли</h2>"]
-        
-        if locations:
-            loc_map = {"head": "Голова", "throat": "Горло", "chest": "Грудная клетка", "abdomen": "Живот", "back": "Поясница", "joints": "Суставы"}
-            loc_names = [loc_map.get(l, l) for l in locations]
-            parts.append(f"<p><strong>Локализация:</strong> {', '.join(loc_names)}</p>")
-        
-        if body_intensity:
-            parts.append(f'<p><strong>Интенсивность:</strong> <span class="badge">{body_intensity}/10</span></p>')
-        
-        if isinstance(pain_selected, list) and pain_selected:
-            char_map = {"sharp": "Острая", "dull": "Тупая/Ноющая", "pressing": "Сжимающая", "stabbing": "Колющая", "burning": "Жгучая", "cramping": "Приступообразная", "constant": "Постоянная"}
-            chars = [char_map.get(c, c) for c in pain_selected if c != "no_pain"]
-            if chars:
-                parts.append(f"<p><strong>Характер:</strong> {', '.join(chars)}</p>")
-        
-        if scale_value is not None:
-            parts.append(f'<p><strong>Интенсивность (шкала):</strong> <span class="badge">{scale_value}/10</span></p>')
-        
-        return "".join(parts)
-    
-    def _generate_v2_readable_temperature(self, answers: Dict[str, Any]) -> Optional[str]:
-        """Температура для v2 readable."""
-        temp = answers.get("temperature_filter", {})
-        if temp.get("selected") != "yes":
-            return None
-        parts = ["<h2>🌡️ Температура</h2><p><strong>Статус:</strong> Повышена</p><ul>"]
-        details = answers.get("temperature_details", {}).get("selected", [])
-        det_map = {"chills": "Озноб", "sweating": "Потливость", "temp_morning": "Выше утром", "temp_evening": "Выше вечером"}
-        if isinstance(details, list):
-            for d in details:
-                if d in det_map:
-                    parts.append(f"<li>{det_map[d]}</li>")
-        parts.append("</ul>")
-        return "".join(parts)
-    
-    def _generate_v2_readable_respiratory(self, answers: Dict[str, Any]) -> Optional[str]:
-        """Дыхательная для v2 readable."""
-        if answers.get("resp_filter", {}).get("selected") != "yes":
-            return None
-        parts = ["<h2>Дыхательная система</h2><ul>"]
-        cough = answers.get("resp_cough", {}).get("selected")
-        if cough:
-            c_map = {"dry": "Сухой кашель", "wet": "Кашель с мокротой", "no_cough": "Кашля нет"}
-            parts.append(f"<li><strong>Кашель:</strong> {c_map.get(cough, cough)}</li>")
-        sputum = answers.get("resp_sputum_color", {}).get("selected")
-        if sputum:
-            s_map = {"clear": "Прозрачная", "yellow_green": "Жёлто-зелёная", "rusty": "Ржавая", "bloody": "С кровью ⚠️"}
-            parts.append(f"<li><strong>Мокрота:</strong> {s_map.get(sputum, sputum)}</li>")
-        dyspnea = answers.get("resp_dyspnea", {}).get("selected", [])
-        if isinstance(dyspnea, list) and dyspnea and "no_dyspnea" not in dyspnea:
-            d_map = {"at_rest": "В покое", "on_exercise": "При нагрузке", "lying_down": "Лёжа", "asthma_attacks": "Приступы удушья"}
-            items = [d_map.get(d, d) for d in dyspnea if d != "no_dyspnea"]
-            if items:
-                parts.append(f"<li><strong>Одышка:</strong> {', '.join(items)}</li>")
-        parts.append("</ul>")
-        return "".join(parts)
-    
-    def _generate_v2_readable_cardio(self, answers: Dict[str, Any]) -> Optional[str]:
-        """Кардио для v2 readable."""
-        if answers.get("cardio_filter", {}).get("selected") != "yes":
-            return None
-        parts = ["<h2>Сердечно-сосудистая система</h2><ul>"]
-        irrad = answers.get("cardio_pain_irradiation", {}).get("selected")
-        if irrad:
-            i_map = {"left_arm": "В левую руку/лопатку", "neck_jaw": "В шею/челюсть", "nowhere": "Никуда"}
-            parts.append(f"<li><strong>Иррадиация:</strong> {i_map.get(irrad, irrad)}</li>")
-        trigger = answers.get("cardio_trigger", {}).get("selected")
-        if trigger:
-            t_map = {"exercise": "Физическая нагрузка", "stress": "Эмоциональный стресс", "at_rest": "В покое"}
-            parts.append(f"<li><strong>Провоцирует:</strong> {t_map.get(trigger, trigger)}</li>")
-        nitro = answers.get("cardio_nitro", {}).get("selected")
-        if nitro:
-            n_map = {"yes": "Да", "no": "Нет", "never": "Не пробовал(а)"}
-            parts.append(f"<li><strong>Нитроглицерин:</strong> {n_map.get(nitro, nitro)}</li>")
-        edema = answers.get("cardio_edema", {}).get("selected")
-        if edema and edema != "no":
-            e_map = {"evening_legs": "Ноги к вечеру", "morning_face": "Лицо утром"}
-            parts.append(f"<li><strong>Отёки:</strong> {e_map.get(edema, edema)}</li>")
-        parts.append("</ul>")
-        return "".join(parts)
-    
-    def _generate_v2_readable_gastro(self, answers: Dict[str, Any]) -> Optional[str]:
-        """ЖКТ для v2 readable."""
-        if answers.get("gastro_filter", {}).get("selected") != "yes":
-            return None
-        parts = ["<h2>Пищеварительная система</h2><ul>"]
-        meal = answers.get("gastro_meal_relation", {}).get("selected")
-        if meal:
-            m_map = {"hungry": "Голодные боли", "right_after": "Сразу после еды", "delayed": "Через 1–2 ч.", "no_relation": "Не связано"}
-            parts.append(f"<li><strong>Связь с едой:</strong> {m_map.get(meal, meal)}</li>")
-        dysp = answers.get("gastro_dyspepsia", {}).get("selected", [])
-        if isinstance(dysp, list) and dysp and "none" not in dysp:
-            d_map = {"heartburn": "Изжога", "belching": "Отрыжка", "nausea": "Тошнота/Рвота", "coffee_ground_vomit": "Рвота «кофейной гущей» ⚠️", "bloating": "Вздутие"}
-            items = [d_map.get(d, d) for d in dysp if d != "none"]
-            if items:
-                parts.append(f"<li><strong>Диспепсия:</strong> {', '.join(items)}</li>")
-        stool = answers.get("gastro_stool", {}).get("selected")
-        if stool:
-            s_map = {"constipation": "Запор", "normal": "Норма", "diarrhea": "Диарея"}
-            parts.append(f"<li><strong>Стул:</strong> {s_map.get(stool, stool)}</li>")
-        blood = answers.get("gastro_blood", {}).get("selected")
-        if blood == "yes":
-            parts.append("<li><strong>⚠️ Кровь в стуле:</strong> Да</li>")
-        parts.append("</ul>")
-        return "".join(parts)
-    
-    def _generate_v2_readable_urinary(self, answers: Dict[str, Any]) -> Optional[str]:
-        """Мочевыделительная для v2 readable."""
-        if answers.get("urinary_filter", {}).get("selected") != "yes":
-            return None
-        parts = ["<h2>Мочевыделительная система</h2><ul>"]
-        details = answers.get("urinary_details", {}).get("selected", [])
-        d_map = {"dysuria": "Рези/жжение", "urine_color": "Изменение цвета мочи", "nocturia": "Никтурия", "difficulty_start": "Затруднение с началом"}
-        if isinstance(details, list):
-            for d in details:
-                if d in d_map:
-                    parts.append(f"<li>{d_map[d]}</li>")
-        parts.append("</ul>")
-        return "".join(parts)
-    
-    def _generate_v2_readable_disease_history(self, answers: Dict[str, Any]) -> Optional[str]:
-        """История заболевания для v2 readable."""
-        onset = answers.get("disease_onset", {})
-        onset_val = onset.get("selected")
-        duration = onset.get("duration_text", "")
-        history_text = answers.get("disease_history", {}).get("text", "").strip()
-        if not onset_val and not history_text:
-            return None
-        parts = ["<h2>Хронология</h2>"]
-        if onset_val:
-            o_map = {"acute": "Остро (часы/дни)", "chronic_exacerbation": "Давно, сейчас обострение"}
-            parts.append(f"<p><strong>Начало:</strong> {o_map.get(onset_val, onset_val)}</p>")
-        if duration:
-            parts.append(f"<p><strong>Длительность:</strong> {duration}</p>")
-        if history_text:
-            parts.append(f"<p><strong>Описание:</strong> {history_text}</p>")
-        return "".join(parts)
-    
-    def _generate_v2_readable_life_history(self, answers: Dict[str, Any]) -> Optional[str]:
-        """Анамнез жизни для v2 readable."""
-        parts = ["<ul>"]
-        has = False
-        
-        allergy = answers.get("allergy", {}).get("selected")
-        if allergy == "yes":
-            det = answers.get("allergy_details", {}).get("text", "не уточнено")
-            parts.append(f"<li><strong>⚠️ Аллергия:</strong> {det}</li>")
-            has = True
-        elif allergy == "no":
-            parts.append("<li><strong>Аллергия:</strong> Нет</li>")
-            has = True
-        
-        smoking_val = answers.get("smoking", {}).get("selected")
-        if smoking_val == "yes":
-            sm = answers.get("smoking_details", {})
-            years = sm.get("smoking_years", "?")
-            parts.append(f"<li><strong>🚬 Курение:</strong> Да, стаж {years} лет</li>")
-            has = True
-        elif smoking_val == "no":
-            parts.append("<li><strong>Курение:</strong> Нет</li>")
-            has = True
-        
-        alc = answers.get("alcohol", {}).get("selected")
-        if alc:
-            a_map = {"no": "Не употребляет", "rare": "Редко", "moderate": "Умеренно", "often": "Часто ⚠️"}
-            parts.append(f"<li><strong>Алкоголь:</strong> {a_map.get(alc, alc)}</li>")
-            has = True
-        
-        heredity = answers.get("heredity", {}).get("selected", [])
-        if isinstance(heredity, list) and heredity and "none" not in heredity:
-            h_map = {"cardio": "Инфаркт/Инсульт", "diabetes": "Диабет", "oncology": "Онкология", "tuberculosis": "Туберкулёз", "mental": "Психические расстройства"}
-            items = [h_map.get(h, h) for h in heredity if h in h_map]
-            if items:
-                parts.append(f"<li><strong>Наследственность:</strong> {', '.join(items)}</li>")
-                has = True
-        
-        past = answers.get("past_diseases", {}).get("text", "").strip()
-        if past:
-            parts.append(f"<li><strong>Перенесённые заболевания:</strong> {past}</li>")
-            has = True
-        
-        occ = answers.get("occupation", {}).get("text", "").strip()
-        if occ:
-            parts.append(f"<li><strong>Профессия:</strong> {occ}</li>")
-            has = True
-        
-        parts.append("</ul>")
-        if not has:
-            return None
-        return "".join(parts)
     
     def _wrap_in_html_document_compact(self, patient_name: str, date: str, sections_html: str) -> str:
         """Компактный HTML-документ для вывода на одном листе А4."""
@@ -1388,86 +956,6 @@ class ReportGenerator:
 </body>
 </html>"""
 
-    def _wrap_in_html_document(self, patient_name: str, content_parts: List[str]) -> str:
-        """Обёртка контента в полный HTML документ с CSS стилями."""
-        return f"""
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Анкета пациента - {patient_name}</title>
-    <style>
-        * {{
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }}
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            background: #f5f5f5;
-            padding: 20px;
-        }}
-        .container {{
-            max-width: 900px;
-            margin: 0 auto;
-            background: white;
-            padding: 40px;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        }}
-        .header {{
-            border-bottom: 3px solid #2563eb;
-            padding-bottom: 20px;
-            margin-bottom: 30px;
-        }}
-        .header h1 {{ font-size: 28px; color: #1e293b; margin-bottom: 8px; }}
-        .subtitle {{ font-size: 16px; color: #64748b; margin-bottom: 15px; }}
-        .patient-info {{ display: flex; gap: 30px; font-size: 15px; color: #334155; }}
-        .section {{
-            margin-bottom: 30px;
-            padding: 20px;
-            background: #f8fafc;
-            border-radius: 8px;
-            border-left: 4px solid #3b82f6;
-        }}
-        .section h2 {{ font-size: 20px; color: #1e293b; margin-bottom: 15px; }}
-        .section h3 {{ font-size: 17px; color: #334155; margin-top: 15px; margin-bottom: 10px; }}
-        .section p {{ margin-bottom: 8px; color: #475569; }}
-        .section ul {{ margin-left: 20px; margin-top: 10px; }}
-        .section li {{ margin-bottom: 6px; color: #475569; }}
-        .alert-item {{
-            background: white;
-            padding: 12px;
-            margin-bottom: 10px;
-            border-radius: 6px;
-            border-left: 3px solid #f59e0b;
-        }}
-        .intensity-badge {{
-            display: inline-block;
-            padding: 4px 12px;
-            background: #fee2e2;
-            color: #991b1b;
-            border-radius: 4px;
-            font-weight: 600;
-            font-size: 14px;
-        }}
-        @media print {{
-            body {{ background: white; padding: 0; }}
-            .container {{ box-shadow: none; padding: 20px; }}
-        }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        {"".join(content_parts)}
-    </div>
-</body>
-</html>
-        """
-
     def generate_text_report(
         self,
         patient_name: Optional[str],
@@ -1531,6 +1019,14 @@ class ReportGenerator:
             lines.append(risk_factors)
             lines.append("")
         
+        # Fallback: необработанные ответы (v1)
+        unhandled_text = self._generate_unhandled_block_text(
+            answers, self.V1_HANDLED_NODE_IDS
+        )
+        if unhandled_text:
+            lines.append(unhandled_text)
+            lines.append("")
+        
         lines.append("=" * 70)
         lines.append("Конец отчёта")
         lines.append("=" * 70)
@@ -1542,7 +1038,10 @@ class ReportGenerator:
         patient_name: Optional[str],
         answers: Dict[str, Any],
     ) -> str:
-        """Генерация текстового отчёта для v2 опросника."""
+        """Генерация текстового отчёта для v2 опросника.
+
+        Ответы выводятся в порядке узлов конфигурации опросника.
+        """
         lines = []
         name = patient_name or "Не указано"
         date = datetime.now().strftime("%d.%m.%Y %H:%M")
@@ -1555,67 +1054,11 @@ class ReportGenerator:
         lines.append("=" * 70)
         lines.append("")
         
-        # Блок 1: Боль
-        pain_html = self._generate_v2_pain_block(answers)
-        if pain_html:
-            # Конвертируем HTML в текст
-            clean = pain_html.replace("<br>", "\n").replace("<b>", "").replace("</b>", "")
-            lines.append(clean)
-            lines.append("")
-        
-        # Свободное описание
-        free_text = answers.get("free_complaint", {}).get("text", "").strip()
-        if free_text:
-            lines.append(f"📝 ЖАЛОБЫ СВОИМИ СЛОВАМИ:\n  {free_text}")
-            lines.append("")
-        
-        # Температура
-        temp_html = self._generate_v2_temperature_block(answers)
-        if temp_html:
-            clean = temp_html.replace("<br>", "\n").replace("<b>", "").replace("</b>", "")
-            lines.append(clean)
-            lines.append("")
-        
-        # Дыхательная
-        resp_html = self._generate_v2_respiratory_block(answers)
-        if resp_html:
-            clean = resp_html.replace("<br>", "\n").replace("<b>", "").replace("</b>", "")
-            lines.append(clean)
-            lines.append("")
-        
-        # Кардио
-        cardio_html = self._generate_v2_cardio_block(answers)
-        if cardio_html:
-            clean = cardio_html.replace("<br>", "\n").replace("<b>", "").replace("</b>", "")
-            lines.append(clean)
-            lines.append("")
-        
-        # ЖКТ
-        gastro_html = self._generate_v2_gastro_block(answers)
-        if gastro_html:
-            clean = gastro_html.replace("<br>", "\n").replace("<b>", "").replace("</b>", "")
-            lines.append(clean)
-            lines.append("")
-        
-        # Мочевыделительная
-        urinary_html = self._generate_v2_urinary_block(answers)
-        if urinary_html:
-            clean = urinary_html.replace("<br>", "\n").replace("<b>", "").replace("</b>", "")
-            lines.append(clean)
-            lines.append("")
-        
-        # История заболевания
-        history_html = self._generate_v2_disease_history_block(answers)
-        if history_html:
-            clean = history_html.replace("<br>", "\n").replace("<b>", "").replace("</b>", "")
-            lines.append(clean)
-            lines.append("")
-        
-        # Анамнез жизни
-        life_html = self._generate_v2_life_history_block(answers)
-        if life_html:
-            clean = life_html.replace("<br>", "\n").replace("<b>", "").replace("</b>", "")
-            lines.append(clean)
+        # Все ответы в порядке конфигурации опросника
+        items = self._generate_ordered_answers(answers, fmt="text")
+        if items:
+            lines.append("📋 РЕЗУЛЬТАТЫ ОПРОСА:")
+            lines.extend(items)
             lines.append("")
         
         lines.append("=" * 70)

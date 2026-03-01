@@ -12,7 +12,6 @@ HTTP-клиент для отправки данных в Битрикс24.
 import base64
 import httpx
 from datetime import datetime
-from io import BytesIO
 from typing import Optional
 from zoneinfo import ZoneInfo
 from loguru import logger

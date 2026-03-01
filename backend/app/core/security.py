@@ -23,18 +23,6 @@ _SHORT_CODE_ALPHABET = string.ascii_letters + string.digits  # a-zA-Z0-9
 SHORT_CODE_LENGTH = 16  # 16 символов Base62 ≈ 95 бит энтропии
 
 
-class TokenPayload(BaseModel):
-    """
-    Структура данных в JWT токене.
-    """
-    lead_id: int  # ID сделки/лида в Битрикс24
-    patient_name: Optional[str] = None  # Имя пациента для персонализации
-    entity_type: str = "DEAL"  # Тип сущности: DEAL или LEAD
-    exp: datetime  # Время истечения
-    iat: datetime  # Время создания
-    jti: str  # Уникальный ID токена (для инвалидации)
-
-
 class TokenData(BaseModel):
     """
     Данные, извлечённые из токена после валидации.
@@ -83,6 +71,8 @@ def create_access_token(
         "iat": now,
         "jti": jti,
     }
+    if patient_name:
+        payload["n"] = patient_name  # patient_name (опционально)
     
     encoded_jwt = jwt.encode(
         payload,

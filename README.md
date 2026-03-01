@@ -100,9 +100,7 @@ nginx (reverse proxy + SSL / Let's Encrypt)
 │   │   ├── services/
 │   │   │   ├── survey_engine.py      # Движок опросника
 │   │   │   ├── report_generator.py   # Генератор отчётов
-│   │   │   ├── bitrix24.py           # HTTP-клиент Битрикс24
-│   │   │   ├── telegram_notifier.py  # Уведомления в Telegram
-│   │   │   └── url_shortener.py      # Сокращение URL (bit.ly / clck.ru)
+│   │   │   └── bitrix24.py           # HTTP-клиент Битрикс24
 │   │   ├── models/models.py      # SQLAlchemy-модели
 │   │   ├── schemas/schemas.py    # Pydantic-схемы
 │   │   ├── core/                 # config, database, redis, middleware
@@ -212,14 +210,6 @@ nginx (reverse proxy + SSL / Let's Encrypt)
 - **Входящий вебхук:** `/api/v1/bitrix/webhook` — обработка событий от Б24
 - **Фильтрация воронок:** `BITRIX24_ALLOWED_CATEGORIES` (список ID через запятую)
 
-### Telegram
-- Уведомления пациентам через Telegram Bot API (опционально)
-- Настройка: `TELEGRAM_BOT_TOKEN` в `.env`
-
-### Сокращение URL
-- Провайдеры: **clck.ru** (по умолчанию, бесплатно) или **Bit.ly** (токен `BITLY_ACCESS_TOKEN`)
-- Используется при отправке ссылок на опросник в SMS
-
 ---
 
 ## ⚙️ Переменные окружения (`.env`)
@@ -255,9 +245,6 @@ BITRIX24_INCOMING_TOKEN=токен-входящего-вебхука
 BITRIX24_ALLOWED_CATEGORIES=19,25   # Пусто = все воронки
 
 # Опционально
-TELEGRAM_BOT_TOKEN=
-BITLY_ACCESS_TOKEN=
-URL_SHORTENER_PROVIDER=clckru       # bitly | clckru
 RATE_LIMIT_PER_MINUTE=60
 CORS_ORIGINS_STR=https://your-domain.com
 ```
@@ -283,7 +270,6 @@ docker compose exec backend alembic revision --autogenerate -m "описание
 | `seed.py` | Загрузить начальную конфигурацию опросника в БД |
 | `cleanup.py` | Очистить устаревшие audit-логи (152-ФЗ) |
 | `auto_expire_sessions.py` | Перевести просроченные сессии в `abandoned` |
-| `test_notifications.py` | Проверить отправку уведомлений |
 | `test_session_expiry.py` | Проверить логику истечения сессий |
 
 ---

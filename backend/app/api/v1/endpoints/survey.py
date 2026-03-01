@@ -6,7 +6,6 @@ API для прохождения опроса.
 """
 
 from datetime import datetime, timezone
-from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -248,7 +247,7 @@ async def start_survey(
     
     return SurveyStartResponse(
         session_id=session.id,
-        patient_name=token_data.patient_name,
+        patient_name=patient_name,
         survey_config=config.json_config,
         message="Опрос начат",
         expires_at=expires_at,

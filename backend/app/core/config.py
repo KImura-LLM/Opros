@@ -54,7 +54,7 @@ class Settings(BaseSettings):
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/0"
     
     # Сессии
-    SESSION_TTL: int = 604800  # 24 часа в секундах
+    SESSION_TTL: int = 604800  # 7 дней в секундах (604800 = 7 * 24 * 3600)
     
     # JWT
     JWT_SECRET_KEY: str = "jwt-secret-change-me"
@@ -73,13 +73,6 @@ class Settings(BaseSettings):
         if not self.BITRIX24_ALLOWED_CATEGORIES:
             return []
         return [c.strip() for c in self.BITRIX24_ALLOWED_CATEGORIES.split(",") if c.strip()]
-    
-    # Сокращение URL (для SMS)
-    BITLY_ACCESS_TOKEN: str = ""  # Токен Bit.ly API (опционально)
-    URL_SHORTENER_PROVIDER: str = "clckru"  # 'bitly' или 'clckru'
-    
-    # Telegram Bot (для отправки уведомлений)
-    TELEGRAM_BOT_TOKEN: str = ""  # Токен бота от @BotFather (опционально)
     
     # CORS
     CORS_ORIGINS_STR: str = "http://localhost:3000,http://localhost:5173"

@@ -214,18 +214,6 @@ class RedisClient:
         key = f"link:{short_code}"
         return await self.client.get(key)
 
-    async def delete_short_code(self, short_code: str) -> None:
-        """
-        Удаление короткого кода (после инвалидации токена).
-        
-        Args:
-            short_code: Короткий код
-        """
-        await self.connect()
-        key = f"link:{short_code}"
-        await self.client.delete(key)
-        logger.debug(f"Удалён короткий код {short_code}")
-
 
 # Глобальный экземпляр клиента
 redis_client = RedisClient()

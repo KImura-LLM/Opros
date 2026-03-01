@@ -271,7 +271,7 @@ const SurveyPage: React.FC = () => {
                     key={field.id}
                     label={field.label}
                     placeholder={field.placeholder}
-                    value={(currentAnswer[field.id] as number) || null}
+                    value={(currentAnswer[field.id] as number) ?? null}
                     onChange={(value) =>
                       setCurrentAnswer((prev) => ({ ...prev, [field.id]: value }))
                     }
@@ -306,7 +306,7 @@ const SurveyPage: React.FC = () => {
                     key={field.id}
                     label={field.label}
                     placeholder={field.placeholder}
-                    value={(currentAnswer[field.id] as number) || null}
+                    value={(currentAnswer[field.id] as number) ?? null}
                     onChange={(value) =>
                       setCurrentAnswer((prev) => ({ ...prev, [field.id]: value }))
                     }
@@ -349,7 +349,7 @@ const SurveyPage: React.FC = () => {
                 Интенсивность боли:
               </p>
               <PainScale
-                value={(currentAnswer.intensity as number) || 5}
+                value={(currentAnswer.intensity as number) ?? 5}
                 onChange={(value) =>
                   setCurrentAnswer((prev) => ({ ...prev, intensity: value }))
                 }
@@ -364,10 +364,10 @@ const SurveyPage: React.FC = () => {
       case 'slider':
         return (
           <PainScale
-            value={(currentAnswer.value as number) || currentNode.min_value || 1}
+            value={(currentAnswer.value as number) ?? currentNode.min_value ?? 1}
             onChange={(value) => setCurrentAnswer({ value })}
-            min={currentNode.min_value || 1}
-            max={currentNode.max_value || 10}
+            min={currentNode.min_value ?? 1}
+            max={currentNode.max_value ?? 10}
           />
         )
 

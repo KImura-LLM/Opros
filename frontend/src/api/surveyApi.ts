@@ -7,7 +7,6 @@ import type {
   SurveyStartResponse,
   SurveyAnswerResponse,
   SurveyCompleteResponse,
-  SurveyConfig,
   AnswerData,
 } from '@/types'
 import { useSurveyStore } from '@/store/surveyStore'
@@ -83,13 +82,6 @@ export async function startSurvey(
       consent_given: consentGiven,
     }),
   })
-}
-
-/**
- * Получение конфигурации опросника
- */
-export async function getSurveyConfig(): Promise<{ json_config: SurveyConfig }> {
-  return apiFetch<{ json_config: SurveyConfig }>('/survey/config')
 }
 
 /**

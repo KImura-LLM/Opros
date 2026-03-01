@@ -3,38 +3,15 @@
 // ============================================
 
 import { useParams, useNavigate } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { AnalysisEditor, useAnalysisStore } from '../analysis';
+import { useAdminAuth } from '../hooks/useAdminAuth';
 
 const AnalysisEditorPage = () => {
   const { surveyId } = useParams<{ surveyId: string }>();
   const navigate = useNavigate();
   const isDirty = useAnalysisStore((state) => state.isDirty);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isChecking, setIsChecking] = useState(true);
-
-  // Проверка авторизации (аналогично EditorPage)
-  useEffect(() => {
-    const checkAuth = async () => {
-      try {
-        const response = await fetch('/admin/api/session', {
-          credentials: 'include',
-        });
-        if (response.ok) {
-          setIsAuthenticated(true);
-        } else {
-          document.cookie = `admin_redirect=${encodeURIComponent(window.location.pathname)}; path=/; SameSite=Lax; max-age=300`;
-          window.location.href = '/admin/login';
-        }
-      } catch {
-        document.cookie = `admin_redirect=${encodeURIComponent(window.location.pathname)}; path=/; SameSite=Lax; max-age=300`;
-        window.location.href = '/admin/login';
-      } finally {
-        setIsChecking(false);
-      }
-    };
-    checkAuth();
-  }, []);
+  const { isAuthenticated, isChecking } = useAdminAuth();
 
   useEffect(() => {
     if (!surveyId) {

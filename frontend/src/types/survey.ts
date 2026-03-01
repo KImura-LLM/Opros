@@ -77,14 +77,6 @@ export interface AnswerData {
   [key: string]: unknown
 }
 
-// Прогресс опроса
-export interface SurveyProgress {
-  current_node: string
-  answers: Record<string, AnswerData>
-  history: string[]
-  started_at?: string
-}
-
 // Ответы API
 export interface TokenValidationResponse {
   valid: boolean

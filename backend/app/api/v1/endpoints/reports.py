@@ -6,7 +6,6 @@ API для экспорта и просмотра отчётов.
 """
 
 from uuid import UUID
-from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
