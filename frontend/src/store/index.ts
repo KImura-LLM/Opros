@@ -1,1 +1,6 @@
-export { useSurveyStore } from './surveyStore'
+export {
+  useSurveyStore,
+  getSessionFromStorage,
+  clearSessionStorage,
+  saveSessionToStorage,
+} from './surveyStore'

@@ -177,6 +177,7 @@ async def start_survey(
             patient_name=existing_session.patient_name,
             survey_config=config.json_config,
             message="Сессия восстановлена. Продолжайте с того места, где остановились.",
+            expires_at=existing_session.expires_at,
         )
     
     # Создание новой сессии
@@ -439,6 +440,7 @@ async def get_progress(
         current_node=progress.get("current_node", "welcome"),
         history=progress.get("history", []),
         progress_percent=round(progress_percent, 1),
+        answers=progress.get("answers", {}),
     )
 
 

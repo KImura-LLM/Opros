@@ -10,6 +10,43 @@ import type {
   AnimationDirection,
 } from '@/types'
 
+// ==========================================
+// SessionStorage — сохраняем ТОЛЬКО идентификаторы сессии (не PII)
+// sessionStorage безопаснее localStorage: очищается при закрытии вкладки
+// ==========================================
+const SESSION_STORAGE_KEY = 'opros_session'
+
+export function saveSessionToStorage(token: string, sessionId: string): void {
+  try {
+    sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ token, sessionId }))
+  } catch {
+    // Если sessionStorage недоступен — просто игнорируем
+  }
+}
+
+export function getSessionFromStorage(): { token: string; sessionId: string } | null {
+  try {
+    const raw = sessionStorage.getItem(SESSION_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (parsed && typeof parsed.token === 'string' && typeof parsed.sessionId === 'string') {
+      return parsed
+    }
+  } catch {
+    // Невалидные данные — очищаем
+    clearSessionStorage()
+  }
+  return null
+}
+
+export function clearSessionStorage(): void {
+  try {
+    sessionStorage.removeItem(SESSION_STORAGE_KEY)
+  } catch {
+    // Игнорируем ошибки
+  }
+}
+
 interface SurveyState {
   // Данные сессии
   sessionId: string | null
@@ -43,6 +80,18 @@ interface SurveyState {
   setError: (error: string | null) => void
   reset: () => void
 
+  // Атомарное восстановление всей сессии после обновления страницы (один ре-рендер)
+  restoreSession: (data: {
+    config: SurveyConfig
+    sessionId: string
+    patientName?: string
+    expiresAt?: string
+    currentNodeId: string
+    answers: Record<string, AnswerData>
+    history: string[]
+    progress: number
+  }) => void
+
   // Геттеры
   getCurrentNode: () => SurveyNode | null
   getAnswer: (nodeId: string) => AnswerData | null
@@ -67,14 +116,27 @@ const initialState = {
 export const useSurveyStore = create<SurveyState>()((set, get) => ({
   ...initialState,
 
-  setSession: (sessionId: string, patientName?: string, expiresAt?: string) =>
+  setSession: (sessionId: string, patientName?: string, expiresAt?: string) => {
     set({ 
       sessionId, 
       patientName: patientName || null, 
       expiresAt: expiresAt || null 
-    }),
+    })
+    // Синхронизируем идентификаторы сессии в sessionStorage для восстановления при F5
+    const token = get().token
+    if (token && sessionId) {
+      saveSessionToStorage(token, sessionId)
+    }
+  },
 
-  setToken: (token: string) => set({ token }),
+  setToken: (token: string) => {
+    set({ token })
+    // Синхронизируем в sessionStorage если сессия уже есть
+    const sessionId = get().sessionId
+    if (token && sessionId) {
+      saveSessionToStorage(token, sessionId)
+    }
+  },
 
   setConfig: (config: SurveyConfig) =>
     set({
@@ -126,7 +188,24 @@ export const useSurveyStore = create<SurveyState>()((set, get) => ({
 
   setError: (error: string | null) => set({ error }),
 
-  reset: () => set(initialState),
+  reset: () => {
+    clearSessionStorage()
+    set(initialState)
+  },
+
+  // Атомарное восстановление: один set() = один ре-рендер, нет промежуточных состояний
+  restoreSession: (data) => {
+    set({
+      config: data.config,
+      sessionId: data.sessionId,
+      patientName: data.patientName || null,
+      expiresAt: data.expiresAt || null,
+      currentNodeId: data.currentNodeId,
+      answers: data.answers,
+      history: data.history,
+      progress: data.progress,
+    })
+  },
 
   getCurrentNode: () => {
     const state = get()

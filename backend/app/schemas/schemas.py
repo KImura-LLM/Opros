@@ -6,7 +6,7 @@
 """
 
 from datetime import datetime
-from typing import Optional, List
+from typing import Any, Dict, Optional, List
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -101,6 +101,7 @@ class SurveyProgressResponse(BaseModel):
     current_node: str
     history: List[str]
     progress_percent: float
+    answers: Optional[Dict[str, Any]] = Field(None, description="Сохранённые ответы пользователя")
 
 
 class SurveyCompleteRequest(BaseModel):

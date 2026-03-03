@@ -2,11 +2,12 @@
  * Страница прохождения опроса
  */
 
-import React, { useState, useCallback, useEffect } from 'react'
+import React, { useState, useCallback, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useSurveyStore } from '@/store'
-import { submitAnswer, completeSurvey, goBackApi } from '@/api'
+import { Loader2 } from 'lucide-react'
+import { useSurveyStore, getSessionFromStorage, clearSessionStorage } from '@/store'
+import { submitAnswer, completeSurvey, goBackApi, startSurvey, getProgress } from '@/api'
 import { Header, ProgressBar, Footer, PageContainer, SessionTimer } from '@/components/layout'
 import {
   SingleChoice,
@@ -28,15 +29,75 @@ const SurveyPage: React.FC = () => {
     progress,
     animationDirection,
     expiresAt,
+    setToken,
     setCurrentNode,
     setAnswer,
     setProgress,
     goBack,
     canGoBack,
+    restoreSession,
   } = useSurveyStore()
 
   const [currentAnswer, setCurrentAnswer] = useState<AnswerData>({})
   const [isLoading, setIsLoading] = useState(false)
+  // Флаг: идёт восстановление сессии после обновления страницы
+  const [isRestoring, setIsRestoring] = useState(!config || !sessionId)
+  // Защита от двойного вызова (React Strict Mode монтирует эффект дважды)
+  const restoreAttempted = useRef(false)
+
+  // ==========================================
+  // Восстановление сессии при обновлении страницы (F5 / обрыв сети)
+  // ==========================================
+  useEffect(() => {
+    // Данные уже есть (нормальный переход с HomePage) — восстановление не нужно
+    if (config && sessionId) {
+      setIsRestoring(false)
+      return
+    }
+
+    // React Strict Mode запускает эффект дважды — блокируем повторный запуск
+    if (restoreAttempted.current) return
+    restoreAttempted.current = true
+
+    const saved = getSessionFromStorage()
+    if (!saved) {
+      navigate('/', { replace: true })
+      return
+    }
+
+    // Используем IIFE чтобы не возвращать Promise из useEffect
+    ;(async () => {
+      try {
+        // Устанавливаем токен заранее — нужен в заголовке X-Session-Token
+        setToken(saved.token)
+
+        // Бэкенд вернёт существующую сессию (не создаст новую)
+        const startResp = await startSurvey(saved.token, true)
+
+        // Получаем текущий прогресс: узел, историю, ответы
+        const progressResp = await getProgress(String(startResp.session_id))
+
+        // Атомарный update всего состояния — один ре-рендер вместо нескольких
+        restoreSession({
+          config: startResp.survey_config,
+          sessionId: String(startResp.session_id),
+          patientName: startResp.patient_name,
+          expiresAt: startResp.expires_at,
+          currentNodeId: progressResp.current_node,
+          answers: progressResp.answers || {},
+          history: progressResp.history || [],
+          progress: progressResp.progress_percent,
+        })
+
+        setIsRestoring(false)
+      } catch (err) {
+        console.error('Не удалось восстановить сессию:', err)
+        clearSessionStorage()
+        navigate('/', { replace: true })
+      }
+    })()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Получение текущего узла
   const currentNode: SurveyNode | null = config?.nodes.find(
@@ -45,6 +106,7 @@ const SurveyPage: React.FC = () => {
 
   // Загрузка сохранённого ответа при смене узла
   useEffect(() => {
+    if (isRestoring) return
     const savedAnswer = answers[currentNodeId]
     if (savedAnswer) {
       setCurrentAnswer(savedAnswer)
@@ -57,14 +119,7 @@ const SurveyPage: React.FC = () => {
         setCurrentAnswer({})
       }
     }
-  }, [currentNodeId, answers])
-
-  // Редирект если нет данных
-  useEffect(() => {
-    if (!config || !sessionId) {
-      navigate('/')
-    }
-  }, [config, sessionId, navigate])
+  }, [currentNodeId, answers, isRestoring])
 
   // Проверка, можно ли продолжить
   const canProceed = useCallback(() => {
@@ -437,6 +492,17 @@ const SurveyPage: React.FC = () => {
   }
 
   if (!currentNode) {
+    // Если идёт восстановление сессии — показываем экран загрузки
+    if (isRestoring) {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-slate-50">
+          <div className="text-center">
+            <Loader2 className="w-12 h-12 text-primary-600 animate-spin mx-auto" />
+            <p className="mt-4 text-slate-600">Восстановление опроса...</p>
+          </div>
+        </div>
+      )
+    }
     return null
   }
 
