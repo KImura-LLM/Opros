@@ -215,19 +215,36 @@ async def get_dashboard_stats(
     # ================================================
     # БЛОК 4: Воронка прохождения (drop-off)
     # ================================================
-    # Считаем сколько сессий ответили на каждый node_id (в выбранном периоде)
-    funnel_q = await db.execute(
+    # Для каждой БРОШЕННОЙ сессии находим последний отвеченный вопрос —
+    # это точка, на которой пациент прекратил прохождение.
+    # Используем подзапрос: max(id) ответа для каждой abandoned-сессии,
+    # затем группируем по node_id и считаем количество выходов на каждом вопросе.
+
+    # Подзапрос: последний ответ (максимальный id) для каждой брошенной сессии
+    last_answer_subq = (
         select(
-            SurveyAnswer.node_id,
-            func.count(func.distinct(SurveyAnswer.session_id)).label("cnt"),
+            SurveyAnswer.session_id,
+            func.max(SurveyAnswer.id).label("last_answer_id"),
         )
         .join(SurveySession, SurveySession.id == SurveyAnswer.session_id)
         .where(
+            SurveySession.status == "abandoned",
             SurveySession.started_at >= dt_from,
             SurveySession.started_at <= dt_to,
         )
+        .group_by(SurveyAnswer.session_id)
+        .subquery()
+    )
+
+    # Основной запрос: берём node_id последнего ответа и считаем частоту
+    funnel_q = await db.execute(
+        select(
+            SurveyAnswer.node_id,
+            func.count().label("cnt"),
+        )
+        .join(last_answer_subq, SurveyAnswer.id == last_answer_subq.c.last_answer_id)
         .group_by(SurveyAnswer.node_id)
-        .order_by(func.count(func.distinct(SurveyAnswer.session_id)).desc())
+        .order_by(func.count().desc())
     )
     funnel_rows = funnel_q.all()
     funnel_data = []
