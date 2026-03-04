@@ -215,12 +215,12 @@ async def get_dashboard_stats(
     # ================================================
     # БЛОК 4: Воронка прохождения (drop-off)
     # ================================================
-    # Для каждой БРОШЕННОЙ сессии находим последний отвеченный вопрос —
-    # это точка, на которой пациент прекратил прохождение.
-    # Используем подзапрос: max(id) ответа для каждой abandoned-сессии,
+    # Для каждой НЕзавершённой сессии (abandoned + in_progress) находим
+    # последний отвеченный вопрос — это точка, на которой пациент прекратил
+    # прохождение. Используем подзапрос: max(id) ответа для каждой такой сессии,
     # затем группируем по node_id и считаем количество выходов на каждом вопросе.
 
-    # Подзапрос: последний ответ (максимальный id) для каждой брошенной сессии
+    # Подзапрос: последний ответ (максимальный id) для каждой незавершённой сессии
     last_answer_subq = (
         select(
             SurveyAnswer.session_id,
@@ -228,7 +228,7 @@ async def get_dashboard_stats(
         )
         .join(SurveySession, SurveySession.id == SurveyAnswer.session_id)
         .where(
-            SurveySession.status == "abandoned",
+            SurveySession.status.in_(["abandoned", "in_progress"]),
             SurveySession.started_at >= dt_from,
             SurveySession.started_at <= dt_to,
         )
