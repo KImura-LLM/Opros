@@ -136,26 +136,32 @@ async def get_dashboard_stats(
     )
     all_answers = all_answers_q.all()
 
-    # Получаем конфиг опросника для маппинга node_id → текст вопроса / текст ответа
-    config_q = await db.execute(
-        select(SurveyConfig.json_config).where(SurveyConfig.is_active == True).limit(1)
+    # Получаем ВСЕ конфиги опросника для маппинга node_id → текст вопроса / текст ответа
+    # (ответы могли быть записаны по разным версиям конфига)
+    all_configs_q = await db.execute(
+        select(SurveyConfig.json_config, SurveyConfig.is_active)
+        .order_by(SurveyConfig.is_active.desc(), SurveyConfig.id.desc())
     )
-    config_json = config_q.scalar()
+    all_configs = all_configs_q.all()
 
     # Строим маппинг node_id → {question_text, options: {value → text}}
+    # Сначала загружаем старые конфиги, затем активный — активный перезаписывает,
+    # тем самым для актуальных узлов берётся свежий текст, а старые узлы не теряются
     node_map = {}
-    if config_json and config_json.get("nodes"):
-        for node in config_json["nodes"]:
-            opts = {}
-            for opt in node.get("options", []):
-                opts[str(opt.get("value", ""))] = opt.get("text", "")
-            node_map[node["id"]] = {
-                "question_text": node.get("question_text", node["id"]),
-                "options": opts,
-            }
+    for config_row in reversed(all_configs):
+        config_json = config_row.json_config
+        if config_json and config_json.get("nodes"):
+            for node in config_json["nodes"]:
+                opts = {}
+                for opt in node.get("options", []):
+                    opts[str(opt.get("value", ""))] = opt.get("text", "")
+                node_map[node["id"]] = {
+                    "question_text": node.get("question_text", node["id"]),
+                    "options": opts,
+                }
 
     # Подсчёт частоты каждого варианта
-    answer_freq = {}  # {(node_id, value_label): count}
+    answer_freq = {}  # {"Текст вопроса → Текст ответа": count}
     for row in all_answers:
         node_id = row.node_id
         data = row.answer_data
@@ -166,29 +172,39 @@ async def get_dashboard_stats(
         q_text = node_info["question_text"]
         options_map = node_info["options"]
 
-        # Обработка разных форматов answer_data
-        selected = data.get("selected") or data.get("value")
-        if selected is None:
-            # Для body_map и подобных — пропускаем или берём areas
-            areas = data.get("areas")
-            if areas and isinstance(areas, list):
-                for area in areas:
-                    label = area if isinstance(area, str) else str(area)
-                    readable = options_map.get(label, label)
-                    key = f"{q_text} → {readable}"
-                    answer_freq[key] = answer_freq.get(key, 0) + 1
+        # Обработка body_map: areas — массив объектов {id, intensity} или строк
+        areas = data.get("areas")
+        if areas and isinstance(areas, list):
+            for area in areas:
+                if isinstance(area, dict):
+                    area_id = str(area.get("id", ""))
+                else:
+                    area_id = str(area)
+                readable = options_map.get(area_id, area_id)
+                key = f"{q_text} → {readable}"
+                answer_freq[key] = answer_freq.get(key, 0) + 1
             continue
 
-        if isinstance(selected, list):
-            for val in selected:
-                val_str = str(val)
+        # Обработка selected (single_choice, multi_choice, multi_choice_with_input)
+        selected = data.get("selected")
+        # Обработка value (scale_1_10 и подобные)
+        value = data.get("value")
+
+        if selected is not None:
+            if isinstance(selected, list):
+                for val in selected:
+                    val_str = str(val)
+                    readable = options_map.get(val_str, val_str)
+                    key = f"{q_text} → {readable}"
+                    answer_freq[key] = answer_freq.get(key, 0) + 1
+            else:
+                val_str = str(selected)
                 readable = options_map.get(val_str, val_str)
                 key = f"{q_text} → {readable}"
                 answer_freq[key] = answer_freq.get(key, 0) + 1
-        else:
-            val_str = str(selected)
-            readable = options_map.get(val_str, val_str)
-            key = f"{q_text} → {readable}"
+        elif value is not None:
+            # Для шкалы (scale_1_10) — показываем числовое значение
+            key = f"{q_text} → {value}"
             answer_freq[key] = answer_freq.get(key, 0) + 1
 
     # Сортировка по убыванию
