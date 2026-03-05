@@ -64,6 +64,7 @@ class SurveyAnswerRequest(BaseModel):
     session_id: UUID
     node_id: str = Field(..., description="ID текущего вопроса", max_length=200)
     answer_data: dict = Field(..., description="Ответ пользователя")
+    duration_seconds: Optional[int] = Field(None, description="Время ответа на вопрос в секундах", ge=0, le=7200)
     
     @field_validator("answer_data")
     @classmethod

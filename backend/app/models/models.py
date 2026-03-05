@@ -121,6 +121,9 @@ class SurveyAnswer(Base):
     # Данные ответа (гибкая структура)
     answer_data = Column(JSONB, nullable=False, comment="Ответ пользователя в JSON формате")
     
+    # Время, затраченное на ответ (в секундах)
+    duration_seconds = Column(Integer, nullable=True, comment="Время ответа на вопрос в секундах")
+    
     # Временные метки
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())

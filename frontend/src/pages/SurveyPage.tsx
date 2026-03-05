@@ -44,6 +44,8 @@ const SurveyPage: React.FC = () => {
   const [isRestoring, setIsRestoring] = useState(!config || !sessionId)
   // Защита от двойного вызова (React Strict Mode монтирует эффект дважды)
   const restoreAttempted = useRef(false)
+  // Трекинг времени: запоминаем момент показа вопроса
+  const questionStartTime = useRef<number>(Date.now())
 
   // ==========================================
   // Восстановление сессии при обновлении страницы (F5 / обрыв сети)
@@ -107,6 +109,8 @@ const SurveyPage: React.FC = () => {
   // Загрузка сохранённого ответа при смене узла
   useEffect(() => {
     if (isRestoring) return
+    // Сброс таймера времени ответа при переходе на новый вопрос
+    questionStartTime.current = Date.now()
     const savedAnswer = answers[currentNodeId]
     if (savedAnswer) {
       setCurrentAnswer(savedAnswer)
@@ -215,6 +219,29 @@ const SurveyPage: React.FC = () => {
   const handleNext = async () => {
     if (!currentNode || !sessionId) return
     
+    // Если это финальный узел — мгновенная навигация, сервер догонит в фоне
+    if (currentNode.is_final) {
+      // Сохраняем ответ локально
+      if (currentNode.type !== 'info_screen') {
+        setAnswer(currentNodeId, currentAnswer)
+      }
+
+      // Fire-and-forget: отправляем последний ответ + завершение, не блокируя UI
+      if (currentNode.type !== 'info_screen') {
+        const elapsed = Math.round((Date.now() - questionStartTime.current) / 1000)
+        submitAnswer(sessionId, currentNodeId, currentAnswer, elapsed).catch((err) =>
+          console.warn('Фоновая отправка ответа:', err)
+        )
+      }
+      completeSurvey(sessionId).catch((err) =>
+        console.warn('Фоновое завершение опроса:', err)
+      )
+
+      // Мгновенный переход на экран завершения
+      navigate('/complete')
+      return
+    }
+
     setIsLoading(true)
     
     try {
@@ -225,7 +252,8 @@ const SurveyPage: React.FC = () => {
       
       // Отправляем на сервер
       if (currentNode.type !== 'info_screen' && sessionId) {
-        const response = await submitAnswer(sessionId, currentNodeId, currentAnswer)
+        const elapsed = Math.round((Date.now() - questionStartTime.current) / 1000)
+        const response = await submitAnswer(sessionId, currentNodeId, currentAnswer, elapsed)
         setProgress(response.progress)
         
         if (response.next_node) {
@@ -239,10 +267,6 @@ const SurveyPage: React.FC = () => {
       
       if (nextNodeId) {
         setCurrentNode(nextNodeId, 'forward')
-      } else if (currentNode.is_final) {
-        // Завершение опроса
-        await completeSurvey(sessionId)
-        navigate('/complete')
       }
     } catch (error) {
       console.error('Error submitting answer:', error)

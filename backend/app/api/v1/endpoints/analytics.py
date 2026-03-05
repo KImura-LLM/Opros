@@ -259,6 +259,43 @@ async def get_dashboard_stats(
         )
 
     # ================================================
+    # БЛОК 5: Среднее время ответа на каждый вопрос
+    # ================================================
+    # Среднее время (в секундах), затраченное на каждый вопрос
+    # Учитываем только ответы с заполненным duration_seconds
+    answer_time_q = await db.execute(
+        select(
+            SurveyAnswer.node_id,
+            func.avg(SurveyAnswer.duration_seconds).label("avg_duration"),
+            func.min(SurveyAnswer.duration_seconds).label("min_duration"),
+            func.max(SurveyAnswer.duration_seconds).label("max_duration"),
+            func.count().label("sample_count"),
+        )
+        .join(SurveySession, SurveySession.id == SurveyAnswer.session_id)
+        .where(
+            SurveySession.status == "completed",
+            SurveyAnswer.duration_seconds.isnot(None),
+            SurveyAnswer.duration_seconds > 0,
+        )
+        .group_by(SurveyAnswer.node_id)
+        .order_by(func.avg(SurveyAnswer.duration_seconds).desc())
+    )
+    answer_time_rows = answer_time_q.all()
+
+    answer_times_data = []
+    for row in answer_time_rows:
+        node_info = node_map.get(row.node_id, {"question_text": row.node_id})
+        avg_sec = round(float(row.avg_duration), 1)
+        answer_times_data.append({
+            "node_id": row.node_id,
+            "label": node_info["question_text"],
+            "avg_seconds": avg_sec,
+            "min_seconds": int(row.min_duration),
+            "max_seconds": int(row.max_duration),
+            "sample_count": row.sample_count,
+        })
+
+    # ================================================
     # Формируем ответ
     # ================================================
     return {
@@ -273,4 +310,5 @@ async def get_dashboard_stats(
         "top_answers": [{"label": k, "count": v} for k, v in top_10],
         "all_answers": [{"label": k, "count": v} for k, v in all_answers_stats],
         "funnel": funnel_data,
+        "answer_times": answer_times_data,
     }

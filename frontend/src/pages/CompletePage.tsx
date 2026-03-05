@@ -1,5 +1,9 @@
 /**
  * Страница успешного завершения опроса
+ * 
+ * Оптимизирована для мгновенного отображения (< 1 сек визуально).
+ * Все тяжёлые процессы (PDF, Битрикс24) выполняются фоново на сервере,
+ * пока пользователь уже видит финальный экран.
  */
 
 import React from 'react'
@@ -27,42 +31,36 @@ const CompletePage: React.FC = () => {
         </div>
       </header>
 
-      {/* Content */}
+      {/* Content — мгновенное появление */}
       <main className="flex-1 flex items-center justify-center p-4">
         <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.5, ease: 'easeOut' }}
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25, ease: 'easeOut' }}
           className="text-center max-w-md"
         >
-          {/* Анимированная галочка */}
+          {/* Анимированная галочка — мгновенный spring */}
           <motion.div
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
+            initial={{ scale: 0.5, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
             transition={{
-              delay: 0.2,
+              delay: 0.05,
               type: 'spring',
-              stiffness: 200,
-              damping: 15,
+              stiffness: 300,
+              damping: 20,
             }}
             className="mx-auto"
           >
             <div className="w-24 h-24 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-              <motion.div
-                initial={{ pathLength: 0 }}
-                animate={{ pathLength: 1 }}
-                transition={{ delay: 0.4, duration: 0.5 }}
-              >
-                <CheckCircle className="w-12 h-12 text-green-500" />
-              </motion.div>
+              <CheckCircle className="w-12 h-12 text-green-500" />
             </div>
           </motion.div>
 
-          {/* Текст */}
+          {/* Текст — появляется почти сразу */}
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5 }}
+            transition={{ delay: 0.15, duration: 0.2, ease: 'easeOut' }}
           >
             <h1 className="mt-6 text-2xl font-bold text-slate-900">
               Спасибо{patientName ? `, ${patientName}` : ''}!
@@ -73,24 +71,11 @@ const CompletePage: React.FC = () => {
             </p>
           </motion.div>
 
-          {/* Дополнительная информация */}
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.8 }}
-            className="mt-8 p-4 bg-primary-50 rounded-xl text-left"
-          >
-            <p className="text-sm text-primary-800">
-              <strong>Напоминание:</strong> Не забудьте взять с собой на приём
-              паспорт и полис ОМС (при наличии).
-            </p>
-          </motion.div>
-
-          {/* Можно закрыть */}
+          {/* Подсказка — плавное проявление */}
           <motion.p
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ delay: 1 }}
+            transition={{ delay: 0.4, duration: 0.3 }}
             className="mt-8 text-sm text-slate-400"
           >
             Вы можете закрыть эту страницу

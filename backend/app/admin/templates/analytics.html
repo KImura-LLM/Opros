@@ -95,12 +95,19 @@
             background: rgba(255,255,255,0.05);
         }
 
-        /* Сетка блоков */
+        /* Сетка блоков — единообразный Grid */
         .stats-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            grid-template-columns: 1fr;
             gap: 1.5rem;
             margin-bottom: 2rem;
+        }
+
+        /* Горизонтальный ряд для двух блоков одинаковой высоты */
+        .stats-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
         }
 
         /* Карточка */
@@ -133,6 +140,53 @@
             margin-bottom: 16px;
         }
         .stat-card.full-width { grid-column: 1 / -1; }
+
+        /* Гистограмма времени ответа */
+        .time-chart-container {
+            position: relative;
+            width: 100%;
+            max-height: 400px;
+        }
+        .time-sort-toggle {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(255,255,255,0.04);
+            color: #aaa;
+            border: 1px solid #333;
+            padding: 6px 14px;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            cursor: pointer;
+            margin-left: 12px;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+        .time-sort-toggle:hover {
+            border-color: #666;
+            color: #fff;
+            background: rgba(255,255,255,0.08);
+        }
+        .time-stats-row {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 16px;
+        }
+        .time-stat-chip {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(255,255,255,0.03);
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.78rem;
+            color: #888;
+        }
+        .time-stat-chip strong {
+            color: var(--accent-green);
+        }
 
         /* Мини-статы */
         .mini-stats {
@@ -348,6 +402,7 @@
 
         @media (max-width: 768px) {
             .stats-grid { grid-template-columns: 1fr; }
+            .stats-row { grid-template-columns: 1fr; }
             .funnel-label { flex: 0 0 35%; }
         }
 </style>
@@ -429,24 +484,50 @@
                 </div>
             </div>
 
-            <!-- БЛОК 3: Обратная связь (заглушка) -->
-            <div class="stat-card">
-                <h3>💬 Обратная связь</h3>
-                <div class="card-subtitle">Отзывы пациентов о прохождении</div>
-                <div class="feedback-placeholder">
-                    <i class="fa-solid fa-comment-dots"></i>
-                    <p>Здесь будут отображаться<br>отзывы и оценки пациентов</p>
-                    <span class="badge-soon">Скоро</span>
+            <!-- Горизонтальный ряд: Воронка + Обратная связь -->
+            <div class="stats-row">
+
+                <!-- БЛОК 3: Воронка прохождения -->
+                <div class="stat-card">
+                    <h3>🔻 Воронка прохождения</h3>
+                    <div class="card-subtitle">На каком вопросе пациенты останавливаются</div>
+                    <ul class="funnel-list" id="funnelList">
+                        <li class="funnel-item" style="color:#555;">Загрузка...</li>
+                    </ul>
                 </div>
+
+                <!-- БЛОК 4: Обратная связь (заглушка) -->
+                <div class="stat-card">
+                    <h3>💬 Обратная связь</h3>
+                    <div class="card-subtitle">Отзывы пациентов о прохождении</div>
+                    <div class="feedback-placeholder">
+                        <i class="fa-solid fa-comment-dots"></i>
+                        <p>Здесь будут отображаться<br>отзывы и оценки пациентов</p>
+                        <span class="badge-soon">Скоро</span>
+                    </div>
+                </div>
+
             </div>
 
-            <!-- БЛОК 4: Воронка прохождения -->
-            <div class="stat-card">
-                <h3>🔻 Воронка прохождения</h3>
-                <div class="card-subtitle">На каком вопросе пациенты останавливаются</div>
-                <ul class="funnel-list" id="funnelList">
-                    <li class="funnel-item" style="color:#555;">Загрузка...</li>
-                </ul>
+            <!-- БЛОК 5: Время ответа на вопрос -->
+            <div class="stat-card full-width">
+                <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+                    <div>
+                        <h3>⏱ Время ответа на вопрос</h3>
+                        <div class="card-subtitle">Среднее время (в секундах), затраченное пациентами на каждый вопрос</div>
+                    </div>
+                    <button class="time-sort-toggle" id="btnSortTime" onclick="toggleTimeSort()">
+                        <i class="fa-solid fa-arrow-down-wide-short"></i> По убыванию
+                    </button>
+                </div>
+                <div class="time-chart-container">
+                    <canvas id="answerTimeChart"></canvas>
+                    <div id="answerTimeEmpty" style="display:none; text-align:center; color:#555; padding:40px;">
+                        <i class="fa-solid fa-clock" style="font-size:2rem;margin-bottom:10px;display:block;color:#333;"></i>
+                        Данные о времени ответа ещё не собраны.<br><span style="font-size:0.8rem;">Они начнут появляться после новых прохождений опроса.</span>
+                    </div>
+                </div>
+                <div class="time-stats-row" id="timeStatsRow"></div>
             </div>
 
         </div>
@@ -458,6 +539,9 @@
 
     var completedChartInstance = null;
     var topAnswersChartInstance = null;
+    var answerTimeChartInstance = null;
+    var answerTimeSortDesc = true;  // По умолчанию — по убыванию
+    var answerTimesDataGlobal = [];  // Кэш данных для пересортировки
 
     // Инициализация дат из URL
     (function initDates() {
@@ -527,6 +611,7 @@
         renderTopAnswersChart(data.top_answers);
         renderAllAnswersTable(data.all_answers);
         renderFunnel(data.funnel);
+        renderAnswerTimeChart(data.answer_times);
     }
 
     function renderCompletedChart(labels, values) {
@@ -704,6 +789,162 @@
                 '<span class="funnel-count">' + item.count + '</span>' +
                 '</li>';
         }).join('');
+    }
+
+    // ============================================
+    // БЛОК «Время ответа на вопрос» — гистограмма
+    // ============================================
+
+    function formatDuration(seconds) {
+        if (seconds < 60) return seconds + ' сек';
+        var m = Math.floor(seconds / 60);
+        var s = Math.round(seconds % 60);
+        return m + ' мин ' + (s > 0 ? s + ' сек' : '');
+    }
+
+    function renderAnswerTimeChart(answerTimes) {
+        if (!answerTimes) answerTimes = [];
+        answerTimesDataGlobal = answerTimes.slice();
+
+        var container = document.getElementById('answerTimeChart');
+        var emptyMsg = document.getElementById('answerTimeEmpty');
+        var statsRow = document.getElementById('timeStatsRow');
+
+        if (answerTimes.length === 0) {
+            container.style.display = 'none';
+            emptyMsg.style.display = 'block';
+            statsRow.innerHTML = '';
+            if (answerTimeChartInstance) {
+                answerTimeChartInstance.destroy();
+                answerTimeChartInstance = null;
+            }
+            return;
+        }
+
+        // Показываем канвас, скрываем заглушку
+        container.style.display = 'block';
+        emptyMsg.style.display = 'none';
+
+        // Сортировка
+        var sorted = answerTimes.slice().sort(function(a, b) {
+            return answerTimeSortDesc
+                ? b.avg_seconds - a.avg_seconds
+                : a.avg_seconds - b.avg_seconds;
+        });
+
+        var labels = sorted.map(function(item) {
+            return item.label.length > 30 ? item.label.substring(0, 27) + '…' : item.label;
+        });
+        var values = sorted.map(function(item) { return item.avg_seconds; });
+
+        // Градиент цветов: от зелёного (быстрые) до красного (медленные)
+        var maxVal = Math.max.apply(null, values);
+        var colors = values.map(function(v) {
+            var ratio = maxVal > 0 ? v / maxVal : 0;
+            if (ratio < 0.33) return 'rgba(0, 255, 128, 0.8)';
+            if (ratio < 0.66) return 'rgba(255, 193, 7, 0.8)';
+            return 'rgba(255, 107, 107, 0.8)';
+        });
+
+        var ctx = container.getContext('2d');
+        if (answerTimeChartInstance) answerTimeChartInstance.destroy();
+
+        answerTimeChartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Среднее время (сек)',
+                    data: values,
+                    backgroundColor: colors,
+                    borderRadius: 6,
+                    borderSkipped: false,
+                    barThickness: 36,
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        backgroundColor: '#1a1a1a',
+                        titleColor: '#fff',
+                        bodyColor: '#ccc',
+                        borderColor: '#333',
+                        borderWidth: 1,
+                        padding: 14,
+                        cornerRadius: 10,
+                        bodyFont: { size: 13 },
+                        titleFont: { size: 13, weight: 'bold' },
+                        callbacks: {
+                            title: function(ctx) {
+                                var idx = ctx[0].dataIndex;
+                                return sorted[idx].label;
+                            },
+                            label: function(ctx) {
+                                var idx = ctx.dataIndex;
+                                var item = sorted[idx];
+                                return [
+                                    '⏱ Среднее: ' + formatDuration(item.avg_seconds),
+                                    '⬇ Мин: ' + formatDuration(item.min_seconds),
+                                    '⬆ Макс: ' + formatDuration(item.max_seconds),
+                                    '📊 Ответов: ' + item.sample_count,
+                                ];
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        grid: { color: 'rgba(255,255,255,0.04)' },
+                        ticks: {
+                            color: '#666',
+                            font: { size: 11 },
+                            callback: function(v) { return v + ' сек'; }
+                        },
+                    },
+                    y: {
+                        grid: { display: false },
+                        ticks: {
+                            color: '#aaa',
+                            font: { size: 11 },
+                            padding: 8,
+                        },
+                    }
+                }
+            }
+        });
+
+        // Динамическая высота канваса (35px на бар, мин. 200px)
+        var chartHeight = Math.max(200, sorted.length * 38 + 60);
+        var chartWrapper = container.parentElement;
+        if (chartWrapper) chartWrapper.style.maxHeight = chartHeight + 'px';
+        container.style.height = chartHeight + 'px';
+
+        // Мини-статистика под графиком
+        if (sorted.length > 0) {
+            var slowest = sorted[answerTimeSortDesc ? 0 : sorted.length - 1];
+            var fastest = sorted[answerTimeSortDesc ? sorted.length - 1 : 0];
+            var totalAvg = Math.round(values.reduce(function(a,b){return a+b;}, 0) / values.length);
+            statsRow.innerHTML =
+                '<div class="time-stat-chip">🐢 Самый долгий: <strong>' + formatDuration(slowest.avg_seconds) + '</strong> — ' + escapeHtml(slowest.label.substring(0,30)) + '</div>' +
+                '<div class="time-stat-chip">⚡ Самый быстрый: <strong>' + formatDuration(fastest.avg_seconds) + '</strong> — ' + escapeHtml(fastest.label.substring(0,30)) + '</div>' +
+                '<div class="time-stat-chip">📊 Среднее по всем: <strong>' + formatDuration(totalAvg) + '</strong></div>';
+        } else {
+            statsRow.innerHTML = '';
+        }
+    }
+
+    function toggleTimeSort() {
+        answerTimeSortDesc = !answerTimeSortDesc;
+        var btn = document.getElementById('btnSortTime');
+        btn.innerHTML = answerTimeSortDesc
+            ? '<i class="fa-solid fa-arrow-down-wide-short"></i> По убыванию'
+            : '<i class="fa-solid fa-arrow-up-short-wide"></i> По возрастанию';
+        renderAnswerTimeChart(answerTimesDataGlobal);
     }
 
     document.addEventListener('DOMContentLoaded', function() {

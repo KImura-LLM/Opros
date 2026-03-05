@@ -8,7 +8,7 @@ API для прохождения опроса.
 from datetime import datetime, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -202,8 +202,8 @@ async def start_survey(
     )
     user_agent = request.headers.get("user-agent")
     
-    # Установка времени истечения сессии (2 часа с момента создания)
-    expires_at = datetime.now(timezone.utc) + timedelta(hours=2)
+    # Установка времени истечения сессии (12 часов с момента создания)
+    expires_at = datetime.now(timezone.utc) + timedelta(hours=12)
     
     session = SurveySession(
         lead_id=token_data.lead_id,
@@ -329,11 +329,14 @@ async def submit_answer(
     if existing:
         existing.answer_data = data.answer_data
         existing.updated_at = datetime.now(timezone.utc)
+        if data.duration_seconds is not None:
+            existing.duration_seconds = data.duration_seconds
     else:
         answer = SurveyAnswer(
             session_id=session.id,
             node_id=data.node_id,
             answer_data=data.answer_data,
+            duration_seconds=data.duration_seconds,
         )
         db.add(answer)
     
@@ -351,32 +354,17 @@ async def submit_answer(
     
     await redis.save_survey_progress(str(session.id), progress)
     
-    # Расчёт прогресса в процентах
-    # Используем эвристику, так как точную длину пути в ветвящемся опросе предсказать сложно
-    is_finished = False
-    if next_node:
-        next_node_obj = engine.get_node(next_node)
-        if next_node_obj and next_node_obj.get("is_final"):
-            is_finished = True
-    elif next_node is None:
-        is_finished = True
+    # Динамический расчёт прогресса с учётом реального пути ветвления.
+    # Формула: answered / (answered + remaining_default_path_length)
+    # При каждом ответе remaining пересчитывается от нового next_node,
+    # поэтому прогресс точно отражает открытие/закрытие веток.
+    answered_node_ids = list(progress["answers"].keys())
+    progress_percent = engine.calculate_dynamic_progress(next_node, answered_node_ids)
 
-    if is_finished:
-        progress_percent = 100.0
-    else:
-        # Оценка средней длины пути зависит от версии опросника
-        # v1 ≈ 5–7 узлов, v2 ≈ 12–18 узлов (с ветвлениями)
-        total_nodes = len(config.json_config.get("nodes", []))
-        # Исключаем info_screen из подсчёта, средний путь ~60% от общего числа узлов
-        countable = [n for n in config.json_config.get("nodes", []) if n.get("type") != "info_screen"]
-        ESTIMATED_PATH_LENGTH = max(5, int(len(countable) * 0.6))
-        completed = len(progress["answers"])
-        progress_percent = min(95.0, (completed / ESTIMATED_PATH_LENGTH) * 100)
-    
     return SurveyAnswerResponse(
         success=True,
         next_node=next_node,
-        progress=round(progress_percent, 1),
+        progress=progress_percent,
     )
 
 
@@ -426,14 +414,20 @@ async def get_progress(
             "history": [start_node],
         }
     
-    # Расчёт процента
+    # Расчёт процента через динамический алгоритм SurveyEngine
     stmt = select(SurveyConfig).where(SurveyConfig.id == session.survey_config_id)
     result = await db.execute(stmt)
     config = result.scalar_one_or_none()
-    
-    total_nodes = len(config.json_config.get("nodes", [])) if config else 1
-    completed = len(progress.get("answers", {}))
-    progress_percent = min(100, (completed / max(total_nodes, 1)) * 100)
+
+    engine = SurveyEngine(config.json_config) if config else None
+    current_node_id = progress.get("current_node", "welcome")
+    answered_node_ids = list(progress.get("answers", {}).keys())
+
+    if engine:
+        progress_percent = engine.calculate_dynamic_progress(current_node_id, answered_node_ids)
+    else:
+        total_nodes = 1
+        progress_percent = min(100.0, (len(answered_node_ids) / total_nodes) * 100)
     
     return SurveyProgressResponse(
         session_id=session_id,
@@ -444,23 +438,162 @@ async def get_progress(
     )
 
 
+# ==========================================
+# Фоновая задача: генерация отчёта и отправка в Битрикс24
+# Выполняется ПОСЛЕ того, как ответ уже отдан клиенту,
+# чтобы пользователь не ждал 5-10 секунд.
+# ==========================================
+
+async def _process_survey_report(
+    session_id: int,
+    lead_id: int,
+    entity_type: str | None,
+    patient_name: str | None,
+    survey_config_id: int,
+    token_hash: str,
+) -> None:
+    """
+    Фоновая обработка: генерация PDF, отправка в Битрикс24,
+    инвалидация токена, очистка Redis-прогресса.
+    """
+    from app.core.database import async_session_maker
+    from app.core.redis import RedisClient as _RedisClient
+
+    async with async_session_maker() as db:
+        redis = _RedisClient()
+        await redis.connect()
+        try:
+            # Получение ответов
+            stmt = select(SurveyAnswer).where(SurveyAnswer.session_id == session_id)
+            result = await db.execute(stmt)
+            answers = result.scalars().all()
+
+            # Получение конфига
+            stmt = select(SurveyConfig).where(SurveyConfig.id == survey_config_id)
+            result = await db.execute(stmt)
+            config = result.scalar_one_or_none()
+
+            # Генерация отчёта
+            report_gen = ReportGenerator(config.json_config if config else {})
+            answers_dict = {a.node_id: a.answer_data for a in answers}
+
+            bitrix_client = Bitrix24Client()
+            report_sent = False
+            pdf_sent = False
+
+            # Генерация и отправка PDF-отчёта в карточку Битрикс24
+            try:
+                from weasyprint import HTML as WeasyHTML
+                from io import BytesIO
+
+                readable_html = report_gen.generate_readable_html_report(
+                    patient_name=patient_name,
+                    answers=answers_dict,
+                )
+
+                pdf_buffer = BytesIO()
+                WeasyHTML(string=readable_html).write_pdf(pdf_buffer)
+                pdf_bytes = pdf_buffer.getvalue()
+
+                patient_safe = patient_name or "patient"
+                patient_safe = "".join(
+                    c for c in patient_safe if c.isalnum() or c in (' ', '_')
+                ).strip().replace(" ", "_")
+                date_str = datetime.now(timezone.utc).strftime("%d_%m_%Y")
+                pdf_filename = f"Anketa_{patient_safe}_{date_str}.pdf"
+
+                pdf_sent = await bitrix_client.upload_pdf_to_entity(
+                    entity_id=lead_id,
+                    entity_type=entity_type,
+                    pdf_bytes=pdf_bytes,
+                    filename=pdf_filename,
+                )
+
+                if pdf_sent:
+                    logger.info(f"[BG] PDF-отчёт отправлен в Битрикс24: lead_id={lead_id}")
+                    report_sent = True
+                else:
+                    logger.warning(f"[BG] Не удалось отправить PDF в Битрикс24: lead_id={lead_id}")
+
+            except ImportError:
+                logger.warning("[BG] WeasyPrint не установлен, PDF-отчёт не будет отправлен")
+            except Exception as e:
+                logger.error(f"[BG] Ошибка генерации/отправки PDF: {e}")
+
+            # Fallback: текстовый комментарий если PDF не отправлен
+            if not pdf_sent:
+                report_text = report_gen.generate_text_report(
+                    patient_name=patient_name,
+                    answers=answers_dict,
+                )
+                report_sent = await bitrix_client.send_comment(
+                    entity_id=lead_id,
+                    entity_type=entity_type,
+                    comment=report_text,
+                )
+
+            # Обновление пользовательского поля «Опрос пройден» в CRM
+            try:
+                field_updated = await bitrix_client.update_entity_field(
+                    entity_id=lead_id,
+                    entity_type=entity_type,
+                    fields={"UF_CRM_1771857760": "да"},
+                )
+                if field_updated:
+                    logger.info(
+                        f"[BG] Поле UF_CRM_1771857760 обновлено ('да'): "
+                        f"lead_id={lead_id}, entity_type={entity_type}"
+                    )
+            except Exception as e:
+                logger.error(f"[BG] Ошибка обновления поля CRM: {e}")
+
+            # Аудит-лог результата фоновой обработки
+            audit_log = AuditLog(
+                session_id=session_id,
+                action="report_processed",
+                details={
+                    "answers_count": len(answers),
+                    "report_sent": report_sent,
+                    "pdf_sent": pdf_sent,
+                },
+            )
+            db.add(audit_log)
+
+            # Инвалидация токена
+            await redis.invalidate_token(token_hash)
+
+            # Удаление прогресса из Redis
+            await redis.delete_survey_progress(str(session_id))
+
+            await db.commit()
+
+            logger.info(f"[BG] Фоновая обработка завершена: session_id={session_id}")
+
+        except Exception as e:
+            logger.error(f"[BG] Критическая ошибка фоновой обработки session_id={session_id}: {e}")
+        finally:
+            await redis.disconnect()
+
+
 @router.post("/complete", response_model=SurveyCompleteResponse)
 async def complete_survey(
     data: SurveyCompleteRequest,
     request: Request,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     redis: RedisClient = Depends(get_redis),
 ):
     """
-    Завершение опроса.
+    Завершение опроса — мгновенный ответ клиенту.
     
-    Генерирует отчёт и отправляет в Битрикс24.
+    Тяжёлые операции (PDF, Битрикс24) выполняются в фоне через BackgroundTasks,
+    чтобы пользователь не ждал 5-10 секунд.
     
     Args:
         data: ID сессии
         
     Returns:
-        Статус завершения и отправки отчёта
+        Мгновенный статус завершения
     """
     # Получение сессии
     stmt = select(SurveySession).where(SurveySession.id == data.session_id)
@@ -483,129 +616,36 @@ async def complete_survey(
             report_sent=True,
         )
     
-    # Получение ответов
-    stmt = select(SurveyAnswer).where(SurveyAnswer.session_id == session.id)
-    result = await db.execute(stmt)
-    answers = result.scalars().all()
-    
-    # Получение конфига
-    stmt = select(SurveyConfig).where(SurveyConfig.id == session.survey_config_id)
-    result = await db.execute(stmt)
-    config = result.scalar_one_or_none()
-    
-    # Генерация отчёта
-    report_gen = ReportGenerator(config.json_config if config else {})
-    answers_dict = {a.node_id: a.answer_data for a in answers}
-    
-    bitrix_client = Bitrix24Client()
-    report_sent = False
-    
-    # Генерация и отправка PDF-отчёта в карточку Битрикс24
-    pdf_sent = False
-    try:
-        from weasyprint import HTML as WeasyHTML
-        from io import BytesIO
-        
-        # Генерируем читаемый HTML для PDF
-        readable_html = report_gen.generate_readable_html_report(
-            patient_name=session.patient_name,
-            answers=answers_dict,
-        )
-        
-        # Конвертируем в PDF
-        pdf_buffer = BytesIO()
-        WeasyHTML(string=readable_html).write_pdf(pdf_buffer)
-        pdf_bytes = pdf_buffer.getvalue()
-        
-        # Формируем имя файла
-        patient_safe = session.patient_name or "patient"
-        patient_safe = "".join(c for c in patient_safe if c.isalnum() or c in (' ', '_')).strip()
-        patient_safe = patient_safe.replace(" ", "_")
-        date_str = datetime.now(timezone.utc).strftime("%d_%m_%Y")
-        pdf_filename = f"Anketa_{patient_safe}_{date_str}.pdf"
-        
-        # Отправляем PDF в Битрикс24
-        pdf_sent = await bitrix_client.upload_pdf_to_entity(
-            entity_id=session.lead_id,
-            entity_type=session.entity_type,
-            pdf_bytes=pdf_bytes,
-            filename=pdf_filename,
-        )
-        
-        if pdf_sent:
-            logger.info(f"PDF-отчёт отправлен в Битрикс24: lead_id={session.lead_id}")
-            report_sent = True
-        else:
-            logger.warning(f"Не удалось отправить PDF в Битрикс24: lead_id={session.lead_id}")
-            
-    except ImportError:
-        logger.warning("WeasyPrint не установлен, PDF-отчёт не будет отправлен")
-    except Exception as e:
-        logger.error(f"Ошибка генерации/отправки PDF в Битрикс24: {e}")
-    
-    # Если PDF не удалось отправить — отправляем текстовый комментарий как fallback
-    if not pdf_sent:
-        report_text = report_gen.generate_text_report(
-            patient_name=session.patient_name,
-            answers=answers_dict,
-        )
-        report_sent = await bitrix_client.send_comment(
-            entity_id=session.lead_id,
-            entity_type=session.entity_type,
-            comment=report_text,
-        )
-    
-    # Обновление пользовательского поля «Опрос пройден» = «да» в CRM
-    try:
-        field_updated = await bitrix_client.update_entity_field(
-            entity_id=session.lead_id,
-            entity_type=session.entity_type,
-            fields={"UF_CRM_1771857760": "да"},
-        )
-        if field_updated:
-            logger.info(
-                f"Поле UF_CRM_1771857760 обновлено ('да') в Битрикс24: "
-                f"lead_id={session.lead_id}, entity_type={session.entity_type}"
-            )
-        else:
-            logger.warning(
-                f"Не удалось обновить поле UF_CRM_1771857760 в Битрикс24: "
-                f"lead_id={session.lead_id}, entity_type={session.entity_type}"
-            )
-    except Exception as e:
-        logger.error(f"Ошибка обновления поля UF_CRM_1771857760 в Битрикс24: {e}")
-
-    # Обновление статуса сессии
+    # === БЫСТРАЯ ЧАСТЬ: только обновление статуса в БД ===
     session.status = "completed"
     session.completed_at = datetime.now(timezone.utc)
     
-    # Логирование
+    # Аудит-лог о завершении (фоновый лог добавится отдельно)
     audit_log = AuditLog(
         session_id=session.id,
         action="survey_completed",
-        details={
-            "answers_count": len(answers),
-            "report_sent": report_sent,
-            "pdf_sent": pdf_sent,
-        },
+        details={"background_processing": True},
     )
     db.add(audit_log)
-    
-    # Инвалидация токена
-    await redis.invalidate_token(session.token_hash)
-    
-    # Удаление прогресса из Redis
-    await redis.delete_survey_progress(str(session.id))
-    
     await db.commit()
     
-    logger.info(f"Опрос завершён: session_id={session.id}, lead_id={session.lead_id}")
+    logger.info(f"Опрос завершён (быстрый ответ): session_id={session.id}")
+    
+    # === ТЯЖЁЛАЯ ЧАСТЬ: отправляем в фон ===
+    background_tasks.add_task(
+        _process_survey_report,
+        session_id=session.id,
+        lead_id=session.lead_id,
+        entity_type=session.entity_type,
+        patient_name=session.patient_name,
+        survey_config_id=session.survey_config_id,
+        token_hash=session.token_hash,
+    )
     
     return SurveyCompleteResponse(
         success=True,
         message="Спасибо! Анкета заполнена. Данные переданы врачу.",
-        report_sent=report_sent,
-        pdf_sent=pdf_sent,
+        report_sent=True,
     )
 
 

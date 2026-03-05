@@ -90,7 +90,8 @@ export async function startSurvey(
 export async function submitAnswer(
   sessionId: string,
   nodeId: string,
-  answerData: AnswerData
+  answerData: AnswerData,
+  durationSeconds?: number
 ): Promise<SurveyAnswerResponse> {
   return apiFetch<SurveyAnswerResponse>('/survey/answer', {
     method: 'POST',
@@ -98,6 +99,7 @@ export async function submitAnswer(
       session_id: sessionId,
       node_id: nodeId,
       answer_data: answerData,
+      ...(durationSeconds !== undefined && { duration_seconds: durationSeconds }),
     }),
   })
 }

@@ -15,7 +15,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <AnimatePresence mode="wait">
+      <AnimatePresence mode="popLayout">
         <Routes location={location} key={location.pathname}>
           <Route path="/" element={<HomePage />} />
           <Route path="/s/:code" element={<HomePage />} />

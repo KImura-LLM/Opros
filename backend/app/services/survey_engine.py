@@ -218,7 +218,7 @@ class SurveyEngine:
     
     def calculate_progress(self, answered_nodes: List[str]) -> float:
         """
-        Расчёт прогресса прохождения.
+        Расчёт прогресса прохождения (устаревший метод, использует общее кол-во узлов).
         
         Args:
             answered_nodes: Список отвеченных узлов
@@ -242,6 +242,108 @@ class SurveyEngine:
         
         answered = len([n for n in answered_nodes if n in self.nodes])
         return min(100.0, (answered / total_countable) * 100)
+
+    def calculate_dynamic_progress(
+        self,
+        next_node_id: Optional[str],
+        answered_nodes: List[str],
+    ) -> float:
+        """
+        Динамический расчёт прогресса с учётом реального пути ветвления.
+
+        Формула: answered / (answered + remaining_path_length)
+
+        Метод точно отражает прогресс: если после ответа открылась
+        длинная ветка — процент замедляется, если короткая — ускоряется.
+
+        Args:
+            next_node_id: ID следующего узла (куда перейдёт пользователь)
+            answered_nodes: Список ID уже отвеченных узлов
+
+        Returns:
+            Процент прохождения (0-100)
+        """
+        # Все вопросы пройдены или следующего нет — 100%
+        if next_node_id is None:
+            return 100.0
+
+        next_node = self.get_node(next_node_id)
+        if not next_node:
+            return 100.0
+
+        # Финальный узел уже виден — считаем 100%
+        if next_node.get("is_final"):
+            return 100.0
+
+        # Количество реально отвеченных вопросов (не info_screen)
+        answered_count = len([
+            n for n in answered_nodes
+            if n in self.nodes and self.nodes[n].get("type") != "info_screen"
+        ])
+
+        # Оставшийся путь от следующего узла до финала (по default переходам)
+        remaining = self._estimate_remaining_path(next_node_id)
+
+        total = answered_count + remaining
+        if total == 0:
+            return 100.0
+
+        progress = (answered_count / total) * 100
+        logger.debug(
+            f"Прогресс: отвечено={answered_count}, осталось≈{remaining}, "
+            f"следующий={next_node_id}, итого={progress:.1f}%"
+        )
+        return round(min(99.0, progress), 1)
+
+    def _estimate_remaining_path(
+        self,
+        node_id: Optional[str],
+        visited: Optional[set] = None,
+    ) -> int:
+        """
+        Оценка длины пути от узла до финала по default-переходам.
+
+        Использует DEFAULT правила логики, чтобы предсказать
+        наиболее вероятный оставшийся путь. Защита от циклов — через visited.
+
+        Args:
+            node_id: ID стартового узла
+            visited: Множество уже посещённых узлов (защита от циклов)
+
+        Returns:
+            Количество узлов-вопросов на оставшемся пути
+        """
+        if visited is None:
+            visited = set()
+
+        if node_id is None or node_id in visited:
+            return 0
+
+        visited.add(node_id)
+        node = self.get_node(node_id)
+
+        if not node:
+            return 0
+
+        # info_screen не считается как вопрос
+        current_count = 0 if node.get("type") == "info_screen" else 1
+
+        if node.get("is_final"):
+            return current_count
+
+        # Ищем default-переход в логике
+        next_node_id: Optional[str] = None
+        logic = node.get("logic", [])
+        for rule in logic:
+            if rule.get("default"):
+                next_node_id = rule.get("next_node")
+                break
+
+        # Fallback — следующий по порядку
+        if next_node_id is None:
+            next_node_id = self._get_default_next_node(node_id)
+
+        return current_count + self._estimate_remaining_path(next_node_id, visited)
     
     def get_branch_stack(self, answer: dict, all_answers: Dict[str, Any]) -> List[str]:
         """
