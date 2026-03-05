@@ -106,11 +106,19 @@ const SurveyPage: React.FC = () => {
     (n) => n.id === currentNodeId
   ) || null
 
-  // Загрузка сохранённого ответа при смене узла
+  // Сброс таймера при переходе на новый вопрос
+  // Важно: НЕ включать answers в deps — иначе таймер сбросится при setAnswer,
+  // что обнулит elapsed до того, как вопрос реально сменился
   useEffect(() => {
     if (isRestoring) return
-    // Сброс таймера времени ответа при переходе на новый вопрос
     questionStartTime.current = Date.now()
+  }, [currentNodeId, isRestoring])
+
+  // Загрузка сохранённого ответа при смене узла
+  // Намеренно не включаем answers в deps (только currentNodeId триггерит загрузку)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (isRestoring) return
     const savedAnswer = answers[currentNodeId]
     if (savedAnswer) {
       setCurrentAnswer(savedAnswer)
@@ -123,7 +131,7 @@ const SurveyPage: React.FC = () => {
         setCurrentAnswer({})
       }
     }
-  }, [currentNodeId, answers, isRestoring])
+  }, [currentNodeId, isRestoring])
 
   // Проверка, можно ли продолжить
   const canProceed = useCallback(() => {
