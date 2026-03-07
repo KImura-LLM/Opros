@@ -3,7 +3,7 @@
 // ============================================
 
 import { useState, useEffect } from 'react';
-import { X, AlertCircle } from 'lucide-react';
+import { X, AlertCircle, Trash2 } from 'lucide-react';
 import { useEditorStore } from '../store';
 import { FlowEdge, SurveyNodeData } from '../types';
 
@@ -13,7 +13,7 @@ interface EdgeEditorProps {
 }
 
 const EdgeEditor = ({ edge, onClose }: EdgeEditorProps) => {
-  const { nodes, updateEdge } = useEditorStore();
+  const { nodes, updateEdge, deleteEdge } = useEditorStore();
   const [condition, setCondition] = useState('');
   const [isDefault, setIsDefault] = useState(false);
   
@@ -40,6 +40,11 @@ const EdgeEditor = ({ edge, onClose }: EdgeEditorProps) => {
       condition: condition.trim() || undefined,
       isDefault,
     });
+    onClose();
+  };
+
+  const handleDelete = () => {
+    deleteEdge(edge.id);
     onClose();
   };
   
@@ -190,19 +195,28 @@ const EdgeEditor = ({ edge, onClose }: EdgeEditorProps) => {
         </div>
         
         {/* Футер с кнопками */}
-        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3">
+        <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex items-center justify-between">
           <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-200 rounded-lg transition-colors"
+            onClick={handleDelete}
+            className="flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 border border-red-200 rounded-lg transition-colors"
           >
-            Отмена
+            <Trash2 size={15} />
+            Удалить связь
           </button>
-          <button
-            onClick={handleSave}
-            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Сохранить
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-sm text-gray-700 hover:bg-gray-200 rounded-lg transition-colors"
+            >
+              Отмена
+            </button>
+            <button
+              onClick={handleSave}
+              className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Сохранить
+            </button>
+          </div>
         </div>
       </div>
     </div>

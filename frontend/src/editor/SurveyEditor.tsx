@@ -113,6 +113,13 @@ const SurveyEditorInner = ({ surveyId }: SurveyEditorProps) => {
         useEditorStore.getState().deleteNode(selectedNodeId);
       }
 
+      // Delete - Delete selected edge
+      if (e.key === 'Delete' && selectedEdge) {
+        e.preventDefault();
+        useEditorStore.getState().deleteEdge(selectedEdge.id);
+        setSelectedEdge(null);
+      }
+
       // Escape - Deselect
       if (e.key === 'Escape') {
         selectNode(null);
@@ -121,7 +128,7 @@ const SurveyEditorInner = ({ surveyId }: SurveyEditorProps) => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedNodeId, selectNode]);
+  }, [selectedNodeId, selectedEdge, selectNode, setSelectedEdge]);
 
   // Обработка изменения узлов
   const handleNodesChange = useCallback(
