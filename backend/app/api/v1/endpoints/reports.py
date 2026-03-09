@@ -3,14 +3,20 @@
 # ============================================
 """
 API для экспорта и просмотра отчётов.
+
+Логика работы с «запечатанными» отчётами:
+- После завершения опроса отчёт фиксируется (snapshot) и больше не изменяется
+  при редактировании структуры опросника.
+- preview / export используют сохранённый снимок (если он есть).
+- POST /{session_id}/regenerate — принудительная перегенерация администратором.
 """
 
+from datetime import datetime, timezone
 from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from loguru import logger
-from weasyprint import HTML
 
 from app.core.database import get_db
 from app.models import SurveySession, SurveyAnswer, SurveyConfig
@@ -21,61 +27,81 @@ from app.api.v1.endpoints.survey_editor import verify_admin_session
 router = APIRouter(prefix="/reports", tags=["reports"])
 
 
-async def get_session_with_answers(
-    session_id: UUID,
-    db: AsyncSession
-) -> tuple[SurveySession, dict, ReportGenerator]:
-    """
-    Получить сессию опроса с ответами и инициализировать генератор отчётов.
-    
-    Args:
-        session_id: ID сессии
-        db: Сессия БД
-        
-    Returns:
-        Кортеж (SurveySession, answers_dict, ReportGenerator)
-        
-    Raises:
-        HTTPException: Если сессия не найдена или не завершена
-    """
-    # Получаем сессию
+# ──────────────────────────────────────────────────────────────
+# Внутренние помощники
+# ──────────────────────────────────────────────────────────────
+
+async def _get_completed_session(session_id: UUID, db: AsyncSession) -> SurveySession:
+    """Получить завершённую сессию или выбросить HTTPException."""
     result = await db.execute(
         select(SurveySession).where(SurveySession.id == session_id)
     )
     session = result.scalar_one_or_none()
-    
+
     if not session:
         raise HTTPException(status_code=404, detail="Сессия не найдена")
-    
+
     if session.status != "completed":
         raise HTTPException(
             status_code=400,
-            detail="Отчёт доступен только для завершённых сессий"
+            detail="Отчёт доступен только для завершённых сессий",
         )
-    
-    # Получаем ответы
+
+    return session
+
+
+async def _get_report_content(session_id: UUID, db: AsyncSession) -> tuple[SurveySession, str, str]:
+    """
+    Возвращает (session, html_content, txt_content).
+
+    Если у сессии сохранён снимок (report_snapshot), использует его —
+    изменения в конфигурации опросника НЕ отражаются в старых отчётах.
+    Для сессий без снимка (старые записи) выполняет динамическую генерацию.
+    """
+    session = await _get_completed_session(session_id, db)
+
+    # ── Путь 1: используем сохранённый снимок ──
+    if session.report_snapshot:
+        html = session.report_snapshot.get("html", "")
+        txt = session.report_snapshot.get("txt", "")
+        return session, html, txt
+
+    # ── Путь 2: динамическая генерация (старые сессии без снимка) ──
     result = await db.execute(
         select(SurveyAnswer).where(SurveyAnswer.session_id == session_id)
     )
-    answers_list = result.scalars().all()
-    
-    # Преобразуем в словарь {node_id: answer_data}
-    answers_dict = {answer.node_id: answer.answer_data for answer in answers_list}
-    
-    # Получаем конфигурацию опросника
+    answers_dict = {a.node_id: a.answer_data for a in result.scalars().all()}
+
     result = await db.execute(
         select(SurveyConfig).where(SurveyConfig.id == session.survey_config_id)
     )
     config = result.scalar_one_or_none()
-    
+
     if not config:
         raise HTTPException(status_code=404, detail="Конфигурация опросника не найдена")
-    
-    # Инициализируем генератор отчётов
-    report_generator = ReportGenerator(config.json_config)
-    
-    return session, answers_dict, report_generator
 
+    report_gen = ReportGenerator(config.json_config)
+    html = report_gen.generate_readable_html_report(
+        patient_name=session.patient_name,
+        answers=answers_dict,
+    )
+    txt = report_gen.generate_text_report(
+        patient_name=session.patient_name,
+        answers=answers_dict,
+    )
+    return session, html, txt
+
+
+def _safe_filename(patient_name: str | None, session_id: UUID, ext: str) -> str:
+    """Формирует безопасное имя файла для скачивания."""
+    name = patient_name or "patient"
+    safe = "".join(c for c in name if c.isalnum() or c in (" ", "_")).strip().replace(" ", "_")
+    return f"report_{safe}_{session_id}.{ext}"
+
+
+# ──────────────────────────────────────────────────────────────
+# Эндпоинты
+# ──────────────────────────────────────────────────────────────
 
 @router.get("/{session_id}/preview")
 async def preview_report(
@@ -85,35 +111,19 @@ async def preview_report(
 ):
     """
     Предпросмотр отчёта в HTML формате.
-    
-    Args:
-        session_id: ID сессии опроса
-        
-    Returns:
-        HTML-документ для отображения в браузере
+    Возвращает сохранённый снимок (если есть) или динамически сгенерированный отчёт.
     """
     try:
-        session, answers_dict, report_generator = await get_session_with_answers(
-            session_id, db
+        session, html_content, _ = await _get_report_content(session_id, db)
+        logger.info(
+            f"Предпросмотр отчёта: session_id={session_id}, "
+            f"snapshot={'да' if session.report_snapshot else 'нет'}"
         )
-        
-        # Генерируем читаемый HTML отчёт
-        html_content = report_generator.generate_readable_html_report(
-            patient_name=session.patient_name,
-            answers=answers_dict
-        )
-        
-        logger.info(f"Сгенерирован предпросмотр отчёта для сессии {session_id}")
-        
-        return Response(
-            content=html_content,
-            media_type="text/html; charset=utf-8"
-        )
-        
+        return Response(content=html_content, media_type="text/html; charset=utf-8")
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Ошибка при генерации предпросмотра отчёта: {e}")
+        logger.error(f"Ошибка предпросмотра отчёта: {e}")
         raise HTTPException(status_code=500, detail="Ошибка генерации отчёта")
 
 
@@ -123,51 +133,23 @@ async def export_html(
     db: AsyncSession = Depends(get_db),
     _admin: bool = Depends(verify_admin_session),
 ):
-    """
-    Экспорт отчёта в HTML файл.
-    
-    Args:
-        session_id: ID сессии опроса
-        
-    Returns:
-        HTML-файл для скачивания
-    """
+    """Экспорт отчёта в HTML файл (использует снимок если доступен)."""
     try:
-        session, answers_dict, report_generator = await get_session_with_answers(
-            session_id, db
-        )
-        
-        # Генерируем читаемый HTML отчёт
-        html_content = report_generator.generate_readable_html_report(
-            patient_name=session.patient_name,
-            answers=answers_dict
-        )
-        
-        # Формируем имя файла
-        patient_name = session.patient_name or "patient"
-        # Очищаем имя от спецсимволов
-        safe_name = "".join(c for c in patient_name if c.isalnum() or c in (' ', '_')).strip()
-        safe_name = safe_name.replace(" ", "_")
-        filename = f"report_{safe_name}_{session_id}.html"
-        
-        # Кодируем имя файла для HTTP-заголовка (поддержка кириллицы)
         from urllib.parse import quote
-        encoded_filename = quote(filename)
-        
-        logger.info(f"Экспорт отчёта в HTML для сессии {session_id}")
-        
+
+        session, html_content, _ = await _get_report_content(session_id, db)
+        filename = _safe_filename(session.patient_name, session_id, "html")
+        logger.info(f"Экспорт HTML: session_id={session_id}")
+
         return Response(
             content=html_content,
             media_type="text/html; charset=utf-8",
-            headers={
-                "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"
-            }
+            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
         )
-        
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Ошибка при экспорте HTML отчёта: {e}")
+        logger.error(f"Ошибка экспорта HTML отчёта: {e}")
         raise HTTPException(status_code=500, detail="Ошибка экспорта отчёта")
 
 
@@ -177,53 +159,23 @@ async def export_txt(
     db: AsyncSession = Depends(get_db),
     _admin: bool = Depends(verify_admin_session),
 ):
-    """
-    Экспорт отчёта в TXT файл.
-    
-    Args:
-        session_id: ID сессии опроса
-        
-    Returns:
-        Текстовый файл для скачивания
-    """
+    """Экспорт отчёта в TXT файл (использует снимок если доступен)."""
     try:
-        session, answers_dict, report_generator = await get_session_with_answers(
-            session_id, db
-        )
-        
-        # Генерируем текстовый отчёт
-        text_content = report_generator.generate_text_report(
-            patient_name=session.patient_name,
-            answers=answers_dict
-        )
-        
-        # Формируем имя файла
-        patient_name = session.patient_name or "patient"
-        safe_name = "".join(c for c in patient_name if c.isalnum() or c in (' ', '_')).strip()
-        safe_name = safe_name.replace(" ", "_")
-        filename = f"report_{safe_name}_{session_id}.txt"
-        
-        # Кодируем имя файла для HTTP-заголовка (поддержка кириллицы)
         from urllib.parse import quote
-        encoded_filename = quote(filename)
-        
-        logger.info(f"Экспорт отчёта в TXT для сессии {session_id}")
-        
-        # Кодируем в UTF-8 для корректной работы с кириллицей
-        content_bytes = text_content.encode('utf-8')
-        
+
+        session, _, txt_content = await _get_report_content(session_id, db)
+        filename = _safe_filename(session.patient_name, session_id, "txt")
+        logger.info(f"Экспорт TXT: session_id={session_id}")
+
         return Response(
-            content=content_bytes,
+            content=txt_content.encode("utf-8"),
             media_type="text/plain; charset=utf-8",
-            headers={
-                "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"
-            }
+            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
         )
-        
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Ошибка при экспорте TXT отчёта: {e}")
+        logger.error(f"Ошибка экспорта TXT отчёта: {e}")
         raise HTTPException(status_code=500, detail="Ошибка экспорта отчёта")
 
 
@@ -235,52 +187,96 @@ async def export_pdf(
 ):
     """
     Экспорт отчёта в PDF файл.
-    
-    Args:
-        session_id: ID сессии опроса
-        
-    Returns:
-        PDF-файл для скачивания
+    Конвертирует сохранённый HTML-снимок (или динамически сгенерированный HTML) в PDF.
     """
     try:
-        session, answers_dict, report_generator = await get_session_with_answers(
-            session_id, db
-        )
-        
-        # Генерируем читаемый HTML отчёт
-        html_content = report_generator.generate_readable_html_report(
-            patient_name=session.patient_name,
-            answers=answers_dict
-        )
-        
-        # Конвертируем HTML в PDF
-        from io import BytesIO
-        pdf_file = BytesIO()
-        HTML(string=html_content).write_pdf(pdf_file)
-        pdf_bytes = pdf_file.getvalue()
-        
-        # Формируем имя файла
-        patient_name = session.patient_name or "patient"
-        safe_name = "".join(c for c in patient_name if c.isalnum() or c in (' ', '_')).strip()
-        safe_name = safe_name.replace(" ", "_")
-        filename = f"report_{safe_name}_{session_id}.pdf"
-        
-        # Кодируем имя файла для HTTP-заголовка (поддержка кириллицы)
         from urllib.parse import quote
-        encoded_filename = quote(filename)
-        
-        logger.info(f"Экспорт отчёта в PDF для сессии {session_id}")
-        
+        from weasyprint import HTML
+        from io import BytesIO
+
+        session, html_content, _ = await _get_report_content(session_id, db)
+
+        pdf_buffer = BytesIO()
+        HTML(string=html_content).write_pdf(pdf_buffer)
+        pdf_bytes = pdf_buffer.getvalue()
+
+        filename = _safe_filename(session.patient_name, session_id, "pdf")
+        logger.info(f"Экспорт PDF: session_id={session_id}")
+
         return Response(
             content=pdf_bytes,
             media_type="application/pdf",
-            headers={
-                "Content-Disposition": f"attachment; filename*=UTF-8''{encoded_filename}"
-            }
+            headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
         )
-        
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Ошибка при экспорте PDF отчёта: {e}")
+        logger.error(f"Ошибка экспорта PDF отчёта: {e}")
         raise HTTPException(status_code=500, detail="Ошибка экспорта отчёта")
+
+
+@router.post("/{session_id}/regenerate")
+async def regenerate_report(
+    session_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    _admin: bool = Depends(verify_admin_session),
+):
+    """
+    Принудительная перегенерация отчёта с **текущей** версией опросника.
+
+    Вызывается только при явном нажатии кнопки «Обновить отчёт» администратором.
+    Пересчитывает HTML и TXT из актуальной конфигурации и сохраняет
+    новый снимок (флаг regenerated=True).
+    """
+    try:
+        session = await _get_completed_session(session_id, db)
+
+        result = await db.execute(
+            select(SurveyAnswer).where(SurveyAnswer.session_id == session_id)
+        )
+        answers_dict = {a.node_id: a.answer_data for a in result.scalars().all()}
+
+        result = await db.execute(
+            select(SurveyConfig).where(SurveyConfig.id == session.survey_config_id)
+        )
+        config = result.scalar_one_or_none()
+
+        if not config:
+            raise HTTPException(status_code=404, detail="Конфигурация опросника не найдена")
+
+        report_gen = ReportGenerator(config.json_config)
+        html = report_gen.generate_readable_html_report(
+            patient_name=session.patient_name,
+            answers=answers_dict,
+        )
+        txt = report_gen.generate_text_report(
+            patient_name=session.patient_name,
+            answers=answers_dict,
+        )
+
+        session.report_snapshot = {
+            "html": html,
+            "txt": txt,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "config_version": config.version,
+            "regenerated": True,
+        }
+        await db.commit()
+
+        logger.info(
+            f"Отчёт принудительно обновлён администратором: "
+            f"session_id={session_id}, config_version={config.version}"
+        )
+
+        return {
+            "success": True,
+            "message": "Отчёт успешно пересчитан по текущей версии опросника",
+            "config_version": config.version,
+            "generated_at": session.report_snapshot["generated_at"],
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка принудительной перегенерации отчёта: {e}")
+        raise HTTPException(status_code=500, detail="Ошибка пересчёта отчёта")

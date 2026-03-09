@@ -477,6 +477,33 @@ async def _process_survey_report(
             report_gen = ReportGenerator(config.json_config if config else {})
             answers_dict = {a.node_id: a.answer_data for a in answers}
 
+            # -------------------------------------------------------
+            # Генерируем HTML и TXT сразу — они понадобятся как для
+            # отправки в Битрикс24, так и для сохранения снимка отчёта.
+            # -------------------------------------------------------
+            readable_html = report_gen.generate_readable_html_report(
+                patient_name=patient_name,
+                answers=answers_dict,
+            )
+            report_text = report_gen.generate_text_report(
+                patient_name=patient_name,
+                answers=answers_dict,
+            )
+
+            # Сохраняем снимок («запечатываем» отчёт) в таблице сессии
+            stmt_sess = select(SurveySession).where(SurveySession.id == session_id)
+            result_sess = await db.execute(stmt_sess)
+            survey_session_obj = result_sess.scalar_one_or_none()
+            if survey_session_obj:
+                survey_session_obj.report_snapshot = {
+                    "html": readable_html,
+                    "txt": report_text,
+                    "generated_at": datetime.now(timezone.utc).isoformat(),
+                    "config_version": config.version if config else "unknown",
+                    "regenerated": False,
+                }
+                logger.info(f"[BG] Снимок отчёта сохранён: session_id={session_id}")
+
             bitrix_client = Bitrix24Client()
             report_sent = False
             pdf_sent = False
@@ -485,11 +512,6 @@ async def _process_survey_report(
             try:
                 from weasyprint import HTML as WeasyHTML
                 from io import BytesIO
-
-                readable_html = report_gen.generate_readable_html_report(
-                    patient_name=patient_name,
-                    answers=answers_dict,
-                )
 
                 pdf_buffer = BytesIO()
                 WeasyHTML(string=readable_html).write_pdf(pdf_buffer)
@@ -522,10 +544,6 @@ async def _process_survey_report(
 
             # Fallback: текстовый комментарий если PDF не отправлен
             if not pdf_sent:
-                report_text = report_gen.generate_text_report(
-                    patient_name=patient_name,
-                    answers=answers_dict,
-                )
                 report_sent = await bitrix_client.send_comment(
                     entity_id=lead_id,
                     entity_type=entity_type,

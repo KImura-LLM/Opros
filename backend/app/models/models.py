@@ -89,7 +89,15 @@ class SurveySession(Base):
     # IP адрес (для логирования, не связан с ПДн)
     ip_address = Column(String(45), nullable=True)
     user_agent = Column(Text, nullable=True)
-    
+
+    # Снимок отчёта на момент завершения опроса («запечатанный» отчёт)
+    # Структура: {"html": "...", "txt": "...", "generated_at": "ISO8601", "config_version": "1.0", "regenerated": bool}
+    report_snapshot = Column(
+        JSONB,
+        nullable=True,
+        comment="Снимок отчёта, сформированного в момент завершения опроса (неизменяем без явного обновления)",
+    )
+
     # Связи
     survey_config = relationship("SurveyConfig", back_populates="sessions")
     answers = relationship("SurveyAnswer", back_populates="session", cascade="all, delete-orphan")

@@ -214,89 +214,141 @@ class SurveySessionAdmin(ModelView, model=SurveySession):
     # Форматтер для кнопок экспорта
     @staticmethod
     def _report_actions_formatter(model, prop):
-        """Рендеринг кнопок экспорта отчёта."""
+        """Рендеринг кнопок экспорта отчёта и индикатора статуса снимка."""
         from markupsafe import Markup
-        
+
         # Показываем кнопки только для завершённых сессий
         if model.status != "completed":
             return Markup('<span style="color: #94a3b8; font-size: 12px;">Сессия не завершена</span>')
-        
-        # Используем BACKEND_URL из настроек или локальный адрес
+
         base_url = f"/api/v1/reports/{model.id}"
-        
+
+        # ── Индикатор состояния снимка отчёта ──
+        if model.report_snapshot:
+            generated_at = model.report_snapshot.get("generated_at", "")
+            config_ver = model.report_snapshot.get("config_version", "?")
+            is_regen = model.report_snapshot.get("regenerated", False)
+            if generated_at:
+                try:
+                    from datetime import datetime
+                    dt = datetime.fromisoformat(generated_at.replace("Z", "+00:00"))
+                    date_str = dt.strftime("%d.%m.%Y %H:%M")
+                except Exception:
+                    date_str = generated_at[:16]
+            else:
+                date_str = "—"
+
+            if is_regen:
+                badge = (
+                    f'<span style="display:inline-flex;align-items:center;gap:4px;'
+                    f'padding:3px 8px;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;'
+                    f'border-radius:10px;font-size:10px;font-weight:600;" '
+                    f'title="Отчёт обновлён администратором {date_str} (версия конфига {config_ver})">'
+                    f'🔄 Обновлён {date_str}</span>'
+                )
+            else:
+                badge = (
+                    f'<span style="display:inline-flex;align-items:center;gap:4px;'
+                    f'padding:3px 8px;background:#ecfdf5;color:#065f46;border:1px solid #6ee7b7;'
+                    f'border-radius:10px;font-size:10px;font-weight:600;" '
+                    f'title="Снимок отчёта сохранён {date_str} (версия конфига {config_ver})">'
+                    f'🔒 Снимок {date_str}</span>'
+                )
+        else:
+            badge = (
+                '<span style="display:inline-flex;align-items:center;gap:4px;'
+                'padding:3px 8px;background:#fef2f2;color:#991b1b;border:1px solid #fca5a5;'
+                'border-radius:10px;font-size:10px;font-weight:600;" '
+                'title="Снимок не сохранён — отчёт генерируется из текущей конфигурации">⚡ Нет снимка</span>'
+            )
+
+        # ── Кнопка «Обновить отчёт» (принудительная перегенерация) ──
+        sid = str(model.id)
+        # JS строится отдельно — без вложенных f-строк с экранированными фигурными скобками,
+        # чтобы избежать ошибок синтаксиса при конкатенации Python/JS
+        _js = (
+            "(function(btn){"
+            "if(!confirm('Пересчитать отчёт по текущей версии опросника?\\nСтарый снимок будет заменён.'))return;"
+            "btn.disabled=true;btn.textContent='⏳ Обновление...';"
+            f"fetch('/api/v1/reports/{sid}/regenerate',"
+            "{method:'POST',credentials:'include'})"
+            ".then(function(r){return r.json();})"
+            ".then(function(d){"
+            "if(d.success){"
+            "btn.textContent='✅ Обновлено!';"
+            "btn.style.background='linear-gradient(135deg,#059669 0%,#047857 100%)';"
+            "setTimeout(function(){location.reload();},1200);"
+            "}else{"
+            "alert('Ошибка: '+(d.detail||'неизвестная ошибка'));"
+            "btn.disabled=false;btn.textContent='🔄 Обновить отчёт';"
+            "}}).catch(function(){"
+            "alert('Ошибка запроса к серверу');"
+            "btn.disabled=false;btn.textContent='🔄 Обновить отчёт';"
+            "})})(this)"
+        )
+        refresh_btn = (
+            f'<button onclick="{_js}"'
+            ' style="display:inline-flex;align-items:center;gap:4px;'
+            'padding:5px 10px;'
+            'background:linear-gradient(135deg,#7c3aed 0%,#6d28d9 100%);'
+            'color:white;border:none;border-radius:4px;'
+            'font-size:11px;font-weight:500;cursor:pointer;'
+            'box-shadow:0 1px 3px rgba(124,58,237,0.3);transition:all 0.2s;"'
+            " onmouseover=\"this.style.transform='translateY(-1px)';this.style.boxShadow='0 3px 6px rgba(124,58,237,0.45)';\""
+            " onmouseout=\"this.style.transform='translateY(0)';this.style.boxShadow='0 1px 3px rgba(124,58,237,0.3)';\""
+            ' title="Пересчитать отчёт с текущей версией опросника (заменит сохранённый снимок)">'
+            '🔄 Обновить отчёт'
+            '</button>'
+        )
+
         return Markup(f'''
-            <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-                <a href="{base_url}/preview" 
-                   target="_blank"
-                   style="
-                       display: inline-flex;
-                       align-items: center;
-                       gap: 4px;
-                       padding: 5px 10px;
-                       background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-                       color: white;
-                       border-radius: 4px;
-                       font-size: 11px;
-                       font-weight: 500;
-                       text-decoration: none;
-                       transition: all 0.2s;
-                       box-shadow: 0 1px 3px rgba(59, 130, 246, 0.3);
-                   "
-                   onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 3px 6px rgba(59, 130, 246, 0.4)';"
-                   onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 1px 3px rgba(59, 130, 246, 0.3)';"
-                   title="Открыть предпросмотр отчёта"
-                >
-                    <i class="fa-solid fa-eye"></i>
-                    Просмотр
-                </a>
-                
-                <a href="{base_url}/export/pdf" 
-                   download
-                   style="
-                       display: inline-flex;
-                       align-items: center;
-                       gap: 4px;
-                       padding: 5px 10px;
-                       background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
-                       color: white;
-                       border-radius: 4px;
-                       font-size: 11px;
-                       font-weight: 500;
-                       text-decoration: none;
-                       transition: all 0.2s;
-                       box-shadow: 0 1px 3px rgba(220, 38, 38, 0.3);
-                   "
-                   onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 3px 6px rgba(220, 38, 38, 0.4)';"
-                   onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 1px 3px rgba(220, 38, 38, 0.3)';"
-                   title="Скачать отчёт в формате PDF"
-                >
-                    <i class="fa-solid fa-file-pdf"></i>
-                    PDF
-                </a>
-                
-                <a href="{base_url}/export/txt" 
-                   download
-                   style="
-                       display: inline-flex;
-                       align-items: center;
-                       gap: 4px;
-                       padding: 5px 10px;
-                       background: linear-gradient(135deg, #059669 0%, #047857 100%);
-                       color: white;
-                       border-radius: 4px;
-                       font-size: 11px;
-                       font-weight: 500;
-                       text-decoration: none;
-                       transition: all 0.2s;
-                       box-shadow: 0 1px 3px rgba(5, 150, 105, 0.3);
-                   "
-                   onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 3px 6px rgba(5, 150, 105, 0.4)';"
-                   onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 1px 3px rgba(5, 150, 105, 0.3)';"
-                   title="Скачать отчёт в текстовом формате"
-                >
-                    <i class="fa-solid fa-file-lines"></i>
-                    TXT
-                </a>
+            <div style="display: flex; flex-direction: column; gap: 6px; min-width: 220px;">
+                <div>{badge}</div>
+                <div style="display: flex; gap: 5px; flex-wrap: wrap;">
+                    <a href="{base_url}/preview"
+                       target="_blank"
+                       style="
+                           display: inline-flex; align-items: center; gap: 4px;
+                           padding: 5px 10px;
+                           background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+                           color: white; border-radius: 4px; font-size: 11px; font-weight: 500;
+                           text-decoration: none; transition: all 0.2s;
+                           box-shadow: 0 1px 3px rgba(59, 130, 246, 0.3);"
+                       onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 3px 6px rgba(59, 130, 246, 0.4)';"
+                       onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 1px 3px rgba(59, 130, 246, 0.3)';"
+                       title="Открыть предпросмотр отчёта">
+                        <i class="fa-solid fa-eye"></i> Просмотр
+                    </a>
+                    <a href="{base_url}/export/pdf"
+                       download
+                       style="
+                           display: inline-flex; align-items: center; gap: 4px;
+                           padding: 5px 10px;
+                           background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+                           color: white; border-radius: 4px; font-size: 11px; font-weight: 500;
+                           text-decoration: none; transition: all 0.2s;
+                           box-shadow: 0 1px 3px rgba(220, 38, 38, 0.3);"
+                       onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 3px 6px rgba(220, 38, 38, 0.4)';"
+                       onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 1px 3px rgba(220, 38, 38, 0.3)';"
+                       title="Скачать отчёт в формате PDF">
+                        <i class="fa-solid fa-file-pdf"></i> PDF
+                    </a>
+                    <a href="{base_url}/export/txt"
+                       download
+                       style="
+                           display: inline-flex; align-items: center; gap: 4px;
+                           padding: 5px 10px;
+                           background: linear-gradient(135deg, #059669 0%, #047857 100%);
+                           color: white; border-radius: 4px; font-size: 11px; font-weight: 500;
+                           text-decoration: none; transition: all 0.2s;
+                           box-shadow: 0 1px 3px rgba(5, 150, 105, 0.3);"
+                       onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 3px 6px rgba(5, 150, 105, 0.4)';"
+                       onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 1px 3px rgba(5, 150, 105, 0.3)';"
+                       title="Скачать отчёт в текстовом формате">
+                        <i class="fa-solid fa-file-lines"></i> TXT
+                    </a>
+                    {refresh_btn}
+                </div>
             </div>
         ''')
     
