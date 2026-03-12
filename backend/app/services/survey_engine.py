@@ -271,10 +271,6 @@ class SurveyEngine:
         if not next_node:
             return 100.0
 
-        # Финальный узел уже виден — считаем 100%
-        if next_node.get("is_final"):
-            return 100.0
-
         # Количество реально отвеченных вопросов (не info_screen)
         answered_count = len([
             n for n in answered_nodes

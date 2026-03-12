@@ -4,7 +4,6 @@
 
 import React from 'react'
 import { X } from 'lucide-react'
-import { motion } from 'framer-motion'
 import { Branding } from './Branding'
 
 // Header с логотипом и кнопкой закрытия
@@ -48,11 +47,15 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({ progress }) => {
     <div className="bg-white border-b border-slate-100">
       <div className="max-w-lg mx-auto px-4 py-2">
         <div className="progress-bar">
-          <motion.div
+          {/* CSS transition вместо Framer Motion initial={0}:
+              при монтировании браузер не анимирует начальное значение,
+              а только последующие изменения — нет «заполнения с нуля» при восстановлении */}
+          <div
             className="progress-bar-fill"
-            initial={{ width: 0 }}
-            animate={{ width: `${progress}%` }}
-            transition={{ duration: 0.5, ease: 'easeOut' }}
+            style={{
+              width: `${progress}%`,
+              transition: 'width 0.4s ease-out',
+            }}
           />
         </div>
         <p className="text-xs text-slate-400 mt-1 text-right">
@@ -72,6 +75,7 @@ interface FooterProps {
   nextDisabled?: boolean
   showBack?: boolean
   isLoading?: boolean
+  errorMessage?: string | null
 }
 
 export const Footer: React.FC<FooterProps> = ({
@@ -82,9 +86,15 @@ export const Footer: React.FC<FooterProps> = ({
   nextDisabled = false,
   showBack = true,
   isLoading = false,
+  errorMessage = null,
 }) => {
   return (
     <footer className="sticky bottom-0 bg-white/80 backdrop-blur-md border-t border-slate-100">
+      {errorMessage && (
+        <div className="max-w-lg mx-auto px-4 pt-3">
+          <p className="text-sm text-red-600 text-center">{errorMessage}</p>
+        </div>
+      )}
       <div className="max-w-lg mx-auto px-4 py-4 flex gap-3">
         {showBack && onBack && (
           <button

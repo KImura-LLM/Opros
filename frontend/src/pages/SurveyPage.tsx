@@ -40,10 +40,13 @@ const SurveyPage: React.FC = () => {
 
   const [currentAnswer, setCurrentAnswer] = useState<AnswerData>({})
   const [isLoading, setIsLoading] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
   // Флаг: идёт восстановление сессии после обновления страницы
   const [isRestoring, setIsRestoring] = useState(!config || !sessionId)
   // Защита от двойного вызова (React Strict Mode монтирует эффект дважды)
   const restoreAttempted = useRef(false)
+  // Защита от двойного нажатия кнопки «Далее»
+  const isSubmittingRef = useRef(false)
   // Трекинг времени: запоминаем момент показа вопроса
   const questionStartTime = useRef<number>(Date.now())
 
@@ -123,10 +126,12 @@ const SurveyPage: React.FC = () => {
     if (savedAnswer) {
       setCurrentAnswer(savedAnswer)
     } else {
-      // Инициализация дефолтных значений для body_map
-      // чтобы PainScale отображал значение, совпадающее с состоянием
+      // Инициализация дефолтных значений
       if (currentNode?.type === 'body_map') {
         setCurrentAnswer({ locations: [], intensity: 5 })
+      } else if (currentNode?.type === 'scale_1_10' || currentNode?.type === 'slider') {
+        // Слайдер/шкала: предустановляем минимальное значение, чтобы кнопка Далее была активна
+        setCurrentAnswer({ value: currentNode.min_value ?? 1 })
       } else {
         setCurrentAnswer({})
       }
@@ -145,10 +150,26 @@ const SurveyPage: React.FC = () => {
       return !!currentAnswer.selected
     }
     
-    // Multi choice
-    if (currentNode.type === 'multi_choice' || currentNode.type === 'multi_choice_with_input') {
+    // Multi choice (только выбор из вариантов)
+    if (currentNode.type === 'multi_choice') {
       const selected = currentAnswer.selected as string[] | undefined
       return Array.isArray(selected) && selected.length > 0
+    }
+
+    // Multi choice с доп. полями ввода: достаточно ЛИБО выбрать вариант,
+    // ЛИБО заполнить любое дополнительное текстовое/числовое поле
+    if (currentNode.type === 'multi_choice_with_input') {
+      const selected = currentAnswer.selected as string[] | undefined
+      const hasSelected = Array.isArray(selected) && selected.length > 0
+
+      const hasAdditionalInput = currentNode.additional_fields?.some((field) => {
+        const val = currentAnswer[field.id]
+        if (field.type === 'text') return typeof val === 'string' && val.trim().length > 0
+        if (field.type === 'number') return val !== undefined && val !== null
+        return false
+      }) ?? false
+
+      return hasSelected || hasAdditionalInput
     }
     
     // Body map
@@ -226,7 +247,10 @@ const SurveyPage: React.FC = () => {
   // Обработка нажатия "Далее"
   const handleNext = async () => {
     if (!currentNode || !sessionId) return
-    
+    // Защита от двойного нажатия (debounce через ref, не state)
+    if (isSubmittingRef.current) return
+    isSubmittingRef.current = true
+
     // Если это финальный узел — мгновенная навигация, сервер догонит в фоне
     if (currentNode.is_final) {
       // Сохраняем ответ локально
@@ -247,9 +271,11 @@ const SurveyPage: React.FC = () => {
 
       // Мгновенный переход на экран завершения
       navigate('/complete')
+      isSubmittingRef.current = false
       return
     }
 
+    setSubmitError(null)
     setIsLoading(true)
     
     try {
@@ -265,8 +291,14 @@ const SurveyPage: React.FC = () => {
         setProgress(response.progress)
         
         if (response.next_node) {
-          setCurrentNode(response.next_node, 'forward')
-          return
+          // Валидация: убеждаемся, что следующий узел существует в конфиге
+          const nextNodeExists = config?.nodes.some(n => n.id === response.next_node)
+          if (nextNodeExists) {
+            setCurrentNode(response.next_node, 'forward')
+            return
+          }
+          // Узел не найден в конфиге — fallback на локальный расчёт
+          console.warn(`Узел ${response.next_node} не найден в конфиге, используем локальный расчёт`)
         }
       }
       
@@ -277,9 +309,11 @@ const SurveyPage: React.FC = () => {
         setCurrentNode(nextNodeId, 'forward')
       }
     } catch (error) {
-      console.error('Error submitting answer:', error)
+      console.error('Ошибка при отправке ответа:', error)
+      setSubmitError('Не удалось отправить ответ. Попробуйте ещё раз.')
     } finally {
       setIsLoading(false)
+      isSubmittingRef.current = false
     }
   }
 
@@ -524,7 +558,9 @@ const SurveyPage: React.FC = () => {
   }
 
   if (!currentNode) {
-    // Если идёт восстановление сессии — показываем экран загрузки
+    // Загрузка / восстановление сессии — показываем спиннер
+    // Если isRestoring — ждём восстановления сессии
+    // Если НЕ isRestoring — узел не найден, показываем ошибку
     if (isRestoring) {
       return (
         <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -535,7 +571,21 @@ const SurveyPage: React.FC = () => {
         </div>
       )
     }
-    return null
+    // Узел не найден — ошибка конфигурации, предлагаем вернуться
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-center px-6">
+          <p className="text-lg font-semibold text-slate-800">Ошибка загрузки вопроса</p>
+          <p className="mt-2 text-slate-500">Не удалось найти следующий вопрос. Попробуйте вернуться на главную.</p>
+          <button
+            onClick={() => navigate('/')}
+            className="mt-6 btn-primary"
+          >
+            На главную
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -581,6 +631,7 @@ const SurveyPage: React.FC = () => {
         showBack={canGoBack()}
         isLoading={isLoading}
         nextLabel={currentNode.is_final ? 'Завершить' : 'Далее'}
+        errorMessage={submitError}
       />
     </div>
   )

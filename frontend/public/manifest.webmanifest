@@ -1,0 +1,10 @@
+{
+  "name": "Опросник пациента",
+  "short_name": "Опросник",
+  "description": "PWA приложение для предварительного опроса пациентов",
+  "theme_color": "#0d9488",
+  "background_color": "#f8fafc",
+  "display": "standalone",
+  "start_url": "/",
+  "icons": []
+}

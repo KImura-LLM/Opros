@@ -143,6 +143,9 @@ export const useSurveyStore = create<SurveyState>()((set, get) => ({
       config,
       currentNodeId: config.start_node,
       history: [config.start_node],
+      // Сбрасываем прогресс при загрузке новой конфигурации,
+      // чтобы не показывать устаревшее значение от предыдущей сессии
+      progress: 0,
     }),
 
   setCurrentNode: (nodeId: string, direction: AnimationDirection = 'forward') =>
