@@ -1,5 +1,5 @@
 ---
-description: 
+description: Правила и архитектурные принципы проекта Opros для AI-агента
 ---
 
 You are a Senior Fullstack Developer working on a compliant medical PWA (Progressive Web App).
@@ -74,3 +74,95 @@ Follow these patterns to ensure security, performance, and code consistency.
 - **API Router**: `backend/app/api/v1/router.py`
 - **Bitrix Service**: `backend/app/services/bitrix24.py`
 - **Documentation**: `INFO/` folder (Deploy, Logs, Server Info).
+
+---
+
+## 🛠 Доступные инструменты агента
+
+### 🌐 MCP Playwright (браузерное управление)
+Используй для проверки UI, E2E-тестирования и сбора ошибок из консоли браузера.
+
+| Инструмент | Назначение |
+|---|---|
+| `playwright-browser_navigate` | Перейти на URL |
+| `playwright-browser_snapshot` | Получить снимок доступности страницы (предпочтительнее скриншота для действий) |
+| `playwright-browser_take_screenshot` | Сделать скриншот страницы или элемента |
+| `playwright-browser_click` | Кликнуть по элементу |
+| `playwright-browser_type` | Ввести текст в поле |
+| `playwright-browser_fill_form` | Заполнить несколько полей формы сразу |
+| `playwright-browser_select_option` | Выбрать значение в выпадающем списке |
+| `playwright-browser_hover` | Навести курсор на элемент |
+| `playwright-browser_drag` | Перетащить элемент |
+| `playwright-browser_press_key` | Нажать клавишу |
+| `playwright-browser_evaluate` | Выполнить JavaScript на странице |
+| `playwright-browser_console_messages` | Получить сообщения из консоли браузера |
+| `playwright-browser_network_requests` | Получить список сетевых запросов |
+| `playwright-browser_handle_dialog` | Обработать диалоговое окно (alert/confirm/prompt) |
+| `playwright-browser_file_upload` | Загрузить файл |
+| `playwright-browser_wait_for` | Ждать появления/исчезновения текста или паузу |
+| `playwright-browser_resize` | Изменить размер окна браузера |
+| `playwright-browser_tabs` | Управление вкладками (список, создание, закрытие, переключение) |
+| `playwright-browser_navigate_back` | Вернуться на предыдущую страницу |
+| `playwright-browser_close` | Закрыть страницу |
+| `playwright-browser_install` | Установить браузер |
+
+### 🐙 GitHub MCP (управление репозиторием)
+Используй для работы с Issues, Pull Requests, Actions, кодом и релизами.
+
+| Инструмент | Назначение |
+|---|---|
+| `github-mcp-server-get_file_contents` | Получить содержимое файла или директории |
+| `github-mcp-server-search_code` | Поиск кода по всем репозиториям GitHub |
+| `github-mcp-server-get_commit` | Получить детали коммита |
+| `github-mcp-server-list_commits` | Список коммитов ветки |
+| `github-mcp-server-list_branches` | Список веток репозитория |
+| `github-mcp-server-list_tags` / `get_tag` | Работа с тегами |
+| `github-mcp-server-issue_read` | Чтение issue (детали, комментарии, метки, суб-задачи) |
+| `github-mcp-server-list_issues` / `search_issues` | Список и поиск issues |
+| `github-mcp-server-pull_request_read` | Чтение PR (детали, diff, файлы, ревью, статус) |
+| `github-mcp-server-list_pull_requests` / `search_pull_requests` | Список и поиск PR |
+| `github-mcp-server-actions_get` / `actions_list` | Работа с GitHub Actions (воркфлоу, запуски, артефакты) |
+| `github-mcp-server-get_job_logs` | Получить логи заданий CI/CD |
+| `github-mcp-server-list_releases` / `get_latest_release` / `get_release_by_tag` | Работа с релизами |
+| `github-mcp-server-list_code_scanning_alerts` / `get_code_scanning_alert` | Алерты сканирования кода |
+| `github-mcp-server-list_secret_scanning_alerts` / `get_secret_scanning_alert` | Алерты утечки секретов |
+| `github-mcp-server-search_repositories` / `search_users` | Поиск репозиториев и пользователей |
+| `github-mcp-server-get_label` / `list_issue_types` | Метки и типы задач |
+
+### 💻 Файловая система и код
+
+| Инструмент | Назначение |
+|---|---|
+| `bash` | Выполнение shell-команд (сборка, тесты, git, установка пакетов) |
+| `view` | Просмотр файла или директории с номерами строк |
+| `create` | Создание нового файла |
+| `edit` | Точечное редактирование строк файла |
+| `grep` | Поиск паттернов в содержимом файлов (ripgrep) |
+| `glob` | Поиск файлов по шаблону имени |
+| `web_fetch` | Загрузка веб-страницы (markdown или HTML) |
+| `store_memory` | Сохранение факта о кодовой базе для будущих сессий |
+
+### 🔒 Безопасность
+
+| Инструмент | Назначение |
+|---|---|
+| `gh-advisory-database` | Проверка зависимостей на CVE-уязвимости (npm, pip, go и др.) |
+| `codeql_checker` | Статический анализ кода на уязвимости (CodeQL) |
+| `code_review` | Автоматическое ревью изменений перед финализацией |
+
+### 🤖 Вспомогательные агенты (Sub-agents)
+
+Запускаются через инструмент `task`. Каждый агент работает независимо.
+
+| Агент | Назначение |
+|---|---|
+| `explore` | Быстрое исследование кодовой базы, ответы на вопросы о коде (модель Haiku) |
+| `task` | Выполнение команд (сборка, тесты, линтинг) с кратким выводом результата (модель Haiku) |
+| `general-purpose` | Сложные многошаговые задачи с полным набором инструментов (модель Sonnet) |
+
+### 📋 Управление задачей
+
+| Инструмент | Назначение |
+|---|---|
+| `report_progress` | Зафиксировать прогресс: коммит + пуш изменений в PR, обновление чеклиста |
+| `search_code_subagent` | Семантический поиск кода по естественному запросу |
