@@ -42,6 +42,15 @@ router = APIRouter()
 # Вспомогательная функция проверки владения сессией
 # ==========================================
 
+def _is_full_name_complete(name: str | None) -> bool:
+    """
+    Проверка, что ФИО содержит минимум 3 части: Фамилия Имя Отчество.
+    """
+    if not name:
+        return False
+    parts = [p for p in name.split() if p.strip()]
+    return len(parts) >= 3
+
 async def verify_session_owner(
     session: SurveySession,
     request: Request,
@@ -168,13 +177,31 @@ async def start_survey(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Опрос уже завершён",
             )
+
+        # Если в сессии сохранено неполное имя — пробуем дозагрузить полное ФИО из CRM
+        session_patient_name = existing_session.patient_name
+        if (
+            not _is_full_name_complete(session_patient_name)
+            and settings.BITRIX24_WEBHOOK_URL
+            and (existing_session.entity_type or "DEAL") == "DEAL"
+        ):
+            try:
+                bitrix_client = Bitrix24Client()
+                enriched_name = await bitrix_client.get_patient_name_from_deal(existing_session.lead_id)
+                if enriched_name and enriched_name != session_patient_name:
+                    existing_session.patient_name = enriched_name
+                    await db.commit()
+                    session_patient_name = enriched_name
+                    logger.info(f"ФИО в сессии обновлено из CRM: {mask_name(enriched_name)}")
+            except Exception as e:
+                logger.warning(f"Не удалось обновить ФИО из CRM для сессии {existing_session.id}: {e}")
         
         # Восстановление сессии
         progress = await redis.get_survey_progress(str(existing_session.id))
         
         return SurveyStartResponse(
             session_id=existing_session.id,
-            patient_name=existing_session.patient_name,
+            patient_name=session_patient_name,
             survey_config=config.json_config,
             message="Сессия восстановлена. Продолжайте с того места, где остановились.",
             expires_at=existing_session.expires_at,
@@ -183,14 +210,15 @@ async def start_survey(
     # Создание новой сессии
     # Если имя отсутствует в токене (компактный JWT) — загружаем из CRM
     patient_name = token_data.patient_name
-    if not patient_name and settings.BITRIX24_WEBHOOK_URL:
+    if not _is_full_name_complete(patient_name) and settings.BITRIX24_WEBHOOK_URL:
         try:
             bitrix_client = Bitrix24Client()
             entity_type = token_data.entity_type or "DEAL"
             if entity_type == "DEAL":
-                patient_name = await bitrix_client.get_patient_name_from_deal(token_data.lead_id)
-            if patient_name:
-                logger.info(f"Имя пациента загружено из CRM при старте опроса: {mask_name(patient_name)}")
+                enriched_name = await bitrix_client.get_patient_name_from_deal(token_data.lead_id)
+                if enriched_name:
+                    patient_name = enriched_name
+                    logger.info(f"Имя пациента загружено из CRM при старте опроса: {mask_name(patient_name)}")
         except Exception as e:
             logger.warning(f"Не удалось загрузить имя из CRM: {e}")
     

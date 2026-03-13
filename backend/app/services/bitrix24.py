@@ -291,7 +291,7 @@ class Bitrix24Client:
         Получение ФИО пациента (контакта) из сделки.
         
         1. Получаем сделку → берём CONTACT_ID
-        2. Получаем контакт → берём NAME + LAST_NAME
+        2. Получаем контакт → формируем ФИО в порядке: LAST_NAME NAME SECOND_NAME
         
         Args:
             deal_id: ID сделки
@@ -314,9 +314,16 @@ class Bitrix24Client:
             logger.warning(f"Не удалось получить контакт {contact_id}")
             return None
         
-        name = contact.get("NAME", "")
-        last_name = contact.get("LAST_NAME", "")
-        full_name = f"{name} {last_name}".strip()
+        # Приводим к медицинскому формату: Фамилия Имя Отчество
+        last_name = str(contact.get("LAST_NAME", "") or "").strip()
+        name = str(contact.get("NAME", "") or "").strip()
+        second_name = str(contact.get("SECOND_NAME", "") or "").strip()
+
+        full_name = " ".join(part for part in (last_name, name, second_name) if part)
+
+        # Fallback для нестандартно заполненных карточек контактов
+        if not full_name:
+            full_name = str(contact.get("FULL_NAME", "") or "").strip()
         
         if full_name:
             logger.info(f"Имя пациента из Битрикс24: {mask_name(full_name)} (сделка {deal_id})")

@@ -27,6 +27,33 @@ router = APIRouter()
 _SHORT_CODE_PATTERN = re.compile(r'^[a-zA-Z0-9]{12,24}$')
 
 
+def _is_full_name_complete(name: str | None) -> bool:
+    """
+    Проверка, что ФИО содержит минимум 3 части: Фамилия Имя Отчество.
+    """
+    if not name:
+        return False
+    parts = [p for p in name.split() if p.strip()]
+    return len(parts) >= 3
+
+
+def _extract_transition_links(request: Request, token: str) -> tuple[str, str]:
+    """
+    Возвращает ссылки для аудита перехода:
+    - entry_link: исходная ссылка страницы (из Referer), по которой перешёл пользователь
+    - api_link: полный URL запроса валидации (с token)
+    """
+    entry_link = (request.headers.get("referer") or "").strip()
+    api_link = str(request.url)
+
+    # Fallback: если Referer не передан браузером/мессенджером,
+    # формируем максимально информативную ссылку на фронтенд с query token.
+    if not entry_link:
+        entry_link = f"{settings.FRONTEND_URL}/?token={token}"
+
+    return entry_link, api_link
+
+
 @router.get("/validate", response_model=TokenValidationResponse)
 async def validate_token(
     token: str,
@@ -49,6 +76,8 @@ async def validate_token(
     Returns:
         TokenValidationResponse с данными сессии
     """
+    entry_link, api_link = _extract_transition_links(request, token)
+
     jwt_token = token  # По умолчанию считаем, что передан JWT
     
     # Определяем: это короткий код или JWT?
@@ -58,6 +87,10 @@ async def validate_token(
         jwt_token = await redis.get_jwt_by_short_code(token)
         if jwt_token is None:
             logger.warning(f"Короткий код не найден или истёк: {token[:8]}...")
+            logger.warning(
+                "Переход по ссылке: ОТКЛОНЁН (пользователь увидит экран 'Ссылка недействительна'). "
+                f"entry_link={entry_link} | api_link={api_link}"
+            )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Ссылка недействительна или срок её действия истёк",
@@ -69,6 +102,10 @@ async def validate_token(
     
     if token_data is None:
         logger.warning("Попытка валидации невалидного токена")
+        logger.warning(
+            "Переход по ссылке: ОТКЛОНЁН (пользователь увидит экран 'Ссылка недействительна'). "
+            f"entry_link={entry_link} | api_link={api_link}"
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Ссылка недействительна или срок её действия истёк",
@@ -78,6 +115,10 @@ async def validate_token(
     is_blacklisted = await redis.is_token_blacklisted(token_data.token_hash)
     if is_blacklisted:
         logger.warning(f"Токен в blacklist: lead_id={token_data.lead_id}")
+        logger.warning(
+            "Переход по ссылке: ОТКЛОНЁН (использованный токен; пользователь увидит экран 'Ссылка недействительна'). "
+            f"entry_link={entry_link} | api_link={api_link}"
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Эта ссылка уже была использована",
@@ -92,33 +133,60 @@ async def validate_token(
     
     if existing_session:
         if existing_session.status == "completed":
+            logger.warning(
+                "Переход по ссылке: ОТКЛОНЁН (опрос уже завершён). "
+                f"entry_link={entry_link} | api_link={api_link}"
+            )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Опрос уже был завершён",
             )
+
+        # Если в сессии сохранено неполное имя — пробуем дозагрузить полное ФИО из CRM
+        session_patient_name = existing_session.patient_name
+        if (
+            not _is_full_name_complete(session_patient_name)
+            and settings.BITRIX24_WEBHOOK_URL
+            and (existing_session.entity_type or "DEAL") == "DEAL"
+        ):
+            try:
+                bitrix_client = Bitrix24Client()
+                enriched_name = await bitrix_client.get_patient_name_from_deal(existing_session.lead_id)
+                if enriched_name and enriched_name != session_patient_name:
+                    existing_session.patient_name = enriched_name
+                    await db.commit()
+                    session_patient_name = enriched_name
+                    logger.info(f"ФИО в сессии обновлено из CRM: {mask_name(enriched_name)}")
+            except Exception as e:
+                logger.warning(f"Не удалось обновить ФИО из CRM для сессии {existing_session.id}: {e}")
         
         return TokenValidationResponse(
             valid=True,
             session_id=existing_session.id,
-            patient_name=existing_session.patient_name,
+            patient_name=session_patient_name,
             message="Сессия восстановлена",
             resolved_token=jwt_token if jwt_token != token else None,
         )
     
     # Если имя отсутствует в токене (компактный JWT) — загружаем из CRM
     patient_name = token_data.patient_name
-    if not patient_name and settings.BITRIX24_WEBHOOK_URL:
+    if not _is_full_name_complete(patient_name) and settings.BITRIX24_WEBHOOK_URL:
         try:
             bitrix_client = Bitrix24Client()
             entity_type = token_data.entity_type or "DEAL"
             if entity_type == "DEAL":
-                patient_name = await bitrix_client.get_patient_name_from_deal(token_data.lead_id)
-            if patient_name:
-                logger.info(f"Имя пациента загружено из CRM: {mask_name(patient_name)}")
+                enriched_name = await bitrix_client.get_patient_name_from_deal(token_data.lead_id)
+                if enriched_name:
+                    patient_name = enriched_name
+                    logger.info(f"Имя пациента загружено из CRM: {mask_name(patient_name)}")
         except Exception as e:
             logger.warning(f"Не удалось загрузить имя из CRM: {e}")
     
     logger.info(f"Токен валиден: lead_id={token_data.lead_id}, patient={mask_name(patient_name)}")
+    logger.info(
+        "Переход по ссылке: УСПЕШНО (пользователь открыл приветственный экран опроса). "
+        f"entry_link={entry_link} | api_link={api_link}"
+    )
     
     return TokenValidationResponse(
         valid=True,

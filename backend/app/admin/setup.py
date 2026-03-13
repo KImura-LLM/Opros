@@ -583,6 +583,7 @@ def setup_admin(app):
         request: Request,
         level: str = "",
         source: str = "",
+        event_type: str = "",
         lines: int = 100
     ):
         """API endpoint для получения логов из файла."""
@@ -638,12 +639,17 @@ def setup_admin(app):
                     # Фильтрация по источнику
                     if source and source not in log_data['source']:
                          continue
+
+                    # Фильтрация по типу событий
+                    message_text = log_data['message'].strip()
+                    if event_type == "link_transition" and "Переход по ссылке" not in message_text:
+                        continue
                          
                     logs.append({
                         "timestamp": log_data['timestamp'],
                         "level": log_data['level'].strip(),
                         "source": log_data['source'].strip(),
-                        "message": log_data['message'].strip()
+                        "message": message_text
                     })
             
             # Возвращаем последние N отфильтрованных логов

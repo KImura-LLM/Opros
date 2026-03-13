@@ -49,7 +49,14 @@
                             <option value="database">Database</option>
                         </select>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
+                        <label for="filterEventType" class="form-label">Событие</label>
+                        <select id="filterEventType" class="form-select form-select-sm" onchange="refreshLogs()">
+                            <option value="all" selected>Все события</option>
+                            <option value="link_transition">Переход по ссылке</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
                         <label for="filterLines" class="form-label">Количество строк</label>
                         <select id="filterLines" class="form-select form-select-sm" onchange="refreshLogs()">
                             <option value="50">50 последних</option>
@@ -59,7 +66,7 @@
                             <option value="1000">1000 последних</option>
                         </select>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label for="filterSearch" class="form-label">Поиск</label>
                         <input type="text" id="filterSearch" class="form-control form-control-sm" 
                                placeholder="Введите текст для поиска..." onkeyup="filterLogDisplay()">
@@ -144,6 +151,7 @@ let rawLogs = [];
 async function refreshLogs() {
     const level = document.getElementById('filterLevel').value;
     const source = document.getElementById('filterSource').value;
+    const eventType = document.getElementById('filterEventType').value;
     const lines = document.getElementById('filterLines').value;
     
     const loadingIndicator = document.getElementById('loadingIndicator');
@@ -156,6 +164,7 @@ async function refreshLogs() {
         const params = new URLSearchParams({
             level: level === 'all' ? '' : level,
             source: source === 'all' ? '' : source,
+            event_type: eventType === 'all' ? '' : eventType,
             lines: lines
         });
         
