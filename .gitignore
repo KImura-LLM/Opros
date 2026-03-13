@@ -1,4 +1,6 @@
 DEPLOY.md
+AGENTS.md
+.github/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -173,4 +175,3 @@ opros-cicd/
 /package.json
 /package-lock.json
 
-AGENTS.md

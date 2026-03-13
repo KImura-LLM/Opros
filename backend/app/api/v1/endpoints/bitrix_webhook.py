@@ -250,22 +250,6 @@ async def bitrix_webhook(
                     "Проверьте, что поле создано в настройках CRM."
                 )
 
-        # Создание дела в ленте сделки со сроком «сегодня» (не блокирует ответ)
-        try:
-            activity_created = await bitrix_client.create_deal_activity(
-                entity_id=lead_id,
-                entity_type=entity_type,
-            )
-            if activity_created:
-                logger.info(f"Дело со сроком «сегодня» создано в ленте сделки {lead_id}")
-            else:
-                logger.warning(f"Не удалось создать дело в ленте сделки {lead_id}")
-        except Exception as e:
-            logger.error(
-                f"Неожиданная ошибка при создании дела в Битрикс24: {e} "
-                f"(lead_id={lead_id})"
-            )
-
     return BitrixWebhookResponse(
         success=True,
         survey_url=survey_url,
