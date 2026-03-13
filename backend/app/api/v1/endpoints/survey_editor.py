@@ -7,8 +7,8 @@ CRUD API для визуального редактора блок-схемы о
 """
 
 from datetime import datetime, timezone
-from typing import List, Optional, Any
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Cookie
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pydantic import BaseModel, Field

@@ -52,6 +52,7 @@ services:
     environment:
       - ENVIRONMENT=production
       - DEBUG=false
+      - ENABLE_API_DOCS=true
     expose:
       - "8000"
     depends_on:
@@ -62,6 +63,27 @@ services:
     networks:
       - opros-network
     command: gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000
+
+  # --------------------------------------------
+  # Session Cleanup Worker
+  # --------------------------------------------
+  session-cleanup:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: opros-session-cleanup
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=production
+      - DEBUG=false
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - opros-network
+    command: python -m scripts.auto_expire_sessions
 
   # --------------------------------------------
   # ⚛️ Frontend Builder (только для сборки)

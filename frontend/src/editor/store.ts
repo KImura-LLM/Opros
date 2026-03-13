@@ -25,46 +25,21 @@ const MAX_HISTORY_SIZE = 50;
 const AUTOSAVE_INTERVAL = 3 * 60 * 1000;
 
 /**
- * Helper функция для API запросов с поддержкой сессионных cookie
- * Учётные данные хранятся только в памяти (не в sessionStorage) для безопасности
+ * Helper функция для API запросов с поддержкой сессионных cookie.
  */
-
-// Хранение учётных данных только в оперативной памяти
-let _adminCredentials: { username: string; password: string } | null = null;
-
-function getAdminCredentials(): { username: string; password: string } | null {
-  return _adminCredentials;
-}
-
-export function setAdminCredentials(username: string, password: string): void {
-  _adminCredentials = { username, password };
-}
-
-export function clearAdminCredentials(): void {
-  _adminCredentials = null;
-}
 
 async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Response> {
   const headers: Record<string, string> = {
     ...(options.headers as Record<string, string> || {}),
   };
-  
-  // Используем учётные данные из памяти (не из sessionStorage)
-  const creds = getAdminCredentials();
-  if (creds) {
-    const credentials = btoa(`${creds.username}:${creds.password}`);
-    headers['Authorization'] = `Basic ${credentials}`;
-  }
-  
+
   const response = await fetch(url, {
     ...options,
     headers,
     credentials: 'include', // Для поддержки сессионных cookie
   });
-  
-  // Если 401 и нет учётных данных, перенаправляем на страницу входа в админ-панель
-  if (response.status === 401 && !creds) {
-    // Перенаправляем на /admin/login вместо использования prompt()
+
+  if (response.status === 401) {
     window.location.href = '/admin/login';
     throw new Error('Требуется аутентификация. Перенаправление на страницу входа...');
   }

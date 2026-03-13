@@ -40,14 +40,16 @@ nginx (reverse proxy + SSL / Let's Encrypt)
 
 ### Сервисы Docker Compose
 
-| Контейнер | Образ | Назначение |
-|---|---|---|
-| `opros-nginx` | nginx:alpine | Реверс-прокси, SSL-терминация |
-| `opros-certbot` | certbot/certbot | Автообновление TLS-сертификатов |
-| `opros-backend` | custom (Python) | FastAPI приложение |
-| `opros-frontend` | custom (Node) | React / Vite |
-| `opros-postgres` | postgres:15-alpine | Основная БД |
-| `opros-redis` | redis:7-alpine | Сессии и кэш |
+| Контейнер | Образ | Dev | Prod | Назначение |
+|---|---|---|---|---|
+| `opros-nginx` | nginx:alpine | ✅ | ✅ | Реверс-прокси, SSL-терминация |
+| `opros-certbot` | certbot/certbot | — | ✅ | Автообновление TLS-сертификатов |
+| `opros-backend` | custom (Python) | ✅ | ✅ | FastAPI приложение |
+| `opros-frontend` | custom (Node) | ✅ | — | React / Vite (HMR) |
+| `opros-frontend-builder` | custom (Node) | — | ✅ | Сборка статических файлов |
+| `opros-session-cleanup` | custom (Python) | — | ✅ | Фоновый воркер истечения сессий |
+| `opros-postgres` | postgres:15-alpine | ✅ | ✅ | Основная БД |
+| `opros-redis` | redis:7-alpine | ✅ | ✅ | Сессии и кэш |
 
 ---
 
@@ -93,7 +95,7 @@ nginx (reverse proxy + SSL / Let's Encrypt)
 │   │   ├── api/v1/endpoints/     # Роутеры API
 │   │   │   ├── auth.py           # Авторизация (JWT)
 │   │   │   ├── survey.py         # Прохождение опроса
-│   │   │   ├── survey_editor.py  # CRUD редактора
+│   │   │   ├── survey_editor.py  # CRUD редактора + правила анализа
 │   │   │   ├── reports.py        # Отчёты (HTML/PDF/TXT)
 │   │   │   ├── analytics.py      # Дашборд статистики
 │   │   │   └── bitrix_webhook.py # Входящие вебхуки Б24
@@ -103,7 +105,7 @@ nginx (reverse proxy + SSL / Let's Encrypt)
 │   │   │   └── bitrix24.py           # HTTP-клиент Битрикс24
 │   │   ├── models/models.py      # SQLAlchemy-модели
 │   │   ├── schemas/schemas.py    # Pydantic-схемы
-│   │   ├── core/                 # config, database, redis, middleware
+│   │   ├── core/                 # config, database, redis, security, middleware, log_utils
 │   │   └── admin/                # SQLAdmin (setup.py + HTML-шаблоны)
 │   ├── data/
 │   │   ├── survey_structure.json    # Опросник v1
@@ -113,13 +115,17 @@ nginx (reverse proxy + SSL / Let's Encrypt)
 │
 └── frontend/
     └── src/
-        ├── pages/           # HomePage, SurveyPage, CompletePage, ErrorPage, EditorPage
+        ├── pages/           # HomePage, SurveyPage, CompletePage, ErrorPage, EditorPage, AnalysisEditorPage
         ├── components/
         │   ├── inputs/      # SingleChoice, MultiChoice, PainScale, BodyMap, TextInput
-        │   └── layout/      # Layout, AuthModal, Branding, SessionTimer
-        ├── editor/          # Визуальный редактор опросника (@xyflow)
+        │   └── layout/      # Layout, Branding, SessionTimer, ErrorBoundary
+        ├── editor/          # Визуальный редактор (@xyflow): SurveyNode, NodeEditor, NodePalette,
+        │                    #   EdgeEditor, GroupsPanel, PreviewModal, Toolbar
+        ├── analysis/        # Редактор правил анализа: AnalysisEditor, store, types
         ├── store/           # Zustand (surveyStore.ts)
         ├── api/             # HTTP-клиент (surveyApi.ts)
+        ├── hooks/           # Кастомные React-хуки
+        ├── utils/           # Утилиты
         └── types/           # TypeScript-типы
 ```
 
@@ -129,16 +135,30 @@ nginx (reverse proxy + SSL / Let's Encrypt)
 
 | Метод | Путь | Назначение |
 |---|---|---|
-| `POST` | `/auth/validate` | Валидация JWT-токена, создание сессии |
-| `POST` | `/auth/consent` | Фиксация согласия на обработку ПДн |
-| `GET` | `/survey/node/{id}` | Получить узел опросника |
+| `GET` | `/auth/validate` | Валидация JWT-токена, создание сессии |
+| `POST` | `/auth/generate-token` | Генерация JWT-токена (dev/admin) |
+| `GET` | `/survey/config` | Получить конфигурацию опросника |
+| `POST` | `/survey/start` | Инициализировать сессию опроса |
 | `POST` | `/survey/answer` | Сохранить ответ, получить следующий узел |
+| `GET` | `/survey/progress/{session_id}` | Получить прогресс сессии |
+| `POST` | `/survey/back` | Вернуться к предыдущему вопросу |
 | `POST` | `/survey/complete` | Завершить опрос, отправить в Б24 |
 | `GET` | `/editor/surveys` | Список конфигураций опросников |
+| `GET` | `/editor/surveys/{id}` | Получить конфигурацию по ID |
+| `POST` | `/editor/surveys` | Создать новую конфигурацию |
 | `PUT` | `/editor/surveys/{id}` | Обновить JSON-конфиг |
-| `GET` | `/reports/{session_id}` | HTML-предпросмотр отчёта |
-| `GET` | `/reports/{session_id}/pdf` | Скачать PDF-отчёт |
-| `GET` | `/reports/{session_id}/txt` | Скачать TXT-отчёт |
+| `DELETE` | `/editor/surveys/{id}` | Удалить конфигурацию |
+| `POST` | `/editor/validate-structure` | Валидировать JSON-структуру |
+| `POST` | `/editor/duplicate` | Дублировать конфигурацию |
+| `POST` | `/editor/export` | Экспортировать конфигурацию |
+| `POST` | `/editor/import` | Импортировать конфигурацию |
+| `GET` | `/editor/node-types` | Список доступных типов узлов |
+| `GET/PUT` | `/editor/{survey_id}/analysis-rules` | Правила анализа опросника |
+| `GET` | `/reports/{session_id}/preview` | HTML-предпросмотр отчёта |
+| `GET` | `/reports/{session_id}/export/html` | Скачать HTML-отчёт |
+| `GET` | `/reports/{session_id}/export/pdf` | Скачать PDF-отчёт |
+| `GET` | `/reports/{session_id}/export/txt` | Скачать TXT-отчёт |
+| `POST` | `/reports/{session_id}/regenerate` | Перегенерировать отчёт |
 | `GET` | `/analytics/dashboard` | Статистика для дашборда |
 | `POST` | `/bitrix/webhook` | Входящий вебхук от Битрикс24 |
 
@@ -177,6 +197,17 @@ nginx (reverse proxy + SSL / Let's Encrypt)
 
 ---
 
+## 🔬 Редактор правил анализа
+
+Модуль анализа позволяет задавать автоматические выводы на основе ответов:
+
+- **AnalysisEditorPage** — отдельная страница редактора правил
+- Правила задаются через JSON и привязываются к конкретной версии опросника
+- API: `GET/PUT /api/v1/editor/{survey_id}/analysis-rules`
+- Хранится как часть конфигурации опросника в таблице `survey_configs`
+
+---
+
 ## 📊 Отчёты и аналитика
 
 - **HTML-отчёт** — структурированный, готов для вставки в Битрикс24 (метод `crm.timeline.comment.add`)
@@ -208,7 +239,7 @@ nginx (reverse proxy + SSL / Let's Encrypt)
 - **Отправка результатов:** `crm.timeline.comment.add` (HTML-комментарий в ленту)
 - **Загрузка PDF:** через диск Битрикс24, прикрепление к сделке
 - **Входящий вебхук:** `/api/v1/bitrix/webhook` — обработка событий от Б24
-- **Фильтрация воронок:** `BITRIX24_ALLOWED_CATEGORIES` (список ID через запятую)
+- **Фильтрация воронок:** `BITRIX24_ALLOWED_CATEGORIES` (список ID через запятую, пусто = все)
 
 ---
 
@@ -269,7 +300,7 @@ docker compose exec backend alembic revision --autogenerate -m "описание
 |---|---|
 | `seed.py` | Загрузить начальную конфигурацию опросника в БД |
 | `cleanup.py` | Очистить устаревшие audit-логи (152-ФЗ) |
-| `auto_expire_sessions.py` | Перевести просроченные сессии в `abandoned` |
+| `auto_expire_sessions.py` | Перевести просроченные сессии в `abandoned` (запускается как `opros-session-cleanup` в prod) |
 | `test_session_expiry.py` | Проверить логику истечения сессий |
 
 ---

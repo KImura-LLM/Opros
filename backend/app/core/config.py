@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     # Общие настройки
     ENVIRONMENT: str = "production"
     DEBUG: bool = False
+    ENABLE_API_DOCS: bool = False
     SECRET_KEY: str = "change-me-in-production"
     
     # База данных PostgreSQL

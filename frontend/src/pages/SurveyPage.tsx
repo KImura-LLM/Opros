@@ -33,9 +33,9 @@ const SurveyPage: React.FC = () => {
     setCurrentNode,
     setAnswer,
     setProgress,
-    goBack,
     canGoBack,
     restoreSession,
+    syncProgress,
   } = useSurveyStore()
 
   const [currentAnswer, setCurrentAnswer] = useState<AnswerData>({})
@@ -71,7 +71,7 @@ const SurveyPage: React.FC = () => {
     }
 
     // Используем IIFE чтобы не возвращать Promise из useEffect
-    ;(async () => {
+    void (async () => {
       try {
         // Устанавливаем токен заранее — нужен в заголовке X-Session-Token
         setToken(saved.token)
@@ -101,8 +101,7 @@ const SurveyPage: React.FC = () => {
         navigate('/', { replace: true })
       }
     })()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Получение текущего узла
   const currentNode: SurveyNode | null = config?.nodes.find(
@@ -119,7 +118,6 @@ const SurveyPage: React.FC = () => {
 
   // Загрузка сохранённого ответа при смене узла
   // Намеренно не включаем answers в deps (только currentNodeId триггерит загрузку)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (isRestoring) return
     const savedAnswer = answers[currentNodeId]
@@ -136,7 +134,7 @@ const SurveyPage: React.FC = () => {
         setCurrentAnswer({})
       }
     }
-  }, [currentNodeId, isRestoring])
+  }, [currentNodeId, isRestoring]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Проверка, можно ли продолжить
   const canProceed = useCallback(() => {
@@ -204,46 +202,6 @@ const SurveyPage: React.FC = () => {
     return true
   }, [currentNode, currentAnswer])
 
-  // Определение следующего узла
-  const getNextNode = useCallback(() => {
-    if (!currentNode || !config) return null
-    
-    const logic = currentNode.logic || []
-    
-    // Проверка условий
-    for (const rule of logic) {
-      if (rule.default) continue
-      
-      const condition = rule.condition
-      if (condition) {
-        // Простая проверка условий
-        if (condition.includes('==')) {
-          const [, expectedValue] = condition.split('==').map(s => s.trim().replace(/'/g, ''))
-          if (currentAnswer.selected === expectedValue) {
-            return rule.next_node
-          }
-        }
-        
-        if (condition.includes('contains')) {
-          const [, expectedValue] = condition.split('contains').map(s => s.trim().replace(/'/g, ''))
-          const selected = currentAnswer.selected as string[] | undefined
-          if (Array.isArray(selected) && selected.includes(expectedValue)) {
-            return rule.next_node
-          }
-        }
-      }
-    }
-    
-    // Default переход
-    for (const rule of logic) {
-      if (rule.default) {
-        return rule.next_node
-      }
-    }
-    
-    return null
-  }, [currentNode, config, currentAnswer])
-
   // Обработка нажатия "Далее"
   const handleNext = async () => {
     if (!currentNode || !sessionId) return
@@ -279,35 +237,28 @@ const SurveyPage: React.FC = () => {
     setIsLoading(true)
     
     try {
-      // Сохраняем ответ локально
+      // Сохраняем ответ локально для управляемых полей формы
       if (currentNode.type !== 'info_screen') {
         setAnswer(currentNodeId, currentAnswer)
       }
-      
-      // Отправляем на сервер
-      if (currentNode.type !== 'info_screen' && sessionId) {
-        const elapsed = Math.round((Date.now() - questionStartTime.current) / 1000)
-        const response = await submitAnswer(sessionId, currentNodeId, currentAnswer, elapsed)
-        setProgress(response.progress)
-        
-        if (response.next_node) {
-          // Валидация: убеждаемся, что следующий узел существует в конфиге
-          const nextNodeExists = config?.nodes.some(n => n.id === response.next_node)
-          if (nextNodeExists) {
-            setCurrentNode(response.next_node, 'forward')
-            return
-          }
-          // Узел не найден в конфиге — fallback на локальный расчёт
-          console.warn(`Узел ${response.next_node} не найден в конфиге, используем локальный расчёт`)
-        }
+
+      const elapsed = Math.round((Date.now() - questionStartTime.current) / 1000)
+      const answerPayload = currentNode.type === 'info_screen' ? {} : currentAnswer
+      const response = await submitAnswer(sessionId, currentNodeId, answerPayload, elapsed)
+      setProgress(response.progress)
+
+      if (!response.next_node) {
+        setSubmitError('Сервер не вернул следующий вопрос. Проверьте конфигурацию опросника.')
+        return
       }
-      
-      // Локальное определение следующего узла
-      const nextNodeId = getNextNode()
-      
-      if (nextNodeId) {
-        setCurrentNode(nextNodeId, 'forward')
+
+      const nextNodeExists = config?.nodes.some((n) => n.id === response.next_node)
+      if (!nextNodeExists) {
+        setSubmitError('Сервер вернул неизвестный вопрос. Проверьте конфигурацию опросника.')
+        return
       }
+
+      setCurrentNode(response.next_node, 'forward')
     } catch (error) {
       console.error('Ошибка при отправке ответа:', error)
       setSubmitError('Не удалось отправить ответ. Попробуйте ещё раз.')
@@ -320,15 +271,15 @@ const SurveyPage: React.FC = () => {
   // Обработка нажатия "Назад"
   const handleBack = async () => {
     if (!sessionId) return
+    setSubmitError(null)
     try {
       const response = await goBackApi(sessionId)
       if (response.success) {
-        goBack()
+        syncProgress(response, 'backward')
       }
     } catch (error) {
       console.error('Error going back:', error)
-      // Fallback: локальный goBack если сервер недоступен
-      goBack()
+      setSubmitError('Не удалось вернуться к предыдущему вопросу. Попробуйте ещё раз.')
     }
   }
 

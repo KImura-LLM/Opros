@@ -8,8 +8,6 @@
 from sqladmin import Admin, ModelView
 from sqladmin.authentication import AuthenticationBackend
 from starlette.requests import Request
-from starlette.responses import RedirectResponse
-from typing import Optional
 from pathlib import Path
 from loguru import logger
 
@@ -556,7 +554,6 @@ def setup_admin(app):
         Регистрируется ДО создания Admin(), чтобы перехватить стандартный хендлер SQLAdmin.
         """
         from starlette.responses import RedirectResponse as RR
-        from starlette.responses import Response
 
         form = await request.form()
         username = form.get("username")

@@ -130,18 +130,6 @@ export interface SurveyStructure {
   groups?: QuestionGroup[];
 }
 
-// Элемент списка опросников
-export interface SurveyListItem {
-  id: number;
-  name: string;
-  version: string;
-  description?: string;
-  is_active: boolean;
-  nodes_count: number;
-  created_at: string;
-  updated_at?: string;
-}
-
 // Ошибка валидации
 export interface ValidationError {
   type: 'error' | 'warning';
@@ -157,7 +145,7 @@ export interface ValidationResult {
 }
 
 // Тип узла (для палитры)
-export interface NodeTypeInfo {
+interface NodeTypeInfo {
   id: NodeType;
   name: string;
   description: string;
@@ -168,23 +156,6 @@ export interface NodeTypeInfo {
   has_min_max?: boolean;
   has_additional_fields?: boolean;
   can_be_final?: boolean;
-}
-
-// Состояние редактора
-export interface EditorState {
-  survey: SurveyStructure | null;
-  nodes: FlowNode[];
-  edges: FlowEdge[];
-  selectedNode: string | null;
-  isDirty: boolean;
-  lastSaved: Date | null;
-  
-  // История для Undo/Redo
-  history: HistoryEntry[];
-  historyIndex: number;
-  
-  // Валидация
-  validationResult: ValidationResult | null;
 }
 
 // Запись истории

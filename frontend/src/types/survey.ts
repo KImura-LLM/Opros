@@ -116,5 +116,12 @@ export interface SurveyCompleteResponse {
   report_sent: boolean
 }
 
+export interface SurveyProgressSnapshot {
+  current_node: string
+  answers: Record<string, AnswerData>
+  history: string[]
+  progress_percent: number
+}
+
 // Направление анимации
 export type AnimationDirection = 'forward' | 'backward'

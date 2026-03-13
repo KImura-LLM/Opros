@@ -5,8 +5,6 @@
 Модели для хранения данных опросника.
 """
 
-from datetime import datetime
-from typing import Optional
 import uuid
 
 from sqlalchemy import (

@@ -42,13 +42,6 @@ export interface AnalysisRule {
 }
 
 /**
- * Полная структура правил для одного опросника.
- */
-export interface AnalysisRulesPayload {
-  rules: AnalysisRule[];
-}
-
-/**
  * Вариант ответа вопроса (для отображения в дереве).
  */
 export interface QuestionOption {

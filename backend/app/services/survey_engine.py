@@ -216,33 +216,6 @@ class SurveyEngine:
         
         return None
     
-    def calculate_progress(self, answered_nodes: List[str]) -> float:
-        """
-        Расчёт прогресса прохождения (устаревший метод, использует общее кол-во узлов).
-        
-        Args:
-            answered_nodes: Список отвеченных узлов
-            
-        Returns:
-            Процент прохождения (0-100)
-        """
-        total = len(self.nodes)
-        if total == 0:
-            return 100.0
-        
-        # Исключаем info_screen из подсчёта
-        countable_nodes = [
-            n for n in self.nodes.values()
-            if n.get("type") != "info_screen"
-        ]
-        
-        total_countable = len(countable_nodes)
-        if total_countable == 0:
-            return 100.0
-        
-        answered = len([n for n in answered_nodes if n in self.nodes])
-        return min(100.0, (answered / total_countable) * 100)
-
     def calculate_dynamic_progress(
         self,
         next_node_id: Optional[str],
@@ -340,31 +313,3 @@ class SurveyEngine:
             next_node_id = self._get_default_next_node(node_id)
 
         return current_count + self._estimate_remaining_path(next_node_id, visited)
-    
-    def get_branch_stack(self, answer: dict, all_answers: Dict[str, Any]) -> List[str]:
-        """
-        Получение стека веток для множественного выбора.
-        
-        Используется когда нужно показать несколько веток
-        в зависимости от multi_choice ответа.
-        
-        Args:
-            answer: Ответ с множественным выбором
-            all_answers: Все ответы
-            
-        Returns:
-            Список ID узлов для показа
-        """
-        selected = answer.get("selected", [])
-        if not isinstance(selected, list):
-            return []
-        
-        # Маппинг выбора на ветки (из конфига)
-        branch_mapping = self.config.get("branch_mapping", {})
-        
-        branches = []
-        for option in selected:
-            if option in branch_mapping:
-                branches.append(branch_mapping[option])
-        
-        return branches

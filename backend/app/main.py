@@ -7,14 +7,13 @@
 """
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_redoc_html
 from starlette.middleware.sessions import SessionMiddleware
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 from loguru import logger
 import sys
-import asyncio
 
 from app.core.config import settings
 from app.core.database import engine, Base
@@ -46,50 +45,6 @@ logger.add(
 )
 
 
-# Фоновая задача очистки истёкших сессий
-async def periodic_session_cleanup():
-    """Периодическая очистка истёкших сессий"""
-    from datetime import datetime, timezone
-    from sqlalchemy import select, update
-    from app.core.database import async_session_maker
-    from app.models import SurveySession
-    
-    while True:
-        try:
-            async with async_session_maker() as db:
-                now = datetime.now(timezone.utc)
-                
-                # Находим истёкшие сессии
-                stmt = select(SurveySession).where(
-                    SurveySession.status == "in_progress",
-                    SurveySession.expires_at.isnot(None),
-                    SurveySession.expires_at < now
-                )
-                
-                result = await db.execute(stmt)
-                expired_sessions = result.scalars().all()
-                
-                if expired_sessions:
-                    session_ids = [s.id for s in expired_sessions]
-                    
-                    update_stmt = (
-                        update(SurveySession)
-                        .where(SurveySession.id.in_(session_ids))
-                        .values(status="abandoned", completed_at=now)
-                    )
-                    
-                    await db.execute(update_stmt)
-                    await db.commit()
-                    
-                    logger.info(f"Автоматически завершено {len(expired_sessions)} истёкших сессий")
-        
-        except Exception as e:
-            logger.error(f"Ошибка при очистке истёкших сессий: {e}")
-        
-        # Проверка каждые 15 минут
-        await asyncio.sleep(15 * 60)
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -105,31 +60,25 @@ async def lifespan(app: FastAPI):
             await conn.run_sync(Base.metadata.create_all)
         logger.info("📦 Таблицы базы данных созданы/проверены")
     
-    # Запуск фоновой задачи очистки истёкших сессий
-    cleanup_task = asyncio.create_task(periodic_session_cleanup())
-    # Логирование необработанных исключений фоновой задачи
-    cleanup_task.add_done_callback(
-        lambda t: logger.error(f"💥 Фоновая задача очистки упала с ошибкой: {t.exception()}")
-        if not t.cancelled() and t.exception() else None
-    )
-    logger.info("⏰ Запущена фоновая задача очистки истёкших сессий (каждые 15 мин)")
-    
     yield
     
     logger.info("👋 Остановка приложения...")
-    cleanup_task.cancel()
     await redis_client.disconnect()
     await engine.dispose()
 
+
+# Документация API управляется отдельным флагом, чтобы ее можно было
+# включать на сервере без перевода всего приложения в DEBUG.
+api_docs_enabled = settings.DEBUG or settings.ENABLE_API_DOCS
 
 # Создание FastAPI приложения
 app = FastAPI(
     title="Опросник пациента API",
     description="API для PWA-приложения сбора анамнеза пациентов",
     version="1.0.0",
-    docs_url="/docs" if settings.DEBUG else None,
+    docs_url="/docs" if api_docs_enabled else None,
     redoc_url=None,
-    openapi_url="/openapi.json" if settings.DEBUG else None,
+    openapi_url="/openapi.json" if api_docs_enabled else None,
     lifespan=lifespan,
 )
 
@@ -173,6 +122,9 @@ setup_admin(app)
 @app.get("/redoc", include_in_schema=False)
 async def custom_redoc():
     """Кастомный ReDoc с фиксированной стабильной версией (без @next)"""
+    if not app.openapi_url:
+        raise HTTPException(status_code=404, detail="API docs are disabled")
+
     return get_redoc_html(
         openapi_url=app.openapi_url,
         title=app.title + " - ReDoc",
@@ -200,5 +152,5 @@ async def root():
     """
     return {
         "message": "Опросник пациента API",
-        "docs": "/docs" if settings.DEBUG else "Документация отключена в production",
+        "docs": "/docs" if api_docs_enabled else "Документация отключена",
     }

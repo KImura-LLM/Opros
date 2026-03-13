@@ -9,11 +9,9 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
-from sqlalchemy.ext.asyncio import AsyncSession
 from loguru import logger
 
 from app.core.config import settings
-from app.core.database import get_db
 from app.core.security import create_access_token, generate_short_code
 from app.core.log_utils import mask_name
 from app.core.redis import get_redis, RedisClient
@@ -70,7 +68,6 @@ class BitrixWebhookErrorResponse(BaseModel):
 )
 async def bitrix_webhook(
     request: Request,
-    db: AsyncSession = Depends(get_db),
     redis: RedisClient = Depends(get_redis),
 ):
     """
@@ -249,8 +246,8 @@ async def bitrix_webhook(
                 logger.info(f"Ссылка записана в поле UF_CRM_1771160085 сделки {lead_id}")
             else:
                 logger.warning(
-                    f"Не удалось записать ссылку в поле UF_CRM_1771160085. "
-                    f"Проверьте, что поле создано в настройках CRM."
+                    "Не удалось записать ссылку в поле UF_CRM_1771160085. "
+                    "Проверьте, что поле создано в настройках CRM."
                 )
 
         # Создание дела в ленте сделки со сроком «сегодня» (не блокирует ответ)

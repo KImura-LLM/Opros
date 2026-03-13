@@ -57,14 +57,11 @@ const SurveyEditorInner = ({ surveyId }: SurveyEditorProps) => {
     addEdge: storeAddEdge,
   } = useEditorStore();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [nodes, setLocalNodes] = useNodesState<any>([]);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [edges, setLocalEdges] = useEdgesState<any>([]);
   const [showPreview, setShowPreview] = useState(false);
   const [selectedEdge, setSelectedEdge] = useState<FlowEdge | null>(null);
   const reactFlowWrapper = useRef<HTMLDivElement>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [reactFlowInstance, setReactFlowInstance] = useState<any>(null);
 
   // Синхронизация со store
@@ -212,7 +209,6 @@ const SurveyEditorInner = ({ surveyId }: SurveyEditorProps) => {
   }, [selectNode]);
 
   // Клик на узле
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: any) => {
       selectNode(node.id);
@@ -222,7 +218,6 @@ const SurveyEditorInner = ({ surveyId }: SurveyEditorProps) => {
   );
 
   // Клик на связи
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const handleEdgeClick = useCallback(
     (_: React.MouseEvent, edge: any) => {
       selectNode(null);

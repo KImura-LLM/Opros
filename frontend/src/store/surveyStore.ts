@@ -7,6 +7,7 @@ import type {
   SurveyConfig,
   SurveyNode,
   AnswerData,
+  SurveyProgressSnapshot,
   AnimationDirection,
 } from '@/types'
 
@@ -16,7 +17,7 @@ import type {
 // ==========================================
 const SESSION_STORAGE_KEY = 'opros_session'
 
-export function saveSessionToStorage(token: string, sessionId: string): void {
+function saveSessionToStorage(token: string, sessionId: string): void {
   try {
     sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ token, sessionId }))
   } catch {
@@ -91,6 +92,7 @@ interface SurveyState {
     history: string[]
     progress: number
   }) => void
+  syncProgress: (data: SurveyProgressSnapshot, direction?: AnimationDirection) => void
 
   // Геттеры
   getCurrentNode: () => SurveyNode | null
@@ -207,6 +209,16 @@ export const useSurveyStore = create<SurveyState>()((set, get) => ({
       answers: data.answers,
       history: data.history,
       progress: data.progress,
+    })
+  },
+
+  syncProgress: (data, direction = 'forward') => {
+    set({
+      currentNodeId: data.current_node,
+      answers: data.answers,
+      history: data.history,
+      progress: data.progress_percent,
+      animationDirection: direction,
     })
   },
 

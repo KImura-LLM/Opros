@@ -53,9 +53,7 @@ const PreviewModal = ({ isOpen, onClose }: PreviewModalProps) => {
       if (edge.data?.condition && !edge.data?.isDefault) {
         const condition = edge.data.condition;
         const result = evaluateCondition(condition, answerData);
-        
-        console.log('[Preview] Checking condition:', condition, '| Result:', result, '| Answer:', answerData);
-        
+
         if (result) {
           return edge.target;
         }
@@ -157,11 +155,7 @@ const PreviewModal = ({ isOpen, onClose }: PreviewModalProps) => {
     if (!currentNodeId) return;
     
     const nextId = getNextNode();
-    
-    console.log('[Preview] Current node:', currentNodeId);
-    console.log('[Preview] Answer:', answers[currentNodeId]);
-    console.log('[Preview] Next node:', nextId);
-    
+
     if (nextId) {
       setHistory((prev: string[]) => [...prev, currentNodeId]);
       setCurrentNodeId(nextId);
@@ -313,7 +307,7 @@ const PreviewModal = ({ isOpen, onClose }: PreviewModalProps) => {
           />
         );
         
-      case 'slider':
+      case 'slider': {
         const sliderValue = (currentAnswer?.value as number) ?? nodeData.min_value ?? 1;
         return (
           <div className="space-y-4">
@@ -333,6 +327,7 @@ const PreviewModal = ({ isOpen, onClose }: PreviewModalProps) => {
             </div>
           </div>
         );
+      }
         
       case 'info_screen':
         return (

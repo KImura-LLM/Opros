@@ -5,7 +5,7 @@
 Rate limiting и другие middleware для защиты API.
 """
 
-from fastapi import Request, HTTPException, status
+from fastapi import Request, status
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 from loguru import logger

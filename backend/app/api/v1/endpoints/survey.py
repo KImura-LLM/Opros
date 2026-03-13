@@ -27,6 +27,7 @@ from app.schemas import (
     SurveyAnswerRequest,
     SurveyAnswerResponse,
     SurveyProgressResponse,
+    SurveyNavigationResponse,
     SurveyCompleteRequest,
     SurveyCompleteResponse,
     SurveyConfigResponse,
@@ -36,6 +37,14 @@ from app.services.report_generator import ReportGenerator
 from app.services.bitrix24 import Bitrix24Client
 
 router = APIRouter()
+
+
+def calculate_progress_percent(config_json: dict, current_node_id: str | None, answers: dict) -> float:
+    """Рассчитывает прогресс по текущему серверному состоянию."""
+    engine = SurveyEngine(config_json)
+    answered_node_ids = list(answers.keys())
+    progress_percent = engine.calculate_dynamic_progress(current_node_id, answered_node_ids)
+    return round(progress_percent, 1)
 
 
 # ==========================================
@@ -170,8 +179,6 @@ async def start_survey(
             )
         
         # Восстановление сессии
-        progress = await redis.get_survey_progress(str(existing_session.id))
-        
         return SurveyStartResponse(
             session_id=existing_session.id,
             patient_name=existing_session.patient_name,
@@ -419,21 +426,21 @@ async def get_progress(
     result = await db.execute(stmt)
     config = result.scalar_one_or_none()
 
-    engine = SurveyEngine(config.json_config) if config else None
-    current_node_id = progress.get("current_node", "welcome")
-    answered_node_ids = list(progress.get("answers", {}).keys())
-
-    if engine:
-        progress_percent = engine.calculate_dynamic_progress(current_node_id, answered_node_ids)
+    if config:
+        progress_percent = calculate_progress_percent(
+            config.json_config,
+            progress.get("current_node", "welcome"),
+            progress.get("answers", {}),
+        )
     else:
         total_nodes = 1
-        progress_percent = min(100.0, (len(answered_node_ids) / total_nodes) * 100)
+        progress_percent = min(100.0, (len(progress.get("answers", {}).keys()) / total_nodes) * 100)
     
     return SurveyProgressResponse(
         session_id=session_id,
         current_node=progress.get("current_node", "welcome"),
         history=progress.get("history", []),
-        progress_percent=round(progress_percent, 1),
+        progress_percent=progress_percent,
         answers=progress.get("answers", {}),
     )
 
@@ -672,7 +679,7 @@ class GoBackRequest(BaseModel):
     session_id: UUID
 
 
-@router.post("/back")
+@router.post("/back", response_model=SurveyNavigationResponse)
 async def go_back(
     data: GoBackRequest,
     request: Request,
@@ -729,8 +736,25 @@ async def go_back(
     progress["history"] = history
     
     await redis.save_survey_progress(str(data.session_id), progress)
-    
-    return {
-        "success": True,
-        "current_node": previous_node,
-    }
+
+    stmt = select(SurveyConfig).where(SurveyConfig.id == session.survey_config_id)
+    result = await db.execute(stmt)
+    config = result.scalar_one_or_none()
+
+    if not config:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Конфигурация опросника не найдена",
+        )
+
+    return SurveyNavigationResponse(
+        success=True,
+        current_node=previous_node,
+        history=history,
+        progress_percent=calculate_progress_percent(
+            config.json_config,
+            previous_node,
+            progress.get("answers", {}),
+        ),
+        answers=progress.get("answers", {}),
+    )

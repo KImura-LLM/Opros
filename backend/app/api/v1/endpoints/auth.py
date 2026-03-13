@@ -16,7 +16,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.redis import get_redis, RedisClient
 from app.core.security import verify_token, create_access_token, generate_short_code
-from app.core.log_utils import mask_name
+from app.core.log_utils import mask_name, mask_token
 from app.models import SurveySession
 from app.schemas import TokenValidationResponse
 from app.services.bitrix24 import Bitrix24Client
@@ -53,7 +53,8 @@ async def validate_token(
     
     # Определяем: это короткий код или JWT?
     # JWT всегда содержит точки (header.payload.signature), короткий код — нет
-    full_url = str(request.url)
+    token_source = "short_code" if _SHORT_CODE_PATTERN.match(token) and "." not in token else "jwt"
+    token_hint = mask_token(token)
 
     if _SHORT_CODE_PATTERN.match(token) and '.' not in token:
         # Это короткий код — ищем JWT в Redis
@@ -61,7 +62,7 @@ async def validate_token(
         if jwt_token is None:
             logger.warning(
                 f"[ССЫЛКА НЕДЕЙСТВИТЕЛЬНА] Короткий код не найден или истёк. "
-                f"URL: {full_url}"
+                f"source={token_source}, token={token_hint}"
             )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -75,7 +76,7 @@ async def validate_token(
     if token_data is None:
         logger.warning(
             f"[ССЫЛКА НЕДЕЙСТВИТЕЛЬНА] Невалидный JWT токен. "
-            f"URL: {full_url}"
+            f"source={token_source}, token={token_hint}"
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -87,7 +88,7 @@ async def validate_token(
     if is_blacklisted:
         logger.warning(
             f"[ССЫЛКА НЕДЕЙСТВИТЕЛЬНА] Токен в blacklist: lead_id={token_data.lead_id}. "
-            f"URL: {full_url}"
+            f"source={token_source}, token={token_hint}"
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -105,7 +106,7 @@ async def validate_token(
         if existing_session.status == "completed":
             logger.warning(
                 f"[ССЫЛКА НЕДЕЙСТВИТЕЛЬНА] Опрос уже завершён: lead_id={token_data.lead_id}. "
-                f"URL: {full_url}"
+                f"source={token_source}, token={token_hint}"
             )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -114,7 +115,8 @@ async def validate_token(
         
         logger.info(
             f"[ССЫЛКА ДЕЙСТВИТЕЛЬНА] Сессия восстановлена: lead_id={token_data.lead_id}, "
-            f"patient={mask_name(existing_session.patient_name)}. URL: {full_url}"
+            f"patient={mask_name(existing_session.patient_name)}, "
+            f"source={token_source}, token={token_hint}"
         )
         return TokenValidationResponse(
             valid=True,
@@ -139,7 +141,7 @@ async def validate_token(
     
     logger.info(
         f"[ССЫЛКА ДЕЙСТВИТЕЛЬНА] Токен валиден: lead_id={token_data.lead_id}, "
-        f"patient={mask_name(patient_name)}. URL: {full_url}"
+        f"patient={mask_name(patient_name)}, source={token_source}, token={token_hint}"
     )
     
     return TokenValidationResponse(

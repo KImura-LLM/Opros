@@ -44,9 +44,9 @@ async def create_test_session_with_short_expiry():
         print(f"   Создана: {session.started_at}")
         print(f"   Истекает: {session.expires_at}")
         print(f"   Статус: {session.status}")
-        print(f"\n⏰ Сессия истечёт через 2 минуты")
-        print(f"   Дождитесь следующего запуска фоновой очистки (каждые 15 мин)")
-        print(f"   Или запустите вручную: docker compose exec backend python -m scripts.auto_expire_sessions")
+        print("\n⏰ Сессия истечёт через 2 минуты")
+        print("   Дождитесь следующего запуска фоновой очистки (каждые 15 мин)")
+        print("   Или запустите вручную: docker compose exec backend python -m scripts.auto_expire_sessions")
         
         return session.id
 

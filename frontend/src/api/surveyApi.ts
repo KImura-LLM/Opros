@@ -7,6 +7,7 @@ import type {
   SurveyStartResponse,
   SurveyAnswerResponse,
   SurveyCompleteResponse,
+  SurveyProgressSnapshot,
   AnswerData,
 } from '@/types'
 import { useSurveyStore } from '@/store/surveyStore'
@@ -107,12 +108,8 @@ export async function submitAnswer(
 /**
  * Получение прогресса
  */
-export async function getProgress(sessionId: string): Promise<{
+export async function getProgress(sessionId: string): Promise<SurveyProgressSnapshot & {
   session_id: string
-  current_node: string
-  answers: Record<string, AnswerData>
-  history: string[]
-  progress_percent: number
 }> {
   return apiFetch(`/survey/progress/${sessionId}`)
 }
@@ -136,7 +133,7 @@ export async function completeSurvey(
  */
 export async function goBackApi(
   sessionId: string
-): Promise<{ success: boolean; current_node: string }> {
+): Promise<SurveyProgressSnapshot & { success: boolean }> {
   return apiFetch(`/survey/back`, {
     method: 'POST',
     body: JSON.stringify({ session_id: sessionId }),

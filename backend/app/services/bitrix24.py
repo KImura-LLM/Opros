@@ -504,34 +504,6 @@ class Bitrix24Client:
             logger.error(f"Ошибка загрузки PDF через комментарий: {e}")
             return False
     
-    async def get_lead(self, lead_id: int) -> Optional[dict]:
-        """
-        Получение данных лида.
-        
-        Метод API: crm.lead.get
-        
-        Args:
-            lead_id: ID лида
-            
-        Returns:
-            Данные лида или None
-        """
-        if not self.webhook_url:
-            return None
-        
-        method_url = f"{self.webhook_url.rstrip('/')}/crm.lead.get"
-        
-        payload = {"id": lead_id}
-        
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(method_url, json=payload)
-                response.raise_for_status()
-                return response.json().get("result")
-        except Exception as e:
-            logger.error(f"Ошибка получения лида из Битрикс24: {e}")
-            return None
-
     async def create_deal_activity(
         self,
         entity_id: int,

@@ -10,8 +10,7 @@ from datetime import datetime, timedelta, date
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, cast, Date, case, text
-from loguru import logger
+from sqlalchemy import select, func, cast, Date
 
 from app.core.database import get_db
 from app.models import SurveySession, SurveyAnswer, SurveyConfig

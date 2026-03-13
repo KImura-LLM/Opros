@@ -253,38 +253,6 @@ class ReportGenerator:
         return "\n".join(lines)
 
     # ============================================
-    # Генерация ответов в порядке конфигурации
-    # ============================================
-
-    def _generate_ordered_answers(
-        self, answers: Dict[str, Any], fmt: str = "html"
-    ) -> List[str]:
-        """
-        Генерация отформатированных ответов в порядке узлов конфигурации.
-
-        Итерирует по config.nodes в порядке определения. Для каждого узла,
-        на который есть ответ, формирует строку. Пропускает info_screen.
-
-        Args:
-            answers: Словарь ответов {node_id: answer_data}
-            fmt: Формат вывода — "html" (Битрикс), "readable" (PDF), "text"
-
-        Returns:
-            Список отформатированных строк в порядке конфигурации
-        """
-        items: List[str] = []
-        for node in self.config.get("nodes", []):
-            node_id = node.get("id", "")
-            if node_id not in answers:
-                continue
-            line = self._format_answer_for_report(
-                node_id, answers[node_id], fmt=fmt
-            )
-            if line:
-                items.append(line)
-        return items
-
-    # ============================================
     # Системный анализ для врача
     # ============================================
 
@@ -361,58 +329,6 @@ class ReportGenerator:
             return option_value in locations
 
         return False
-
-    def _evaluate_analysis_rules(self, answers: Dict[str, Any]) -> List[str]:
-        """
-        Оценка правил системного анализа по ответам пользователя.
-
-        Returns:
-            Список текстовых сообщений для врача (от сработавших правил).
-        """
-        rules = self.config.get("analysis_rules", [])
-        if not rules:
-            return []
-
-        triggered_messages: List[str] = []
-
-        for rule in rules:
-            triggers = rule.get("triggers", [])
-            if not triggers:
-                continue
-
-            mode = rule.get("trigger_mode", "any")  # "any" или "all"
-            message = rule.get("message", "").strip()
-            if not message:
-                continue
-
-            if mode == "all":
-                # Группируем триггеры по node_id (вопросу).
-                # Правило срабатывает, если в КАЖДОМ вопросе-группе
-                # сработал ХОТЯ БЫ ОДИН триггер (логика «ИЛИ» внутри вопроса,
-                # «И» между вопросами).
-                groups: Dict[str, List] = {}
-                for t in triggers:
-                    nid = t.get("node_id", "")
-                    groups.setdefault(nid, []).append(t)
-
-                fired = all(
-                    any(
-                        self._check_trigger(t, answers.get(t.get("node_id", "")))
-                        for t in grp
-                    )
-                    for grp in groups.values()
-                )
-            else:  # "any"
-                # Любой отдельный триггер из любого вопроса — достаточно.
-                fired = any(
-                    self._check_trigger(t, answers.get(t.get("node_id", "")))
-                    for t in triggers
-                )
-
-            if fired:
-                triggered_messages.append(message)
-
-        return triggered_messages
 
     def _evaluate_analysis_rules_with_color(self, answers: Dict[str, Any]) -> List[Dict[str, str]]:
         """
@@ -595,105 +511,6 @@ class ReportGenerator:
 
         return result_groups, ungrouped
 
-    def generate_html_report(
-        self,
-        patient_name: Optional[str],
-        answers: Dict[str, Any],
-    ) -> str:
-        """
-        Генерация HTML-отчёта.
-        
-        Args:
-            patient_name: Имя пациента
-            answers: Словарь ответов {node_id: answer_data}
-            
-        Returns:
-            HTML-строка для Битрикс24
-        """
-        if self.survey_version == 2:
-            return self._generate_html_report_v2(patient_name, answers)
-        return self._generate_html_report_v1(patient_name, answers)
-    
-    def _generate_html_report_v1(
-        self,
-        patient_name: Optional[str],
-        answers: Dict[str, Any],
-    ) -> str:
-        """Генерация HTML-отчёта для v1 опросника."""
-        report_parts = []
-        
-        # Заголовок
-        report_parts.append(self._generate_header(patient_name))
-        
-        # Системный анализ для врача (в самый верх, перед остальными результатами)
-        analysis_block = self._generate_analysis_block_html(answers)
-        if analysis_block:
-            report_parts.append(analysis_block)
-        
-        # Основная жалоба
-        main_complaint = self._generate_main_complaint(answers)
-        if main_complaint:
-            report_parts.append(main_complaint)
-        
-        # Детализация боли (если есть)
-        pain_details = self._generate_pain_details(answers)
-        if pain_details:
-            report_parts.append(pain_details)
-        
-        # Скрининг систем (только положительные)
-        systems_screening = self._generate_systems_screening(answers)
-        if systems_screening:
-            report_parts.append(systems_screening)
-        
-        # Факторы риска
-        risk_factors = self._generate_risk_factors(answers)
-        if risk_factors:
-            report_parts.append(risk_factors)
-        
-        # Fallback: ответы на вопросы, не покрытые специализированными блоками
-        unhandled_block = self._generate_unhandled_block_html(
-            answers, self.V1_HANDLED_NODE_IDS
-        )
-        if unhandled_block:
-            report_parts.append(unhandled_block)
-        
-        return "<br><br>".join(report_parts)
-    
-    def _generate_html_report_v2(
-        self,
-        patient_name: Optional[str],
-        answers: Dict[str, Any],
-    ) -> str:
-        """Генерация HTML-отчёта для v2 опросника (подробный клинический).
-
-        Ответы группируются по настроенным группам, затем остаток — в «Результаты опроса».
-        """
-        report_parts = []
-
-        # Заголовок
-        report_parts.append(self._generate_header(patient_name))
-
-        # Системный анализ для врача
-        analysis_block = self._generate_analysis_block_html(answers)
-        if analysis_block:
-            report_parts.append(analysis_block)
-
-        # Группированные блоки (строго над «Результаты опроса»)
-        grouped, ungrouped = self._generate_grouped_answers(answers, fmt="html")
-
-        for group_name, items in grouped:
-            report_parts.append(
-                f"📁 <b>{group_name.upper()}:</b><br>" + "<br>".join(items)
-            )
-
-        # Остальные ответы (без группы) — блок «Результаты опроса»
-        if ungrouped:
-            report_parts.append(
-                "📋 <b>РЕЗУЛЬТАТЫ ОПРОСА:</b><br>" + "<br>".join(ungrouped)
-            )
-
-        return "<br><br>".join(report_parts)
-    
     def generate_readable_html_report(
         self,
         patient_name: Optional[str],

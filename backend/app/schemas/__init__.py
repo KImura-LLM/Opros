@@ -7,6 +7,7 @@ from app.schemas.schemas import (
     SurveyAnswerRequest,
     SurveyAnswerResponse,
     SurveyProgressResponse,
+    SurveyNavigationResponse,
     SurveyCompleteRequest,
     SurveyCompleteResponse,
 )
@@ -19,6 +20,7 @@ __all__ = [
     "SurveyAnswerRequest",
     "SurveyAnswerResponse",
     "SurveyProgressResponse",
+    "SurveyNavigationResponse",
     "SurveyCompleteRequest",
     "SurveyCompleteResponse",
 ]

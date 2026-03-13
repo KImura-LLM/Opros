@@ -105,6 +105,15 @@ class SurveyProgressResponse(BaseModel):
     answers: Optional[Dict[str, Any]] = Field(None, description="Сохранённые ответы пользователя")
 
 
+class SurveyNavigationResponse(BaseModel):
+    """Снимок состояния навигации после перехода назад."""
+    success: bool
+    current_node: str
+    history: List[str]
+    progress_percent: float
+    answers: Dict[str, Any] = Field(default_factory=dict)
+
+
 class SurveyCompleteRequest(BaseModel):
     """Запрос на завершение опроса."""
     session_id: UUID

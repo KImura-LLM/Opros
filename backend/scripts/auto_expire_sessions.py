@@ -11,7 +11,6 @@ import asyncio
 from datetime import datetime, timezone
 
 from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
 from loguru import logger
 
 from app.core.database import async_session_maker
