@@ -230,105 +230,54 @@ scp file.txt opros-prod:/home/deploy/opros/
 - Do not patch production code directly on the server unless the user explicitly requests an emergency hotfix.
 - If an emergency hotfix is ever applied directly, it must be synchronized back into Git immediately afterward.
 
-## Mandatory Deployment Workflow
+## Deployment Instructions (Same as DEPLOY.md)
 
-Always use this order:
+Use this order for deployment:
 
-1. Check local worktree:
-   - `git status`
-2. Review changes before deploy.
-3. Commit locally with a clear message.
-4. Push to the main remote branch:
-   - `git push origin main`
-5. Connect to the server:
-   - `ssh opros-prod`
-6. Update code on the server:
+1. Connect to the server:
+   - `ssh root@147.45.249.254`
+2. Go to the project directory:
    - `cd /home/deploy/opros`
+3. Pull latest changes from Git:
    - `git pull origin main`
-7. Rebuild and restart production services:
+4. Rebuild and restart containers:
    - `docker compose -f docker-compose.prod.yml up -d --build`
-8. Apply migrations when backend models or schema changed:
+5. Apply DB migrations (if models changed):
    - `docker compose -f docker-compose.prod.yml exec backend alembic upgrade head`
+6. Check container status:
+   - `docker compose -f docker-compose.prod.yml ps`
+7. Check logs (if there are issues):
+   - `docker compose -f docker-compose.prod.yml logs --tail=50`
+   - `docker compose -f docker-compose.prod.yml logs --tail=50 backend`
+   - `docker compose -f docker-compose.prod.yml logs --tail=50 nginx`
 
-## Mandatory Post-Deploy Verification
+### Quick Deploy (single command, run on server)
 
-After every production deployment, verify all of the following:
+```bash
+cd /home/deploy/opros && git pull origin main && docker compose -f docker-compose.prod.yml up -d --build && docker compose -f docker-compose.prod.yml exec backend alembic upgrade head
+```
 
-### Container Status
+### App URLs
 
-- `docker compose -f docker-compose.prod.yml ps`
-
-Expected:
-- backend is `Up` and healthy
-- nginx is running
-- postgres is healthy
-- redis is healthy
-
-### Logs
-
-Always inspect logs immediately after deployment:
-
-- `docker compose -f docker-compose.prod.yml logs --tail=100 backend`
-- `docker compose -f docker-compose.prod.yml logs --tail=100 nginx`
-- If frontend changed, also inspect:
-  - `docker compose -f docker-compose.prod.yml logs --tail=100 frontend-builder`
-
-Look for:
-- startup failures
-- migration errors
-- Redis connection errors
-- database connection errors
-- Bitrix webhook exceptions
-- report generation failures
-- CSP violations or broken docs routes
-- 404/500 spikes in Nginx
-
-### Public Endpoint Checks
-
-Verify at least:
-
-- `https://opros-izdorov.ru/`
+- `https://opros-izdorov.ru`
+- `https://opros-izdorov.ru/admin`
 - `https://opros-izdorov.ru/docs`
 - `https://opros-izdorov.ru/redoc`
-- `https://opros-izdorov.ru/openapi.json`
-- `https://opros-izdorov.ru/admin`
-- `https://opros-izdorov.ru/health`
 
-### Browser-Level Verification
+### Emergency Stop
 
-Use Playwright or equivalent browser inspection for:
+```bash
+cd /home/deploy/opros
+docker compose -f docker-compose.prod.yml down
+```
 
-- Swagger UI renders successfully
-- ReDoc renders successfully
-- no blocking browser console errors on changed pages
-- no broken network requests on critical flows
+### Full Restart with Cleanup (danger: removes volumes)
 
-### Functional Smoke Tests
-
-When relevant to the change, verify:
-
-- survey start
-- answering at least one branch
-- report preview/export path
-- Bitrix-related endpoint behavior
-- admin page load
-
-## Monitoring and Error Review
-
-After deployment, do not stop at HTTP 200 checks.
-Always perform short-term monitoring:
-
-- review fresh backend logs
-- review fresh Nginx logs
-- watch for repeated errors for several minutes after restart
-- if the change affects CRM integration, check for incoming Bitrix webhook errors
-- if the change affects docs/admin/frontend, inspect browser console and network requests
-
-If any critical error appears after deployment:
-
-1. stop and document the failure clearly
-2. decide whether a fast rollback is safer than forward-fixing
-3. if rollback is needed, use Git to roll back to a known good revision and redeploy
+```bash
+cd /home/deploy/opros
+docker compose -f docker-compose.prod.yml down -v
+docker compose -f docker-compose.prod.yml up -d --build
+```
 
 ## Editing Rules
 

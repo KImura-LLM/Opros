@@ -172,3 +172,5 @@ opros-cicd/
 # Корневой package.json (не нужен)
 /package.json
 /package-lock.json
+
+AGENTS.md
