@@ -2,7 +2,7 @@
  * Главная страница - валидация токена
  */
 
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate, useSearchParams, useParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Loader2, AlertCircle } from 'lucide-react'
@@ -25,8 +25,12 @@ const HomePage: React.FC = () => {
   const [isStarting, setIsStarting] = useState(false)
 
   const { setToken, setSession, setConfig } = useSurveyStore()
+  const hasValidated = useRef(false)
 
   useEffect(() => {
+    if (hasValidated.current) return
+    hasValidated.current = true
+
     if (!token) {
       setError('Ссылка недействительна. Пожалуйста, используйте ссылку из SMS или email.')
       setIsLoading(false)

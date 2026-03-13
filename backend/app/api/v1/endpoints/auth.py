@@ -53,11 +53,16 @@ async def validate_token(
     
     # Определяем: это короткий код или JWT?
     # JWT всегда содержит точки (header.payload.signature), короткий код — нет
+    full_url = str(request.url)
+
     if _SHORT_CODE_PATTERN.match(token) and '.' not in token:
         # Это короткий код — ищем JWT в Redis
         jwt_token = await redis.get_jwt_by_short_code(token)
         if jwt_token is None:
-            logger.warning(f"Короткий код не найден или истёк: {token[:8]}...")
+            logger.warning(
+                f"[ССЫЛКА НЕДЕЙСТВИТЕЛЬНА] Короткий код не найден или истёк. "
+                f"URL: {full_url}"
+            )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Ссылка недействительна или срок её действия истёк",
@@ -68,7 +73,10 @@ async def validate_token(
     token_data = verify_token(jwt_token)
     
     if token_data is None:
-        logger.warning("Попытка валидации невалидного токена")
+        logger.warning(
+            f"[ССЫЛКА НЕДЕЙСТВИТЕЛЬНА] Невалидный JWT токен. "
+            f"URL: {full_url}"
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Ссылка недействительна или срок её действия истёк",
@@ -77,7 +85,10 @@ async def validate_token(
     # Проверка в blacklist
     is_blacklisted = await redis.is_token_blacklisted(token_data.token_hash)
     if is_blacklisted:
-        logger.warning(f"Токен в blacklist: lead_id={token_data.lead_id}")
+        logger.warning(
+            f"[ССЫЛКА НЕДЕЙСТВИТЕЛЬНА] Токен в blacklist: lead_id={token_data.lead_id}. "
+            f"URL: {full_url}"
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Эта ссылка уже была использована",
@@ -92,11 +103,19 @@ async def validate_token(
     
     if existing_session:
         if existing_session.status == "completed":
+            logger.warning(
+                f"[ССЫЛКА НЕДЕЙСТВИТЕЛЬНА] Опрос уже завершён: lead_id={token_data.lead_id}. "
+                f"URL: {full_url}"
+            )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Опрос уже был завершён",
             )
         
+        logger.info(
+            f"[ССЫЛКА ДЕЙСТВИТЕЛЬНА] Сессия восстановлена: lead_id={token_data.lead_id}, "
+            f"patient={mask_name(existing_session.patient_name)}. URL: {full_url}"
+        )
         return TokenValidationResponse(
             valid=True,
             session_id=existing_session.id,
@@ -118,7 +137,10 @@ async def validate_token(
         except Exception as e:
             logger.warning(f"Не удалось загрузить имя из CRM: {e}")
     
-    logger.info(f"Токен валиден: lead_id={token_data.lead_id}, patient={mask_name(patient_name)}")
+    logger.info(
+        f"[ССЫЛКА ДЕЙСТВИТЕЛЬНА] Токен валиден: lead_id={token_data.lead_id}, "
+        f"patient={mask_name(patient_name)}. URL: {full_url}"
+    )
     
     return TokenValidationResponse(
         valid=True,
