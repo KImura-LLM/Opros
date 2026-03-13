@@ -111,6 +111,7 @@ nginx (reverse proxy + SSL / Let's Encrypt)
 │   │   ├── survey_structure.json    # Опросник v1
 │   │   └── survey_structure_v2.json # Опросник v2 (расширенный)
 │   ├── alembic/versions/         # Миграции БД
+│   ├── tests/                    # Unit-тесты критичной backend-логики
 │   └── scripts/                  # Утилиты (seed, cleanup, expire)
 │
 └── frontend/
@@ -291,6 +292,52 @@ docker compose exec backend alembic upgrade head
 # Создать новую миграцию
 docker compose exec backend alembic revision --autogenerate -m "описание"
 ```
+
+---
+
+## 🧪 Тесты
+
+Сейчас в проекте добавлены базовые unit-тесты для движка опросника:
+
+- `backend/tests/test_survey_engine.py`
+
+Они нужны, чтобы быстро проверять критичную JSON-driven логику без ручного прохождения анкеты в браузере после каждой правки.
+
+Что покрывают тесты:
+
+- `default`-переходы между узлами
+- ветвление вида `selected contains ...`
+- числовые условия вроде `value >= 7`
+- cross-node условия, которые читают предыдущие ответы
+- расчёт прогресса без ложного учёта `info_screen`
+
+Когда запускать:
+
+- после изменений в `backend/app/services/survey_engine.py`
+- после изменений в `backend/data/survey_structure.json`
+- после изменений в `backend/data/survey_structure_v2.json`
+- перед коммитом, если менялась логика опроса
+
+Локальный запуск из корня репозитория:
+
+```powershell
+cd backend
+..\.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
+
+Запуск только тестов движка:
+
+```powershell
+cd backend
+..\.venv\Scripts\python.exe -m unittest tests.test_survey_engine -v
+```
+
+Как интерпретировать результат:
+
+- `OK` — базовая логика ветвления и прогресса не сломана
+- `FAIL` / `ERROR` — после изменения кода или JSON-конфигурации появилась несовместимость, нужна проверка `SurveyEngine` и структуры опросника
+
+Важно: это unit-тесты логики движка, а не полноценные e2e-тесты UI/API. Они не заменяют ручной smoke test всего опроса.
 
 ---
 
