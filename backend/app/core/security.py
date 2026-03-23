@@ -15,12 +15,16 @@ import string
 from jose import JWTError, jwt
 from pydantic import BaseModel
 from loguru import logger
+from passlib.context import CryptContext
 
 from app.core.config import settings
 
 # Алфавит Base62 (URL-safe, без спецсимволов)
 _SHORT_CODE_ALPHABET = string.ascii_letters + string.digits  # a-zA-Z0-9
 SHORT_CODE_LENGTH = 16  # 16 символов Base62 ≈ 95 бит энтропии
+DOCTOR_TOKEN_EXPIRE_HOURS = 12
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 class TokenData(BaseModel):
@@ -31,6 +35,13 @@ class TokenData(BaseModel):
     patient_name: Optional[str] = None
     entity_type: str = "DEAL"
     token_hash: str  # Хэш для инвалидации
+
+
+class DoctorTokenData(BaseModel):
+    """Данные авторизации врача, извлеченные из doctor JWT."""
+
+    doctor_id: int
+    username: str
 
 
 def create_access_token(
@@ -84,6 +95,30 @@ def create_access_token(
     return encoded_jwt
 
 
+def create_doctor_access_token(
+    doctor_id: int,
+    username: str,
+    expires_delta: Optional[timedelta] = None,
+) -> str:
+    """Создание JWT-токена для портала врачей."""
+    now = datetime.now(timezone.utc)
+    expire = now + (expires_delta or timedelta(hours=DOCTOR_TOKEN_EXPIRE_HOURS))
+
+    payload = {
+        "sub": str(doctor_id),
+        "u": username,
+        "scope": "doctor",
+        "exp": expire,
+        "iat": now,
+    }
+
+    return jwt.encode(
+        payload,
+        settings.JWT_SECRET_KEY,
+        algorithm=settings.JWT_ALGORITHM,
+    )
+
+
 def verify_token(token: str) -> Optional[TokenData]:
     """
     Валидация JWT токена.
@@ -122,6 +157,31 @@ def verify_token(token: str) -> Optional[TokenData]:
         return None
 
 
+def verify_doctor_token(token: str) -> Optional[DoctorTokenData]:
+    """Проверка JWT-токена врача."""
+    try:
+        payload = jwt.decode(
+            token,
+            settings.JWT_SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM],
+        )
+        if payload.get("scope") != "doctor":
+            return None
+
+        doctor_id = payload.get("sub")
+        username = payload.get("u")
+        if doctor_id is None or username is None:
+            return None
+
+        return DoctorTokenData(
+            doctor_id=int(doctor_id),
+            username=str(username),
+        )
+    except (JWTError, ValueError, TypeError) as e:
+        logger.warning(f"Ошибка валидации doctor token: {e}")
+        return None
+
+
 def get_token_hash(token: str) -> str:
     """
     Получение хэша токена для инвалидации.
@@ -133,6 +193,16 @@ def get_token_hash(token: str) -> str:
         SHA256 хэш токена
     """
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def get_password_hash(password: str) -> str:
+    """Хэширование пароля врача."""
+    return pwd_context.hash(password)
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Проверка пароля врача по хэшу."""
+    return pwd_context.verify(plain_password, hashed_password)
 
 
 def generate_short_code(length: int = SHORT_CODE_LENGTH) -> str:

@@ -17,7 +17,7 @@ from alembic import context
 # Импорт моделей и настроек
 from app.core.config import settings
 from app.core.database import Base
-from app.models import SurveyConfig, SurveySession, SurveyAnswer, AuditLog
+from app.models import DoctorUser, SurveyConfig, SurveySession, SurveyAnswer, AuditLog
 
 # Конфигурация Alembic
 config = context.config

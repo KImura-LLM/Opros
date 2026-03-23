@@ -212,6 +212,15 @@ async def bitrix_webhook(
             logger.info(f"Имя пациента загружено из CRM: {mask_name(patient_name)}")
         else:
             logger.warning(f"Не удалось получить имя пациента из CRM для сделки {lead_id}")
+
+    if entity_type == "DEAL" and settings.BITRIX24_WEBHOOK_URL:
+        try:
+            bitrix_client = Bitrix24Client()
+            doctor_name = await bitrix_client.get_doctor_name_from_deal(lead_id)
+            if doctor_name:
+                logger.info(f"Имя врача загружено из CRM для сделки {lead_id}")
+        except Exception as e:
+            logger.warning(f"Не удалось загрузить имя врача из CRM для сделки {lead_id}: {e}")
     
     # Генерация JWT токена (компактный — без patient_name для короткой ссылки)
     token = create_access_token(

@@ -676,6 +676,15 @@
                             </a>
                         </li>
                         <li class="nav-item">
+                            <a class="nav-link {% if '/admin/doctor-user' in request.url.path %}active{% endif %}" 
+                               href="{{ url_for('admin:list', identity='doctor-user') }}">
+                                <span class="nav-link-icon d-md-none d-lg-inline-block">
+                                    <i class="fa-solid fa-user-doctor"></i>
+                                </span>
+                                <span class="nav-link-title">Настройка врачей</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
                             <a class="nav-link {% if '/admin/analytics' in request.url.path %}active{% endif %}" 
                                href="/admin/analytics">
                                 <span class="nav-link-icon d-md-none d-lg-inline-block">

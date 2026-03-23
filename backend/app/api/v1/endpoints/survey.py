@@ -190,16 +190,26 @@ async def start_survey(
     # Создание новой сессии
     # Если имя отсутствует в токене (компактный JWT) — загружаем из CRM
     patient_name = token_data.patient_name
+    doctor_name = None
     if not patient_name and settings.BITRIX24_WEBHOOK_URL:
         try:
             bitrix_client = Bitrix24Client()
             entity_type = token_data.entity_type or "DEAL"
             if entity_type == "DEAL":
                 patient_name = await bitrix_client.get_patient_name_from_deal(token_data.lead_id)
+                doctor_name = await bitrix_client.get_doctor_name_from_deal(token_data.lead_id)
             if patient_name:
                 logger.info(f"Имя пациента загружено из CRM при старте опроса: {mask_name(patient_name)}")
         except Exception as e:
             logger.warning(f"Не удалось загрузить имя из CRM: {e}")
+    elif settings.BITRIX24_WEBHOOK_URL:
+        try:
+            bitrix_client = Bitrix24Client()
+            entity_type = token_data.entity_type or "DEAL"
+            if entity_type == "DEAL":
+                doctor_name = await bitrix_client.get_doctor_name_from_deal(token_data.lead_id)
+        except Exception as e:
+            logger.warning(f"Не удалось загрузить имя врача из CRM: {e}")
     
     # Получаем реальный IP клиента (учитываем прокси nginx)
     client_ip = (
@@ -216,6 +226,7 @@ async def start_survey(
         lead_id=token_data.lead_id,
         entity_type=token_data.entity_type,
         patient_name=patient_name,
+        doctor_name=doctor_name,
         survey_config_id=config.id,
         token_hash=token_data.token_hash,
         status="in_progress",

@@ -14,6 +14,7 @@ from loguru import logger
 from app.core.config import settings
 from app.core.database import engine
 from app.models import SurveyConfig, SurveySession, SurveyAnswer, AuditLog
+from app.admin.doctor_view import DoctorUserAdmin
 
 
 class AdminAuth(AuthenticationBackend):
@@ -194,6 +195,7 @@ class SurveySessionAdmin(ModelView, model=SurveySession):
         SurveySession.id,
         SurveySession.lead_id,
         SurveySession.patient_name,
+        SurveySession.doctor_name,
         SurveySession.status,
         SurveySession.consent_given,
         SurveySession.started_at,
@@ -201,7 +203,7 @@ class SurveySessionAdmin(ModelView, model=SurveySession):
         "report_actions",  # Кастомная колонка для кнопок
     ]
     
-    column_searchable_list = [SurveySession.lead_id, SurveySession.patient_name]
+    column_searchable_list = [SurveySession.lead_id, SurveySession.patient_name, SurveySession.doctor_name]
     column_sortable_list = [
         SurveySession.lead_id,
         SurveySession.status,
@@ -364,6 +366,7 @@ class SurveySessionAdmin(ModelView, model=SurveySession):
         SurveySession.id,
         SurveySession.lead_id,
         SurveySession.patient_name,
+        SurveySession.doctor_name,
         SurveySession.status,
         SurveySession.consent_given,
         SurveySession.started_at,
@@ -712,3 +715,4 @@ def setup_admin(app):
     admin.add_view(SurveySessionAdmin)
     admin.add_view(SurveyAnswerAdmin)
     admin.add_view(AuditLogAdmin)
+    admin.add_view(DoctorUserAdmin)

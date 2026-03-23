@@ -11,6 +11,7 @@ import ErrorPage from '@/pages/ErrorPage'
 
 const EditorPage = lazy(() => import('@/pages/EditorPage'))
 const AnalysisEditorPage = lazy(() => import('@/pages/AnalysisEditorPage'))
+const DoctorPortalPage = lazy(() => import('@/pages/doctors/DoctorPortalPage'))
 
 function App() {
   const location = useLocation()
@@ -40,6 +41,7 @@ function App() {
               <Route path="/survey" element={<SurveyPage />} />
               <Route path="/complete" element={<CompletePage />} />
               <Route path="/error" element={<ErrorPage />} />
+              <Route path="/doctors" element={<DoctorPortalPage />} />
 
               {/* Редактор опросника (для админ-панели) */}
               <Route path="/editor/:surveyId" element={<EditorPage />} />

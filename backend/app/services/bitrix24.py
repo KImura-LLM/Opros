@@ -324,6 +324,47 @@ class Bitrix24Client:
         
         return full_name or None
 
+    @staticmethod
+    def extract_doctor_name_from_deal(deal_data: dict | None) -> Optional[str]:
+        """
+        Извлекает ФИО врача из сделки с учетом воронки.
+
+        Карта полей:
+        - Воронка 0: UF_CRM_1665032105080
+        - Воронка 1: UF_CRM_1688542532
+        - Воронка 3: UF_CRM_1616736315899
+        """
+        if not deal_data:
+            return None
+
+        category_id = str(deal_data.get("CATEGORY_ID", "")).strip()
+        field_map = {
+            "0": "UF_CRM_1665032105080",
+            "1": "UF_CRM_1688542532",
+            "3": "UF_CRM_1616736315899",
+        }
+
+        field_name = field_map.get(category_id)
+        if not field_name:
+            return None
+
+        doctor_name = deal_data.get(field_name)
+        if doctor_name is None:
+            return None
+
+        doctor_name = str(doctor_name).strip()
+        return doctor_name or None
+
+    async def get_doctor_name_from_deal(self, deal_id: int) -> Optional[str]:
+        """Получает ФИО врача из сделки Битрикс24."""
+        deal = await self.get_deal(deal_id)
+        doctor_name = self.extract_doctor_name_from_deal(deal)
+
+        if doctor_name:
+            logger.info(f"Имя врача из Битрикс24 получено для сделки {deal_id}")
+
+        return doctor_name
+
     async def upload_pdf_to_entity(
         self,
         entity_id: int,

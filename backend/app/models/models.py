@@ -61,6 +61,7 @@ class SurveySession(Base):
     lead_id = Column(BigInteger, nullable=False, index=True, comment="ID сделки/лида в Битрикс24")
     entity_type = Column(String(10), default="DEAL", comment="Тип сущности: DEAL или LEAD")
     patient_name = Column(String(255), nullable=True, comment="Имя пациента (для приветствия)")
+    doctor_name = Column(String(255), nullable=True, comment="ФИО врача из Битрикс24")
     
     # Привязка к конфигу опроса
     survey_config_id = Column(Integer, ForeignKey("survey_configs.id"), nullable=False)
