@@ -41,6 +41,36 @@ class DoctorPortalBitrixMappingTests(unittest.TestCase):
 
         self.assertEqual(doctor_name, "Сидорова Анна Викторовна")
 
+    def test_extracts_doctor_name_for_test_funnel_19_from_first_supported_field(self) -> None:
+        deal_data = {
+            "CATEGORY_ID": "19",
+            "UF_CRM_1665032105080": "Иванов Иван Иванович",
+        }
+
+        doctor_name = Bitrix24Client.extract_doctor_name_from_deal(deal_data)
+
+        self.assertEqual(doctor_name, "Иванов Иван Иванович")
+
+    def test_extracts_doctor_name_for_test_funnel_19_from_second_supported_field(self) -> None:
+        deal_data = {
+            "CATEGORY_ID": "19",
+            "UF_CRM_1688542532": "Петров Петр Петрович",
+        }
+
+        doctor_name = Bitrix24Client.extract_doctor_name_from_deal(deal_data)
+
+        self.assertEqual(doctor_name, "Петров Петр Петрович")
+
+    def test_extracts_doctor_name_for_test_funnel_19_from_third_supported_field(self) -> None:
+        deal_data = {
+            "CATEGORY_ID": "19",
+            "UF_CRM_1616736315899": "Сидорова Анна Викторовна",
+        }
+
+        doctor_name = Bitrix24Client.extract_doctor_name_from_deal(deal_data)
+
+        self.assertEqual(doctor_name, "Сидорова Анна Викторовна")
+
     def test_returns_none_for_unknown_funnel(self) -> None:
         deal_data = {
             "CATEGORY_ID": "7",

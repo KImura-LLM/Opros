@@ -333,27 +333,37 @@ class Bitrix24Client:
         - Воронка 0: UF_CRM_1665032105080
         - Воронка 1: UF_CRM_1688542532
         - Воронка 3: UF_CRM_1616736315899
+        - Воронка 19: проверяет все три поля по очереди
         """
         if not deal_data:
             return None
 
         category_id = str(deal_data.get("CATEGORY_ID", "")).strip()
         field_map = {
-            "0": "UF_CRM_1665032105080",
-            "1": "UF_CRM_1688542532",
-            "3": "UF_CRM_1616736315899",
+            "0": ["UF_CRM_1665032105080"],
+            "1": ["UF_CRM_1688542532"],
+            "3": ["UF_CRM_1616736315899"],
+            "19": [
+                "UF_CRM_1665032105080",
+                "UF_CRM_1688542532",
+                "UF_CRM_1616736315899",
+            ],
         }
 
-        field_name = field_map.get(category_id)
-        if not field_name:
+        field_names = field_map.get(category_id)
+        if not field_names:
             return None
 
-        doctor_name = deal_data.get(field_name)
-        if doctor_name is None:
-            return None
+        for field_name in field_names:
+            doctor_name = deal_data.get(field_name)
+            if doctor_name is None:
+                continue
 
-        doctor_name = str(doctor_name).strip()
-        return doctor_name or None
+            doctor_name = str(doctor_name).strip()
+            if doctor_name:
+                return doctor_name
+
+        return None
 
     async def get_doctor_name_from_deal(self, deal_id: int) -> Optional[str]:
         """Получает ФИО врача из сделки Битрикс24."""
