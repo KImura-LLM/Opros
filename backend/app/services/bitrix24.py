@@ -12,7 +12,7 @@ HTTP-клиент для отправки данных в Битрикс24.
 import base64
 import httpx
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 from zoneinfo import ZoneInfo
 from loguru import logger
 
@@ -286,6 +286,71 @@ class Bitrix24Client:
             logger.error(f"Ошибка получения контакта из Битрикс24: {e}")
             return None
 
+    async def get_user(self, user_id: int) -> Optional[dict]:
+        """
+        Получение данных сотрудника Bitrix24.
+
+        Метод API: user.get
+        """
+        if not self.webhook_url:
+            return None
+
+        method_url = f"{self.webhook_url.rstrip('/')}/user.get"
+        payload = {"ID": user_id}
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(method_url, json=payload)
+                response.raise_for_status()
+
+                result = response.json().get("result")
+                if isinstance(result, list):
+                    return result[0] if result else None
+                if isinstance(result, dict):
+                    return result
+                return None
+        except Exception as e:
+            logger.error(f"Ошибка получения сотрудника из Битрикс24: {e}")
+            return None
+
+    @staticmethod
+    def _extract_first_scalar(value: Any) -> Any:
+        """Возвращает первое скалярное значение из поля Bitrix, если оно вложено."""
+        if isinstance(value, (list, tuple)):
+            for item in value:
+                normalized = Bitrix24Client._extract_first_scalar(item)
+                if normalized not in (None, ""):
+                    return normalized
+            return None
+
+        if isinstance(value, dict):
+            for key in ("VALUE", "value", "NAME", "name", "TITLE", "title", "ID", "id"):
+                if key in value:
+                    normalized = Bitrix24Client._extract_first_scalar(value[key])
+                    if normalized not in (None, ""):
+                        return normalized
+            return None
+
+        return value
+
+    @staticmethod
+    def _build_full_name(last_name: str | None, name: str | None, second_name: str | None) -> Optional[str]:
+        full_name = " ".join(part.strip() for part in [last_name or "", name or "", second_name or ""] if part and part.strip())
+        return full_name or None
+
+    @staticmethod
+    def _normalize_doctor_field_value(raw_value: Any) -> Optional[str]:
+        normalized = Bitrix24Client._extract_first_scalar(raw_value)
+        if normalized is None:
+            return None
+
+        doctor_name = str(normalized).strip()
+        return doctor_name or None
+
+    @staticmethod
+    def _looks_like_bitrix_user_id(value: str) -> bool:
+        return value.isdigit()
+
     async def get_patient_name_from_deal(self, deal_id: int) -> Optional[str]:
         """
         Получение ФИО пациента (контакта) из сделки.
@@ -355,11 +420,10 @@ class Bitrix24Client:
             return None
 
         for field_name in field_names:
-            doctor_name = deal_data.get(field_name)
+            doctor_name = Bitrix24Client._normalize_doctor_field_value(deal_data.get(field_name))
             if doctor_name is None:
                 continue
 
-            doctor_name = str(doctor_name).strip()
             if doctor_name:
                 return doctor_name
 
@@ -369,6 +433,20 @@ class Bitrix24Client:
         """Получает ФИО врача из сделки Битрикс24."""
         deal = await self.get_deal(deal_id)
         doctor_name = self.extract_doctor_name_from_deal(deal)
+
+        if doctor_name and self._looks_like_bitrix_user_id(doctor_name):
+            user = await self.get_user(int(doctor_name))
+            if user:
+                resolved_name = self._build_full_name(
+                    user.get("LAST_NAME"),
+                    user.get("NAME"),
+                    user.get("SECOND_NAME"),
+                )
+                if resolved_name:
+                    logger.info(
+                        f"Имя врача из Битрикс24 получено по ID сотрудника для сделки {deal_id}"
+                    )
+                    return resolved_name
 
         if doctor_name:
             logger.info(f"Имя врача из Битрикс24 получено для сделки {deal_id}")

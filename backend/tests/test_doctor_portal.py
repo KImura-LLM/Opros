@@ -1,6 +1,7 @@
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import AsyncMock
 
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
@@ -99,6 +100,73 @@ class DoctorPortalBitrixMappingTests(unittest.TestCase):
         doctor_name = Bitrix24Client.extract_doctor_name_from_deal(deal_data)
 
         self.assertIsNone(doctor_name)
+
+    def test_extracts_first_value_from_list_field(self) -> None:
+        deal_data = {
+            "CATEGORY_ID": "19",
+            "UF_CRM_1688542532": ["", "Иванов Иван Иванович"],
+        }
+
+        doctor_name = Bitrix24Client.extract_doctor_name_from_deal(deal_data)
+
+        self.assertEqual(doctor_name, "Иванов Иван Иванович")
+
+    def test_extracts_value_from_dict_field(self) -> None:
+        deal_data = {
+            "CATEGORY_ID": "19",
+            "UF_CRM_1616736315899": {"VALUE": "Петров Петр Петрович"},
+        }
+
+        doctor_name = Bitrix24Client.extract_doctor_name_from_deal(deal_data)
+
+        self.assertEqual(doctor_name, "Петров Петр Петрович")
+
+    def test_resolves_bitrix_user_id_to_full_name(self) -> None:
+        client = Bitrix24Client("https://example.invalid/rest")
+        client.get_deal = AsyncMock(return_value={
+            "CATEGORY_ID": "19",
+            "UF_CRM_1665032105080": 3959,
+        })
+        client.get_user = AsyncMock(return_value={
+            "LAST_NAME": "Иванов",
+            "NAME": "Иван",
+            "SECOND_NAME": "Иванович",
+        })
+
+        doctor_name = self._run_async(client.get_doctor_name_from_deal(123))
+
+        self.assertEqual(doctor_name, "Иванов Иван Иванович")
+
+    def test_keeps_text_doctor_name_without_user_lookup(self) -> None:
+        client = Bitrix24Client("https://example.invalid/rest")
+        client.get_deal = AsyncMock(return_value={
+            "CATEGORY_ID": "19",
+            "UF_CRM_1688542532": "Сидорова Анна Викторовна",
+        })
+        client.get_user = AsyncMock()
+
+        doctor_name = self._run_async(client.get_doctor_name_from_deal(123))
+
+        self.assertEqual(doctor_name, "Сидорова Анна Викторовна")
+        client.get_user.assert_not_called()
+
+    def test_falls_back_to_raw_value_when_user_lookup_returns_nothing(self) -> None:
+        client = Bitrix24Client("https://example.invalid/rest")
+        client.get_deal = AsyncMock(return_value={
+            "CATEGORY_ID": "19",
+            "UF_CRM_1665032105080": "3959",
+        })
+        client.get_user = AsyncMock(return_value=None)
+
+        doctor_name = self._run_async(client.get_doctor_name_from_deal(123))
+
+        self.assertEqual(doctor_name, "3959")
+
+    @staticmethod
+    def _run_async(awaitable):
+        import asyncio
+
+        return asyncio.run(awaitable)
 
 
 if __name__ == "__main__":
