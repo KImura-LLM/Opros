@@ -21,6 +21,7 @@ from app.core.security import (
     verify_password,
 )
 from app.models import DoctorUser, SurveySession
+from app.services.bitrix24 import Bitrix24Client
 
 
 router = APIRouter(prefix="/doctors", tags=["Портал врачей"])
@@ -159,6 +160,24 @@ async def doctor_sessions(
     stmt = stmt.order_by(SurveySession.started_at.desc())
     result = await db.execute(stmt)
     sessions = result.scalars().all()
+
+    bitrix_client: Bitrix24Client | None = None
+    has_updates = False
+    for session in sessions:
+        raw_doctor_name = (session.doctor_name or "").strip()
+        if not raw_doctor_name or not raw_doctor_name.isdigit() or not session.lead_id:
+            continue
+
+        if bitrix_client is None:
+            bitrix_client = Bitrix24Client()
+
+        resolved_name = await bitrix_client.get_doctor_name_from_deal(session.lead_id)
+        if resolved_name and resolved_name != raw_doctor_name:
+            session.doctor_name = resolved_name
+            has_updates = True
+
+    if has_updates:
+        await db.commit()
 
     items = [
         DoctorSessionItem(

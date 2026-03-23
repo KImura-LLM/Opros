@@ -28,6 +28,17 @@ class Bitrix24Client:
     в ленту сделок/лидов.
     """
     
+    DOCTOR_FIELD_MAP = {
+        "0": ["UF_CRM_1665032105080"],
+        "1": ["UF_CRM_1688542532"],
+        "3": ["UF_CRM_1616736315899"],
+        "19": [
+            "UF_CRM_1665032105080",
+            "UF_CRM_1688542532",
+            "UF_CRM_1616736315899",
+        ],
+    }
+
     def __init__(self, webhook_url: Optional[str] = None):
         """
         Инициализация клиента.
@@ -313,6 +324,25 @@ class Bitrix24Client:
             logger.error(f"Ошибка получения сотрудника из Битрикс24: {e}")
             return None
 
+    async def get_deal_field_definition(self, field_name: str) -> Optional[dict]:
+        """Возвращает метаданные поля сделки из Bitrix24."""
+        if not self.webhook_url:
+            return None
+
+        method_url = f"{self.webhook_url.rstrip('/')}/crm.deal.fields"
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(method_url, json={})
+                response.raise_for_status()
+
+                result = response.json().get("result", {})
+                field_definition = result.get(field_name)
+                return field_definition if isinstance(field_definition, dict) else None
+        except Exception as e:
+            logger.error(f"Ошибка получения метаданных поля сделки из Битрикс24: {e}")
+            return None
+
     @staticmethod
     def _extract_first_scalar(value: Any) -> Any:
         """Возвращает первое скалярное значение из поля Bitrix, если оно вложено."""
@@ -350,6 +380,29 @@ class Bitrix24Client:
     @staticmethod
     def _looks_like_bitrix_user_id(value: str) -> bool:
         return value.isdigit()
+
+    @staticmethod
+    def _resolve_enumeration_item_value(field_definition: dict | None, raw_value: str) -> Optional[str]:
+        if not field_definition or field_definition.get("type") != "enumeration":
+            return None
+
+        items = field_definition.get("items")
+        if not isinstance(items, list):
+            return None
+
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+
+            item_id = str(item.get("ID", "")).strip()
+            if item_id != raw_value:
+                continue
+
+            resolved_value = Bitrix24Client._normalize_doctor_field_value(item.get("VALUE"))
+            if resolved_value:
+                return resolved_value
+
+        return None
 
     async def get_patient_name_from_deal(self, deal_id: int) -> Optional[str]:
         """
@@ -404,18 +457,7 @@ class Bitrix24Client:
             return None
 
         category_id = str(deal_data.get("CATEGORY_ID", "")).strip()
-        field_map = {
-            "0": ["UF_CRM_1665032105080"],
-            "1": ["UF_CRM_1688542532"],
-            "3": ["UF_CRM_1616736315899"],
-            "19": [
-                "UF_CRM_1665032105080",
-                "UF_CRM_1688542532",
-                "UF_CRM_1616736315899",
-            ],
-        }
-
-        field_names = field_map.get(category_id)
+        field_names = Bitrix24Client.DOCTOR_FIELD_MAP.get(category_id)
         if not field_names:
             return None
 
@@ -429,9 +471,58 @@ class Bitrix24Client:
 
         return None
 
+    async def resolve_doctor_name_from_deal_data(self, deal_data: dict | None) -> Optional[str]:
+        """Превращает значение поля врача в итоговое ФИО."""
+        if not deal_data:
+            return None
+
+        category_id = str(deal_data.get("CATEGORY_ID", "")).strip()
+        field_names = self.DOCTOR_FIELD_MAP.get(category_id)
+        if not field_names:
+            return None
+
+        deal_label = deal_data.get("ID") or "unknown"
+
+        for field_name in field_names:
+            doctor_name = self._normalize_doctor_field_value(deal_data.get(field_name))
+            if doctor_name is None:
+                continue
+
+            if self._looks_like_bitrix_user_id(doctor_name):
+                field_definition = await self.get_deal_field_definition(field_name)
+                resolved_enum_value = self._resolve_enumeration_item_value(field_definition, doctor_name)
+                if resolved_enum_value:
+                    logger.info(
+                        f"Имя врача из Битрикс24 получено из справочника поля для сделки {deal_label}"
+                    )
+                    return resolved_enum_value
+
+                user = await self.get_user(int(doctor_name))
+                if user:
+                    resolved_name = self._build_full_name(
+                        user.get("LAST_NAME"),
+                        user.get("NAME"),
+                        user.get("SECOND_NAME"),
+                    )
+                    if resolved_name:
+                        logger.info(
+                            f"Имя врача из Битрикс24 получено по ID сотрудника для сделки {deal_label}"
+                        )
+                        return resolved_name
+
+            logger.info(f"Имя врача из Битрикс24 получено для сделки {deal_label}")
+            return doctor_name
+
+        return None
+
     async def get_doctor_name_from_deal(self, deal_id: int) -> Optional[str]:
         """Получает ФИО врача из сделки Битрикс24."""
         deal = await self.get_deal(deal_id)
+        if isinstance(deal, dict) and "ID" not in deal:
+            deal["ID"] = deal_id
+        resolved_doctor_name = await self.resolve_doctor_name_from_deal_data(deal)
+        if resolved_doctor_name is not None:
+            return resolved_doctor_name
         doctor_name = self.extract_doctor_name_from_deal(deal)
 
         if doctor_name and self._looks_like_bitrix_user_id(doctor_name):

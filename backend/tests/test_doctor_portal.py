@@ -127,6 +127,7 @@ class DoctorPortalBitrixMappingTests(unittest.TestCase):
             "CATEGORY_ID": "19",
             "UF_CRM_1665032105080": 3959,
         })
+        client.get_deal_field_definition = AsyncMock(return_value=None)
         client.get_user = AsyncMock(return_value={
             "LAST_NAME": "Иванов",
             "NAME": "Иван",
@@ -156,11 +157,31 @@ class DoctorPortalBitrixMappingTests(unittest.TestCase):
             "CATEGORY_ID": "19",
             "UF_CRM_1665032105080": "3959",
         })
+        client.get_deal_field_definition = AsyncMock(return_value=None)
         client.get_user = AsyncMock(return_value=None)
 
         doctor_name = self._run_async(client.get_doctor_name_from_deal(123))
 
         self.assertEqual(doctor_name, "3959")
+
+    def test_resolves_enumeration_doctor_id_to_label(self) -> None:
+        client = Bitrix24Client("https://example.invalid/rest")
+        client.get_deal = AsyncMock(return_value={
+            "CATEGORY_ID": "19",
+            "UF_CRM_1616736315899": "3959",
+        })
+        client.get_deal_field_definition = AsyncMock(return_value={
+            "type": "enumeration",
+            "items": [
+                {"ID": "3959", "VALUE": "Авдеева Надежда Алексеевна"},
+            ],
+        })
+        client.get_user = AsyncMock(return_value=None)
+
+        doctor_name = self._run_async(client.get_doctor_name_from_deal(123))
+
+        self.assertEqual(doctor_name, "Авдеева Надежда Алексеевна")
+        client.get_user.assert_not_called()
 
     @staticmethod
     def _run_async(awaitable):
