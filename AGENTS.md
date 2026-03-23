@@ -190,39 +190,17 @@ Rules:
 
 ## Required Non-Interactive Server Access Method
 
-The preferred way to avoid asking the user for a server password is:
+SSH key authentication is fully configured for `root@147.45.249.254`.
+**AI Agents must use single-line remote SSH commands** to perform server actions instead of starting interactive sessions.
 
-1. Create an SSH key locally if one does not exist:
-   - `ssh-keygen -t ed25519 -C "deploy@opros"`
-2. Install the public key on the server for the deployment user.
-3. Load the private key into `ssh-agent`:
-   - Windows PowerShell:
-     - `Get-Service ssh-agent | Set-Service -StartupType Automatic`
-     - `Start-Service ssh-agent`
-     - `ssh-add $env:USERPROFILE\\.ssh\\id_ed25519`
-4. Add a local SSH config entry outside the repo:
-   - File: `~/.ssh/config`
-   - Example:
-
-```sshconfig
-Host opros-prod
-    HostName opros-izdorov.ru
-    User deploy
-    IdentityFile ~/.ssh/id_ed25519
-```
-
-Then use:
-
+Example pattern for AI agents (called directly from the VS Code terminal):
 ```bash
-ssh opros-prod
-scp file.txt opros-prod:/home/deploy/opros/
+ssh root@147.45.249.254 "cd /home/deploy/opros && <your command>"
 ```
 
 ### Password Handling Policy
 
-- Do not automate password entry by hardcoding passwords into shell commands, repository files, `AGENTS.md`, `.bat`, `.ps1`, or committed scripts.
-- Do not use plaintext passwords in Git history.
-- If password-only access still exists temporarily, migrate to SSH keys as soon as possible.
+- **Zero Passwords:** SSH keys are used exclusively. Do not use, ask for, or store plaintext passwords in Git history, repository files, `AGENTS.md`, or deployment scripts.
 
 ## Git-Only Deployment Policy
 
@@ -230,31 +208,24 @@ scp file.txt opros-prod:/home/deploy/opros/
 - Do not patch production code directly on the server unless the user explicitly requests an emergency hotfix.
 - If an emergency hotfix is ever applied directly, it must be synchronized back into Git immediately afterward.
 
-## Deployment Instructions (Same as DEPLOY.md)
+## Deployment Instructions (Non-Interactive AI-Agent flow)
 
-Use this order for deployment:
-
-1. Connect to the server:
-   - `ssh root@147.45.249.254`
-2. Go to the project directory:
-   - `cd /home/deploy/opros`
-3. Pull latest changes from Git:
-   - `git pull origin main`
-4. Rebuild and restart containers:
-   - `docker compose -f docker-compose.prod.yml up -d --build`
-5. Apply DB migrations (if models changed):
-   - `docker compose -f docker-compose.prod.yml exec backend alembic upgrade head`
-6. Check container status:
-   - `docker compose -f docker-compose.prod.yml ps`
-7. Check logs (if there are issues):
-   - `docker compose -f docker-compose.prod.yml logs --tail=50`
-   - `docker compose -f docker-compose.prod.yml logs --tail=50 backend`
-   - `docker compose -f docker-compose.prod.yml logs --tail=50 nginx`
-
-### Quick Deploy (single command, run on server)
+Agents should deploy new versions by running this combined command from the local VS Code terminal:
 
 ```bash
-cd /home/deploy/opros && git pull origin main && docker compose -f docker-compose.prod.yml up -d --build && docker compose -f docker-compose.prod.yml exec backend alembic upgrade head
+ssh root@147.45.249.254 "cd /home/deploy/opros && \
+git pull origin main && \
+docker compose -f docker-compose.prod.yml up -d --build && \
+docker compose -f docker-compose.prod.yml exec -w /app backend sh -lc 'PYTHONPATH=/app alembic -c alembic.ini upgrade head'"
+```
+
+### Validating Deployments remotely
+Check logs or container status using remote non-interactive calls:
+```bash
+ssh root@147.45.249.254 "cd /home/deploy/opros && docker compose -f docker-compose.prod.yml ps"
+```
+```bash
+ssh root@147.45.249.254 "cd /home/deploy/opros && docker compose -f docker-compose.prod.yml logs --tail=50 backend"
 ```
 
 ### App URLs

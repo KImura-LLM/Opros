@@ -5,7 +5,8 @@ AGENTS.md
 __pycache__/
 *.py[cod]
 *$py.class
-
+.agents/
+.agent/
 # C extensions
 *.so
 
