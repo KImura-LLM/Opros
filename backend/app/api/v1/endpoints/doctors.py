@@ -165,7 +165,8 @@ async def doctor_sessions(
     has_updates = False
     for session in sessions:
         raw_doctor_name = (session.doctor_name or "").strip()
-        if not raw_doctor_name or not raw_doctor_name.isdigit() or not session.lead_id:
+        needs_resolution = (not raw_doctor_name) or raw_doctor_name.isdigit()
+        if not needs_resolution or not session.lead_id:
             continue
 
         if bitrix_client is None:
