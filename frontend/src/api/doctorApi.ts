@@ -1,6 +1,7 @@
 import { useDoctorStore } from '@/store/doctorStore'
 import type {
   DoctorAuthResponse,
+  DoctorClinicBucket,
   DoctorMeResponse,
   DoctorSessionsResponse,
 } from '@/types'
@@ -94,18 +95,20 @@ export async function getDoctorMe(): Promise<DoctorMeResponse> {
 }
 
 export async function getDoctorSessions(params: {
+  clinicBucket: DoctorClinicBucket
   doctorName?: string
   dateFrom?: string
   dateTo?: string
 }): Promise<DoctorSessionsResponse> {
   const searchParams = new URLSearchParams()
 
+  searchParams.set('clinic_bucket', params.clinicBucket)
   if (params.doctorName) searchParams.set('doctor_name', params.doctorName)
   if (params.dateFrom) searchParams.set('date_from', params.dateFrom)
   if (params.dateTo) searchParams.set('date_to', params.dateTo)
 
   const query = searchParams.toString()
-  return doctorFetch<DoctorSessionsResponse>(`/doctors/sessions${query ? `?${query}` : ''}`)
+  return doctorFetch<DoctorSessionsResponse>(`/doctors/sessions?${query}`)
 }
 
 export async function fetchDoctorPreviewHtml(previewUrl: string): Promise<string> {

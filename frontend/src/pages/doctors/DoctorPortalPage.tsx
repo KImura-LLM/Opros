@@ -1,4 +1,4 @@
-import { startTransition, useDeferredValue, useEffect, useState } from 'react'
+import { startTransition, useDeferredValue, useEffect, useMemo, useState } from 'react'
 
 import {
   doctorLogin,
@@ -7,23 +7,36 @@ import {
   getDoctorMe,
   getDoctorSessions,
 } from '@/api/doctorApi'
-import type { DoctorSessionItem } from '@/types'
 import { useDoctorStore } from '@/store/doctorStore'
+import type { DoctorClinicBucket, DoctorSessionItem } from '@/types'
 
 import DoctorDashboard from './DoctorDashboard'
 import DoctorLogin from './DoctorLogin'
+
+const DOCTOR_PORTAL_TABS: Array<{ id: DoctorClinicBucket; label: string }> = [
+  { id: 'novosibirsk', label: 'Новосибирск' },
+  { id: 'kemerovo', label: 'Кемерово' },
+  { id: 'yaroslavl', label: 'Ярославль' },
+  { id: 'test', label: 'Тест' },
+]
+
+function getAvailableTabs(canViewTestTab: boolean) {
+  return DOCTOR_PORTAL_TABS.filter((tab) => canViewTestTab || tab.id !== 'test')
+}
 
 export default function DoctorPortalPage() {
   const {
     token,
     doctor,
     filters,
+    activeClinicBucket,
     hydrateAuth,
     setAuth,
     clearAuth,
     setDoctorNameFilter,
     setDateFrom,
     setDateTo,
+    setActiveClinicBucket,
     resetFilters,
   } = useDoctorStore()
 
@@ -76,10 +89,24 @@ export default function DoctorPortalPage() {
     }
   }, [token, clearAuth, setAuth])
 
+  const availableTabs = useMemo(
+    () => getAvailableTabs(Boolean(doctor?.can_view_test_tab)),
+    [doctor?.can_view_test_tab]
+  )
+
+  useEffect(() => {
+    if (!doctor) return
+
+    const hasActiveTab = availableTabs.some((tab) => tab.id === activeClinicBucket)
+    if (!hasActiveTab) {
+      setActiveClinicBucket(availableTabs[0]?.id ?? 'novosibirsk')
+    }
+  }, [doctor, availableTabs, activeClinicBucket, setActiveClinicBucket])
+
   useEffect(() => {
     let cancelled = false
 
-    if (!token) {
+    if (!token || !doctor) {
       setSessions([])
       setListError(null)
       return () => {
@@ -91,6 +118,7 @@ export default function DoctorPortalPage() {
     setListError(null)
 
     getDoctorSessions({
+      clinicBucket: activeClinicBucket,
       doctorName: deferredDoctorName.trim(),
       dateFrom: filters.dateFrom,
       dateTo: filters.dateTo,
@@ -103,11 +131,19 @@ export default function DoctorPortalPage() {
       })
       .catch((error: Error) => {
         if (cancelled) return
-        if (error.message.toLowerCase().includes('авториза')) {
+
+        const lowerMessage = error.message.toLowerCase()
+        if (lowerMessage.includes('авториза')) {
           clearAuth()
           setAuthError(error.message)
           return
         }
+
+        if (lowerMessage.includes('доступ к тестовой вкладке')) {
+          setActiveClinicBucket('novosibirsk')
+          return
+        }
+
         setListError(error.message)
       })
       .finally(() => {
@@ -119,7 +155,16 @@ export default function DoctorPortalPage() {
     return () => {
       cancelled = true
     }
-  }, [token, filters.dateFrom, filters.dateTo, deferredDoctorName, clearAuth])
+  }, [
+    token,
+    doctor,
+    activeClinicBucket,
+    filters.dateFrom,
+    filters.dateTo,
+    deferredDoctorName,
+    clearAuth,
+    setActiveClinicBucket,
+  ])
 
   async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -217,9 +262,12 @@ export default function DoctorPortalPage() {
       sessions={sessions}
       total={sessions.length}
       filters={filters}
+      tabs={availableTabs}
+      activeClinicBucket={activeClinicBucket}
       isLoading={isLoadingSessions}
       error={listError}
       isActionLoading={isActionLoading}
+      onClinicBucketChange={setActiveClinicBucket}
       onDoctorNameChange={setDoctorNameFilter}
       onDateFromChange={setDateFrom}
       onDateToChange={setDateTo}

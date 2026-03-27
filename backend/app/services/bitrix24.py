@@ -18,6 +18,7 @@ from loguru import logger
 
 from app.core.config import settings
 from app.core.log_utils import mask_name
+from app.services.doctor_portal_routing import extract_portal_routing_from_deal
 
 
 class Bitrix24Client:
@@ -38,6 +39,7 @@ class Bitrix24Client:
             "UF_CRM_1616736315899",
         ],
     }
+    DEFAULT_PORTAL_CLINIC_BUCKET = "test"
 
     def __init__(self, webhook_url: Optional[str] = None):
         """
@@ -441,6 +443,11 @@ class Bitrix24Client:
             logger.info(f"Имя пациента из Битрикс24: {mask_name(full_name)} (сделка {deal_id})")
         
         return full_name or None
+
+    @staticmethod
+    def extract_portal_routing_from_deal(deal_data: dict | None) -> tuple[int | None, str]:
+        """Извлекает CATEGORY_ID и вкладку doctor portal из сделки Bitrix24."""
+        return extract_portal_routing_from_deal(deal_data)
 
     @staticmethod
     def extract_doctor_name_from_deal(deal_data: dict | None) -> Optional[str]:

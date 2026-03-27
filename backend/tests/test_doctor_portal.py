@@ -9,6 +9,38 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.append(str(BACKEND_DIR))
 
 from app.services.bitrix24 import Bitrix24Client
+from app.services.doctor_portal_routing import (
+    PORTAL_CLINIC_BUCKET_KEMEROVO,
+    PORTAL_CLINIC_BUCKET_NOVOSIBIRSK,
+    PORTAL_CLINIC_BUCKET_TEST,
+    PORTAL_CLINIC_BUCKET_YAROSLAVL,
+    resolve_portal_clinic_bucket,
+)
+
+
+class DoctorPortalRoutingTests(unittest.TestCase):
+    def test_routes_category_0_to_novosibirsk(self) -> None:
+        self.assertEqual(resolve_portal_clinic_bucket("0"), PORTAL_CLINIC_BUCKET_NOVOSIBIRSK)
+
+    def test_routes_category_1_to_kemerovo(self) -> None:
+        self.assertEqual(resolve_portal_clinic_bucket("1"), PORTAL_CLINIC_BUCKET_KEMEROVO)
+
+    def test_routes_category_3_to_yaroslavl(self) -> None:
+        self.assertEqual(resolve_portal_clinic_bucket("3"), PORTAL_CLINIC_BUCKET_YAROSLAVL)
+
+    def test_routes_unknown_category_to_test(self) -> None:
+        self.assertEqual(resolve_portal_clinic_bucket("19"), PORTAL_CLINIC_BUCKET_TEST)
+
+    def test_routes_missing_category_to_test(self) -> None:
+        self.assertEqual(resolve_portal_clinic_bucket(None), PORTAL_CLINIC_BUCKET_TEST)
+
+    def test_extracts_routing_from_deal(self) -> None:
+        category_id, clinic_bucket = Bitrix24Client.extract_portal_routing_from_deal(
+            {"CATEGORY_ID": "1"}
+        )
+
+        self.assertEqual(category_id, 1)
+        self.assertEqual(clinic_bucket, PORTAL_CLINIC_BUCKET_KEMEROVO)
 
 
 class DoctorPortalBitrixMappingTests(unittest.TestCase):

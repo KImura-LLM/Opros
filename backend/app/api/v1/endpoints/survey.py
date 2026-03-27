@@ -191,18 +191,25 @@ async def start_survey(
     # Если имя отсутствует в токене (компактный JWT) — загружаем из CRM
     patient_name = token_data.patient_name
     doctor_name = None
-    if not patient_name and settings.BITRIX24_WEBHOOK_URL:
+    bitrix_category_id = None
+    portal_clinic_bucket = Bitrix24Client.DEFAULT_PORTAL_CLINIC_BUCKET
+    if settings.BITRIX24_WEBHOOK_URL:
         try:
             bitrix_client = Bitrix24Client()
             entity_type = token_data.entity_type or "DEAL"
             if entity_type == "DEAL":
-                patient_name = await bitrix_client.get_patient_name_from_deal(token_data.lead_id)
-                doctor_name = await bitrix_client.get_doctor_name_from_deal(token_data.lead_id)
+                deal_data = await bitrix_client.get_deal(token_data.lead_id)
+                bitrix_category_id, portal_clinic_bucket = bitrix_client.extract_portal_routing_from_deal(deal_data)
+                doctor_name = await bitrix_client.resolve_doctor_name_from_deal_data(deal_data)
+                if doctor_name is None:
+                    doctor_name = bitrix_client.extract_doctor_name_from_deal(deal_data)
+                if not patient_name:
+                    patient_name = await bitrix_client.get_patient_name_from_deal(token_data.lead_id)
             if patient_name:
                 logger.info(f"Имя пациента загружено из CRM при старте опроса: {mask_name(patient_name)}")
         except Exception as e:
             logger.warning(f"Не удалось загрузить имя из CRM: {e}")
-    elif settings.BITRIX24_WEBHOOK_URL:
+    elif False and settings.BITRIX24_WEBHOOK_URL:
         try:
             bitrix_client = Bitrix24Client()
             entity_type = token_data.entity_type or "DEAL"
@@ -227,6 +234,8 @@ async def start_survey(
         entity_type=token_data.entity_type,
         patient_name=patient_name,
         doctor_name=doctor_name,
+        bitrix_category_id=bitrix_category_id,
+        portal_clinic_bucket=portal_clinic_bucket,
         survey_config_id=config.id,
         token_hash=token_data.token_hash,
         status="in_progress",

@@ -16,7 +16,20 @@ class DoctorUser(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String(100), nullable=False, unique=True, index=True, comment="Логин врача")
     hashed_password = Column(String(255), nullable=False, comment="Хэш пароля врача")
-    is_active = Column(Boolean, nullable=False, default=True, server_default=text("true"), comment="Аккаунт активен")
+    is_active = Column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default=text("true"),
+        comment="Аккаунт активен",
+    )
+    can_view_test_tab = Column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default=text("false"),
+        comment="Доступ к тестовой вкладке портала врачей",
+    )
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

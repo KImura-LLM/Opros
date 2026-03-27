@@ -1,6 +1,24 @@
-import { CalendarRange, Download, Eye, Filter, LogOut, RefreshCw } from 'lucide-react'
+import {
+  Building2,
+  CalendarRange,
+  Download,
+  Eye,
+  Filter,
+  LogOut,
+  RefreshCw,
+} from 'lucide-react'
 
-import type { DoctorFilters, DoctorMeResponse, DoctorSessionItem } from '@/types'
+import type {
+  DoctorClinicBucket,
+  DoctorFilters,
+  DoctorMeResponse,
+  DoctorSessionItem,
+} from '@/types'
+
+interface DoctorClinicTab {
+  id: DoctorClinicBucket
+  label: string
+}
 
 const dateTimeFormatter = new Intl.DateTimeFormat('ru-RU', {
   dateStyle: 'short',
@@ -12,9 +30,12 @@ interface DoctorDashboardProps {
   sessions: DoctorSessionItem[]
   total: number
   filters: DoctorFilters
+  tabs: DoctorClinicTab[]
+  activeClinicBucket: DoctorClinicBucket
   isLoading: boolean
   error: string | null
   isActionLoading: boolean
+  onClinicBucketChange: (value: DoctorClinicBucket) => void
   onDoctorNameChange: (value: string) => void
   onDateFromChange: (value: string) => void
   onDateToChange: (value: string) => void
@@ -42,9 +63,12 @@ export default function DoctorDashboard({
   sessions,
   total,
   filters,
+  tabs,
+  activeClinicBucket,
   isLoading,
   error,
   isActionLoading,
+  onClinicBucketChange,
   onDoctorNameChange,
   onDateFromChange,
   onDateToChange,
@@ -53,6 +77,8 @@ export default function DoctorDashboard({
   onPreview,
   onDownload,
 }: DoctorDashboardProps) {
+  const activeTabLabel = tabs.find((tab) => tab.id === activeClinicBucket)?.label ?? 'Сессии'
+
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,_#f6fbfa_0%,_#eef6f4_48%,_#ffffff_100%)] text-slate-900">
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
@@ -68,8 +94,8 @@ export default function DoctorDashboard({
                   Завершенные сессии пациентов
                 </h1>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-200 sm:text-base">
-                  Здесь собраны готовые результаты опросов. Можно быстро сузить список по врачу
-                  и периоду, открыть отчет в отдельной вкладке или скачать PDF.
+                  Данные разложены по клиникам. Можно быстро переключаться между вкладками,
+                  сузить список по врачу и периоду, открыть отчет или скачать PDF.
                 </p>
               </div>
             </div>
@@ -90,6 +116,33 @@ export default function DoctorDashboard({
             </div>
           </div>
         </header>
+
+        <section className="mb-6 rounded-[28px] border border-slate-200 bg-white/90 p-5 shadow-[0_24px_60px_-42px_rgba(15,23,42,0.65)] backdrop-blur">
+          <div className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
+            <Building2 className="h-4 w-4" />
+            Вкладки клиник
+          </div>
+
+          <div className="flex flex-wrap gap-3">
+            {tabs.map((tab) => {
+              const isActive = tab.id === activeClinicBucket
+              return (
+                <button
+                  key={tab.id}
+                  className={`rounded-2xl px-4 py-3 text-sm font-semibold transition ${
+                    isActive
+                      ? 'bg-slate-900 text-white shadow-[0_18px_30px_-20px_rgba(15,23,42,0.85)]'
+                      : 'border border-slate-200 bg-slate-50 text-slate-700 hover:border-slate-300 hover:bg-white'
+                  }`}
+                  type="button"
+                  onClick={() => onClinicBucketChange(tab.id)}
+                >
+                  {tab.label}
+                </button>
+              )
+            })}
+          </div>
+        </section>
 
         <section className="mb-6 rounded-[28px] border border-slate-200 bg-white/90 p-5 shadow-[0_24px_60px_-42px_rgba(15,23,42,0.65)] backdrop-blur">
           <div className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
@@ -145,9 +198,13 @@ export default function DoctorDashboard({
         <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_24px_60px_-42px_rgba(15,23,42,0.65)]">
           <div className="flex flex-col gap-2 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <div className="text-sm font-semibold text-slate-900">Найдено сессий: {total}</div>
+              <div className="text-sm font-semibold text-slate-900">
+                {activeTabLabel}: найдено сессий {total}
+              </div>
               <div className="text-sm text-slate-500">
-                {isLoading ? 'Обновляем список...' : 'Показываются только завершенные анкеты.'}
+                {isLoading
+                  ? 'Обновляем список...'
+                  : 'Показываются только завершенные анкеты, отсортированные по дате завершения.'}
               </div>
             </div>
             {isActionLoading ? (

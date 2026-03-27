@@ -1,6 +1,13 @@
+export type DoctorClinicBucket =
+  | 'novosibirsk'
+  | 'kemerovo'
+  | 'yaroslavl'
+  | 'test'
+
 export interface DoctorMeResponse {
   id: number
   username: string
+  can_view_test_tab: boolean
 }
 
 export interface DoctorAuthResponse {

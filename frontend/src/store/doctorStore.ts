@@ -1,15 +1,31 @@
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
 
-import type { DoctorFilters, DoctorMeResponse } from '@/types'
+import type {
+  DoctorClinicBucket,
+  DoctorFilters,
+  DoctorMeResponse,
+} from '@/types'
 
 const FILTERS_STORAGE_KEY = 'opros_doctor_filters'
 const AUTH_STORAGE_KEY = 'opros_doctor_auth'
+const DEFAULT_CLINIC_BUCKET: DoctorClinicBucket = 'novosibirsk'
 
 const defaultFilters: DoctorFilters = {
   doctorName: '',
   dateFrom: '',
   dateTo: '',
+}
+
+function normalizeClinicBucketForDoctor(
+  clinicBucket: DoctorClinicBucket,
+  doctor: DoctorMeResponse | null
+): DoctorClinicBucket {
+  if (clinicBucket === 'test' && !doctor?.can_view_test_tab) {
+    return DEFAULT_CLINIC_BUCKET
+  }
+
+  return clinicBucket
 }
 
 function saveDoctorAuth(token: string, doctor: DoctorMeResponse): void {
@@ -31,7 +47,8 @@ function readDoctorAuth(): { token: string; doctor: DoctorMeResponse } | null {
       typeof parsed.token === 'string' &&
       parsed.doctor &&
       typeof parsed.doctor.id === 'number' &&
-      typeof parsed.doctor.username === 'string'
+      typeof parsed.doctor.username === 'string' &&
+      typeof parsed.doctor.can_view_test_tab === 'boolean'
     ) {
       return parsed as { token: string; doctor: DoctorMeResponse }
     }
@@ -54,36 +71,54 @@ interface DoctorStoreState {
   token: string | null
   doctor: DoctorMeResponse | null
   filters: DoctorFilters
+  activeClinicBucket: DoctorClinicBucket
   hydrateAuth: () => void
   setAuth: (token: string, doctor: DoctorMeResponse) => void
   clearAuth: () => void
   setDoctorNameFilter: (value: string) => void
   setDateFrom: (value: string) => void
   setDateTo: (value: string) => void
+  setActiveClinicBucket: (value: DoctorClinicBucket) => void
   resetFilters: () => void
 }
 
 export const useDoctorStore = create<DoctorStoreState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       token: null,
       doctor: null,
       filters: defaultFilters,
+      activeClinicBucket: DEFAULT_CLINIC_BUCKET,
 
       hydrateAuth: () => {
         const auth = readDoctorAuth()
         if (!auth) return
-        set({ token: auth.token, doctor: auth.doctor })
+
+        set({
+          token: auth.token,
+          doctor: auth.doctor,
+          activeClinicBucket: normalizeClinicBucketForDoctor(
+            get().activeClinicBucket,
+            auth.doctor
+          ),
+        })
       },
 
       setAuth: (token, doctor) => {
         saveDoctorAuth(token, doctor)
-        set({ token, doctor })
+        set((state) => ({
+          token,
+          doctor,
+          activeClinicBucket: normalizeClinicBucketForDoctor(
+            state.activeClinicBucket,
+            doctor
+          ),
+        }))
       },
 
       clearAuth: () => {
         clearDoctorAuthStorage()
-        set({ token: null, doctor: null })
+        set({ token: null, doctor: null, activeClinicBucket: DEFAULT_CLINIC_BUCKET })
       },
 
       setDoctorNameFilter: (value) =>
@@ -110,6 +145,11 @@ export const useDoctorStore = create<DoctorStoreState>()(
           },
         })),
 
+      setActiveClinicBucket: (value) =>
+        set((state) => ({
+          activeClinicBucket: normalizeClinicBucketForDoctor(value, state.doctor),
+        })),
+
       resetFilters: () =>
         set({
           filters: defaultFilters,
@@ -120,6 +160,7 @@ export const useDoctorStore = create<DoctorStoreState>()(
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         filters: state.filters,
+        activeClinicBucket: state.activeClinicBucket,
       }),
     }
   )

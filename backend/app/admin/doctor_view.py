@@ -22,12 +22,14 @@ class DoctorUserAdmin(ModelView, model=DoctorUser):
         DoctorUser.id,
         DoctorUser.username,
         DoctorUser.is_active,
+        DoctorUser.can_view_test_tab,
         DoctorUser.created_at,
     ]
     column_details_list = [
         DoctorUser.id,
         DoctorUser.username,
         DoctorUser.is_active,
+        DoctorUser.can_view_test_tab,
         DoctorUser.created_at,
         DoctorUser.updated_at,
     ]
@@ -35,11 +37,16 @@ class DoctorUserAdmin(ModelView, model=DoctorUser):
     column_sortable_list = [DoctorUser.id, DoctorUser.username, DoctorUser.created_at]
     column_default_sort = [("id", True)]
 
-    form_columns = [DoctorUser.username, DoctorUser.is_active]
+    form_columns = [
+        DoctorUser.username,
+        DoctorUser.is_active,
+        DoctorUser.can_view_test_tab,
+    ]
 
     column_labels = {
         DoctorUser.username: "Логин",
         DoctorUser.is_active: "Активен",
+        DoctorUser.can_view_test_tab: "Доступ к тестовой вкладке",
         DoctorUser.created_at: "Создан",
         DoctorUser.updated_at: "Обновлен",
     }
