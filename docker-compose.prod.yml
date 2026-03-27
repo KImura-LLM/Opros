@@ -84,6 +84,11 @@ services:
     networks:
       - opros-network
     command: python -m scripts.auto_expire_sessions
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"print('ok')\" >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   # --------------------------------------------
   # ⚛️ Frontend Builder (только для сборки)
