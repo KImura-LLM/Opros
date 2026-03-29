@@ -160,9 +160,16 @@ class ReportGenerator:
             return line
 
         if fmt == "readable":
-            parts = [f"<li><strong>{question}:</strong> {answer_text}"]
+            parts = [
+                '<li class="qa-row">'
+                f'<span class="qa-question">{question}</span>'
+                '<span class="qa-kicker qa-answer-kicker">Ответ</span>'
+                f'<span class="qa-answer">{answer_text}</span>'
+            ]
             if extra_parts:
-                parts.append(" <em>(" + "; ".join(extra_parts) + ")</em>")
+                parts.append(
+                    f'<span class="qa-extra"><em>({"; ".join(extra_parts)})</em></span>'
+                )
             parts.append("</li>")
             return "".join(parts)
 
@@ -911,6 +918,64 @@ class ReportGenerator:
             color: #1a1a1a;
             line-height: 1.55;
             list-style: disc;
+        }}
+        .block-body li.qa-row {{
+            list-style: none;
+            display: block;
+            margin-left: -14px;
+            margin-bottom: 5px;
+            padding: 5px 6px 6px;
+            border: 0.75pt solid #e2e8f0;
+            border-radius: 7px;
+            background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+            box-shadow: 0 1px 0 rgba(148, 163, 184, 0.08);
+            page-break-inside: avoid;
+        }}
+        .block-body .qa-kicker {{
+            display: inline-block;
+            margin-bottom: 2px;
+            padding: 1px 6px;
+            font-size: 6.7pt;
+            font-weight: 700;
+            letter-spacing: 0.2px;
+            text-transform: uppercase;
+            color: #0f766e;
+            background: #ecfeff;
+            border-radius: 999px;
+        }}
+        .block-body .qa-question {{
+            display: block;
+            font-size: 8.9pt;
+            font-weight: 400;
+            line-height: 1.42;
+            margin-bottom: 3px;
+            color: #334155;
+            word-break: break-word;
+        }}
+        .block-body .qa-answer-kicker {{
+            color: #1d4ed8;
+            background: #eff6ff;
+            margin-bottom: 2px;
+        }}
+        .block-body .qa-answer {{
+            display: block;
+            font-size: 9.8pt;
+            font-weight: 700;
+            line-height: 1.4;
+            text-align: left;
+            padding: 4px 6px;
+            border-radius: 6px;
+            background: #f8fafc;
+            border: 0.75pt solid #dbeafe;
+            color: #0f172a;
+            word-break: break-word;
+        }}
+        .block-body .qa-extra {{
+            display: block;
+            font-size: 7.8pt;
+            line-height: 1.45;
+            margin-top: 3px;
+            color: #64748b;
         }}
         /* ── Системный анализ для врача ── */
         .analysis-block {{
