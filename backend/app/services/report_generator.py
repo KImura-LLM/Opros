@@ -179,12 +179,30 @@ class ReportGenerator:
         Возвращает список node_id ответов, которые не были обработаны
         специализированными блоками отчёта.
         """
-        unhandled = []
-        for node_id in answers:
+        unhandled: List[str] = []
+        seen: set[str] = set()
+
+        # Основной порядок берём из конфигурации опроса, чтобы отчёт совпадал
+        # с последовательностью вопросов в визуальном редакторе.
+        for node in self._get_nodes_in_report_order():
+            node_id = node.get("id")
+            if not node_id or node_id in seen or node_id not in answers:
+                continue
             if node_id not in handled_ids:
-                node = self.nodes.get(node_id)
-                if node and node.get("type") != "info_screen":
+                current_node = self.nodes.get(node_id)
+                if current_node and current_node.get("type") != "info_screen":
                     unhandled.append(node_id)
+                    seen.add(node_id)
+
+        # Сохраняем fallback для ответов, которых уже нет в схеме, но они есть
+        # в старых сохранённых данных сессии.
+        for node_id in answers:
+            if node_id in seen or node_id in handled_ids:
+                continue
+            node = self.nodes.get(node_id)
+            if node and node.get("type") != "info_screen":
+                unhandled.append(node_id)
+                seen.add(node_id)
         return unhandled
 
     def _generate_unhandled_block_html(
@@ -451,6 +469,29 @@ class ReportGenerator:
         """Получение списка групп из конфигурации опросника."""
         return self.config.get("groups", []) or []
 
+    def _get_nodes_in_report_order(self) -> List[dict]:
+        """
+        Возвращает узлы в порядке визуального редактора.
+
+        Если у узла есть координаты на canvas, используем их и сортируем сверху
+        вниз, а при равной высоте слева направо. Если координат нет, сохраняем
+        исходный порядок узлов в конфигурации.
+        """
+        indexed_nodes = list(enumerate(self.config.get("nodes", []) or []))
+
+        def sort_key(item: tuple[int, dict]) -> tuple[float, float, int]:
+            index, node = item
+            position = node.get("position") or {}
+            x = position.get("x")
+            y = position.get("y")
+
+            if isinstance(x, (int, float)) and isinstance(y, (int, float)):
+                return (float(y), float(x), index)
+
+            return (float(index), 0.0, index)
+
+        return [node for _, node in sorted(indexed_nodes, key=sort_key)]
+
     def _group_node_ids(self) -> Dict[str, str]:
         """
         Построение маппинга node_id -> group_id из конфигурации.
@@ -459,7 +500,7 @@ class ReportGenerator:
             Словарь {node_id: group_id}
         """
         mapping: Dict[str, str] = {}
-        for node in self.config.get("nodes", []):
+        for node in self._get_nodes_in_report_order():
             gid = node.get("group_id")
             if gid:
                 mapping[node["id"]] = gid
@@ -488,7 +529,7 @@ class ReportGenerator:
         grouped: Dict[str, List[str]] = {g["id"]: [] for g in groups}
         ungrouped: List[str] = []
 
-        for node in self.config.get("nodes", []):
+        for node in self._get_nodes_in_report_order():
             node_id = node.get("id", "")
             if node_id not in answers:
                 continue
