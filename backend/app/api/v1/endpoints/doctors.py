@@ -238,17 +238,22 @@ async def doctor_sessions(
         raw_doctor_name = (session.doctor_name or "").strip()
         needs_doctor_resolution = (not raw_doctor_name) or raw_doctor_name.isdigit()
         needs_routing_resolution = session.bitrix_category_id is None or not session.portal_clinic_bucket
-        appointment_at: str | None = None
+        needs_appointment_resolution = not (session.appointment_at or "").strip()
 
         deal_data = None
-        if session.lead_id:
+        if session.lead_id and (needs_doctor_resolution or needs_routing_resolution or needs_appointment_resolution):
             if bitrix_client is None:
                 bitrix_client = Bitrix24Client()
 
             deal_data = await bitrix_client.get_deal(session.lead_id)
             if isinstance(deal_data, dict) and "ID" not in deal_data:
                 deal_data["ID"] = session.lead_id
-            appointment_at = Bitrix24Client.extract_appointment_datetime_from_deal(deal_data)
+
+        if needs_appointment_resolution and deal_data is not None:
+            resolved_appointment_at = Bitrix24Client.extract_appointment_datetime_from_deal(deal_data)
+            if resolved_appointment_at != session.appointment_at:
+                session.appointment_at = resolved_appointment_at
+                has_updates = True
 
         if needs_routing_resolution:
             category_id, resolved_bucket = Bitrix24Client.extract_portal_routing_from_deal(deal_data)
@@ -277,7 +282,7 @@ async def doctor_sessions(
                 session_id=session.id,
                 patient_name=session.patient_name,
                 doctor_name=session.doctor_name,
-                appointment_at=appointment_at,
+                appointment_at=session.appointment_at,
                 start_time=session.started_at,
                 end_time=session.completed_at,
                 duration_minutes=_calculate_duration_minutes(session.started_at, session.completed_at),

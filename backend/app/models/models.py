@@ -63,6 +63,7 @@ class SurveySession(Base):
     entity_type = Column(String(10), default="DEAL", comment="Тип сущности: DEAL или LEAD")
     patient_name = Column(String(255), nullable=True, comment="Имя пациента для приветствия")
     doctor_name = Column(String(255), nullable=True, comment="ФИО врача из Bitrix24")
+    appointment_at = Column(String(50), nullable=True, comment="Дата и время приема из Bitrix24")
     bitrix_category_id = Column(Integer, nullable=True, comment="ID воронки в Bitrix24")
     portal_clinic_bucket = Column(
         String(50),

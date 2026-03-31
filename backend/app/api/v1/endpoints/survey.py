@@ -191,6 +191,7 @@ async def start_survey(
     # Если имя отсутствует в токене (компактный JWT) — загружаем из CRM
     patient_name = token_data.patient_name
     doctor_name = None
+    appointment_at = None
     bitrix_category_id = None
     portal_clinic_bucket = Bitrix24Client.DEFAULT_PORTAL_CLINIC_BUCKET
     if settings.BITRIX24_WEBHOOK_URL:
@@ -200,6 +201,7 @@ async def start_survey(
             if entity_type == "DEAL":
                 deal_data = await bitrix_client.get_deal(token_data.lead_id)
                 bitrix_category_id, portal_clinic_bucket = bitrix_client.extract_portal_routing_from_deal(deal_data)
+                appointment_at = bitrix_client.extract_appointment_datetime_from_deal(deal_data)
                 doctor_name = await bitrix_client.resolve_doctor_name_from_deal_data(deal_data)
                 if doctor_name is None:
                     doctor_name = bitrix_client.extract_doctor_name_from_deal(deal_data)
@@ -234,6 +236,7 @@ async def start_survey(
         entity_type=token_data.entity_type,
         patient_name=patient_name,
         doctor_name=doctor_name,
+        appointment_at=appointment_at,
         bitrix_category_id=bitrix_category_id,
         portal_clinic_bucket=portal_clinic_bucket,
         survey_config_id=config.id,

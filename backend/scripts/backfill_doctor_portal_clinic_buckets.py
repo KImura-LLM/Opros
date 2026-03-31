@@ -19,6 +19,7 @@ async def backfill_clinic_buckets(batch_size: int = 100, only_missing: bool = Fa
         "processed": 0,
         "updated": 0,
         "routed_to_test": 0,
+        "appointment_updated": 0,
         "errors": 0,
     }
 
@@ -54,6 +55,7 @@ async def backfill_clinic_buckets(batch_size: int = 100, only_missing: bool = Fa
                             deal_data["ID"] = session.lead_id
 
                     category_id, clinic_bucket = bitrix_client.extract_portal_routing_from_deal(deal_data)
+                    appointment_at = bitrix_client.extract_appointment_datetime_from_deal(deal_data)
                     doctor_name = await bitrix_client.resolve_doctor_name_from_deal_data(deal_data)
                     if doctor_name is None:
                         doctor_name = bitrix_client.extract_doctor_name_from_deal(deal_data)
@@ -67,6 +69,10 @@ async def backfill_clinic_buckets(batch_size: int = 100, only_missing: bool = Fa
                         changed = True
                     if doctor_name and session.doctor_name != doctor_name:
                         session.doctor_name = doctor_name
+                        changed = True
+                    if session.appointment_at != appointment_at:
+                        session.appointment_at = appointment_at
+                        stats["appointment_updated"] += 1
                         changed = True
 
                     if clinic_bucket == Bitrix24Client.DEFAULT_PORTAL_CLINIC_BUCKET:
@@ -86,6 +92,7 @@ async def backfill_clinic_buckets(batch_size: int = 100, only_missing: bool = Fa
             logger.info(
                 "Backfill doctor portal: "
                 f"processed={stats['processed']}, updated={stats['updated']}, "
+                f"appointment_updated={stats['appointment_updated']}, "
                 f"test={stats['routed_to_test']}, errors={stats['errors']}"
             )
             if not only_missing:
