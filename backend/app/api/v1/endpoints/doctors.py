@@ -56,6 +56,7 @@ class DoctorSessionItem(BaseModel):
     session_id: UUID
     patient_name: str | None = None
     doctor_name: str | None = None
+    appointment_at: str | None = None
     start_time: datetime | None = None
     end_time: datetime | None = None
     duration_minutes: int | None = None
@@ -237,15 +238,17 @@ async def doctor_sessions(
         raw_doctor_name = (session.doctor_name or "").strip()
         needs_doctor_resolution = (not raw_doctor_name) or raw_doctor_name.isdigit()
         needs_routing_resolution = session.bitrix_category_id is None or not session.portal_clinic_bucket
+        appointment_at: str | None = None
 
         deal_data = None
-        if session.lead_id and (needs_doctor_resolution or needs_routing_resolution):
+        if session.lead_id:
             if bitrix_client is None:
                 bitrix_client = Bitrix24Client()
 
             deal_data = await bitrix_client.get_deal(session.lead_id)
             if isinstance(deal_data, dict) and "ID" not in deal_data:
                 deal_data["ID"] = session.lead_id
+            appointment_at = Bitrix24Client.extract_appointment_datetime_from_deal(deal_data)
 
         if needs_routing_resolution:
             category_id, resolved_bucket = Bitrix24Client.extract_portal_routing_from_deal(deal_data)
@@ -274,6 +277,7 @@ async def doctor_sessions(
                 session_id=session.id,
                 patient_name=session.patient_name,
                 doctor_name=session.doctor_name,
+                appointment_at=appointment_at,
                 start_time=session.started_at,
                 end_time=session.completed_at,
                 duration_minutes=_calculate_duration_minutes(session.started_at, session.completed_at),

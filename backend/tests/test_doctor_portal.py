@@ -44,6 +44,24 @@ class DoctorPortalRoutingTests(unittest.TestCase):
 
 
 class DoctorPortalBitrixMappingTests(unittest.TestCase):
+    def test_extracts_appointment_datetime_from_deal(self) -> None:
+        deal_data = {
+            "UF_CRM_1665031646808": "31.03.2026 14:30",
+        }
+
+        appointment_at = Bitrix24Client.extract_appointment_datetime_from_deal(deal_data)
+
+        self.assertEqual(appointment_at, "31.03.2026 14:30")
+
+    def test_returns_none_for_empty_appointment_datetime(self) -> None:
+        deal_data = {
+            "UF_CRM_1665031646808": "   ",
+        }
+
+        appointment_at = Bitrix24Client.extract_appointment_datetime_from_deal(deal_data)
+
+        self.assertIsNone(appointment_at)
+
     def test_extracts_doctor_name_for_funnel_0(self) -> None:
         deal_data = {
             "CATEGORY_ID": "0",

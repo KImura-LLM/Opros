@@ -39,6 +39,7 @@ class Bitrix24Client:
             "UF_CRM_1616736315899",
         ],
     }
+    APPOINTMENT_DATETIME_FIELD = "UF_CRM_1665031646808"
     DEFAULT_PORTAL_CLINIC_BUCKET = "test"
 
     def __init__(self, webhook_url: Optional[str] = None):
@@ -477,6 +478,16 @@ class Bitrix24Client:
                 return doctor_name
 
         return None
+
+    @staticmethod
+    def extract_appointment_datetime_from_deal(deal_data: dict | None) -> Optional[str]:
+        """Извлекает дату и время приема из сделки Bitrix24."""
+        if not deal_data:
+            return None
+
+        return Bitrix24Client._normalize_doctor_field_value(
+            deal_data.get(Bitrix24Client.APPOINTMENT_DATETIME_FIELD)
+        )
 
     async def resolve_doctor_name_from_deal_data(self, deal_data: dict | None) -> Optional[str]:
         """Превращает значение поля врача в итоговое ФИО."""

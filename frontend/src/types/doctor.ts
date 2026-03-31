@@ -20,6 +20,7 @@ export interface DoctorSessionItem {
   session_id: string
   patient_name?: string
   doctor_name?: string
+  appointment_at?: string
   start_time?: string
   end_time?: string
   duration_minutes?: number

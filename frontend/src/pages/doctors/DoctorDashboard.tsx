@@ -1,4 +1,6 @@
 import {
+  ArrowDownNarrowWide,
+  ArrowUpNarrowWide,
   Building2,
   CalendarRange,
   Download,
@@ -32,6 +34,7 @@ interface DoctorDashboardProps {
   filters: DoctorFilters
   tabs: DoctorClinicTab[]
   activeClinicBucket: DoctorClinicBucket
+  appointmentSortOrder: 'asc' | 'desc'
   isLoading: boolean
   error: string | null
   isActionLoading: boolean
@@ -41,6 +44,7 @@ interface DoctorDashboardProps {
   onDateToChange: (value: string) => void
   onResetFilters: () => void
   onLogout: () => void
+  onAppointmentSortToggle: () => void
   onPreview: (session: DoctorSessionItem) => void
   onDownload: (session: DoctorSessionItem) => void
 }
@@ -65,6 +69,7 @@ export default function DoctorDashboard({
   filters,
   tabs,
   activeClinicBucket,
+  appointmentSortOrder,
   isLoading,
   error,
   isActionLoading,
@@ -74,6 +79,7 @@ export default function DoctorDashboard({
   onDateToChange,
   onResetFilters,
   onLogout,
+  onAppointmentSortToggle,
   onPreview,
   onDownload,
 }: DoctorDashboardProps) {
@@ -204,7 +210,7 @@ export default function DoctorDashboard({
               <div className="text-sm text-slate-500">
                 {isLoading
                   ? 'Обновляем список...'
-                  : 'Показываются только завершенные анкеты, отсортированные по дате завершения.'}
+                  : 'Показываются только завершенные анкеты. Сортировка по дате приема переключается по нажатию на заголовок колонки.'}
               </div>
             </div>
             {isActionLoading ? (
@@ -224,6 +230,20 @@ export default function DoctorDashboard({
                 <tr className="text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
                   <th className="px-5 py-4">Пациент</th>
                   <th className="px-5 py-4">Врач</th>
+                  <th className="px-5 py-4">
+                    <button
+                      className="inline-flex items-center gap-2 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 transition hover:text-slate-700"
+                      type="button"
+                      onClick={onAppointmentSortToggle}
+                    >
+                      Дата и время приема
+                      {appointmentSortOrder === 'asc' ? (
+                        <ArrowUpNarrowWide className="h-4 w-4" />
+                      ) : (
+                        <ArrowDownNarrowWide className="h-4 w-4" />
+                      )}
+                    </button>
+                  </th>
                   <th className="px-5 py-4">Начало</th>
                   <th className="px-5 py-4">Окончание</th>
                   <th className="px-5 py-4">Длительность</th>
@@ -233,7 +253,7 @@ export default function DoctorDashboard({
               <tbody className="divide-y divide-slate-100">
                 {sessions.length === 0 && !isLoading ? (
                   <tr>
-                    <td className="px-5 py-10 text-center text-sm text-slate-500" colSpan={6}>
+                    <td className="px-5 py-10 text-center text-sm text-slate-500" colSpan={7}>
                       По текущим фильтрам завершенные сессии не найдены.
                     </td>
                   </tr>
@@ -246,6 +266,9 @@ export default function DoctorDashboard({
                     </td>
                     <td className="px-5 py-4 text-sm text-slate-700">
                       {session.doctor_name || 'Не указано'}
+                    </td>
+                    <td className="px-5 py-4 text-sm text-slate-700">
+                      {session.appointment_at || 'Не указано'}
                     </td>
                     <td className="px-5 py-4 text-sm text-slate-700">
                       {formatDateTime(session.start_time)}

@@ -13,6 +13,8 @@ import type { DoctorClinicBucket, DoctorSessionItem } from '@/types'
 import DoctorDashboard from './DoctorDashboard'
 import DoctorLogin from './DoctorLogin'
 
+type AppointmentSortOrder = 'asc' | 'desc'
+
 const DOCTOR_PORTAL_TABS: Array<{ id: DoctorClinicBucket; label: string }> = [
   { id: 'novosibirsk', label: 'Новосибирск' },
   { id: 'kemerovo', label: 'Кемерово' },
@@ -22,6 +24,26 @@ const DOCTOR_PORTAL_TABS: Array<{ id: DoctorClinicBucket; label: string }> = [
 
 function getAvailableTabs(canViewTestTab: boolean) {
   return DOCTOR_PORTAL_TABS.filter((tab) => canViewTestTab || tab.id !== 'test')
+}
+
+function parseAppointmentTimestamp(value?: string): number | null {
+  if (!value) return null
+
+  const [datePart, timePart = '00:00'] = value.trim().split(' ')
+  const [day, month, year] = datePart.split('.').map(Number)
+  const [hours, minutes] = timePart.split(':').map(Number)
+
+  if (
+    !Number.isInteger(day) ||
+    !Number.isInteger(month) ||
+    !Number.isInteger(year) ||
+    !Number.isInteger(hours) ||
+    !Number.isInteger(minutes)
+  ) {
+    return null
+  }
+
+  return new Date(year, month - 1, day, hours, minutes).getTime()
 }
 
 export default function DoctorPortalPage() {
@@ -49,6 +71,7 @@ export default function DoctorPortalPage() {
   const [isLoadingSessions, setIsLoadingSessions] = useState(false)
   const [isActionLoading, setIsActionLoading] = useState(false)
   const [sessions, setSessions] = useState<DoctorSessionItem[]>([])
+  const [appointmentSortOrder, setAppointmentSortOrder] = useState<AppointmentSortOrder>('desc')
   const deferredDoctorName = useDeferredValue(filters.doctorName)
 
   useEffect(() => {
@@ -166,6 +189,21 @@ export default function DoctorPortalPage() {
     setActiveClinicBucket,
   ])
 
+  const sortedSessions = useMemo(() => {
+    return [...sessions].sort((left, right) => {
+      const leftTimestamp = parseAppointmentTimestamp(left.appointment_at)
+      const rightTimestamp = parseAppointmentTimestamp(right.appointment_at)
+
+      if (leftTimestamp === null && rightTimestamp === null) return 0
+      if (leftTimestamp === null) return appointmentSortOrder === 'asc' ? -1 : 1
+      if (rightTimestamp === null) return appointmentSortOrder === 'asc' ? 1 : -1
+
+      return appointmentSortOrder === 'asc'
+        ? leftTimestamp - rightTimestamp
+        : rightTimestamp - leftTimestamp
+    })
+  }, [sessions, appointmentSortOrder])
+
   async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setIsSubmitting(true)
@@ -242,6 +280,10 @@ export default function DoctorPortalPage() {
     setListError(null)
   }
 
+  function handleAppointmentSortToggle() {
+    setAppointmentSortOrder((current) => (current === 'asc' ? 'desc' : 'asc'))
+  }
+
   if (!token || !doctor || isBootstrapping) {
     return (
       <DoctorLogin
@@ -259,11 +301,12 @@ export default function DoctorPortalPage() {
   return (
     <DoctorDashboard
       doctor={doctor}
-      sessions={sessions}
-      total={sessions.length}
+      sessions={sortedSessions}
+      total={sortedSessions.length}
       filters={filters}
       tabs={availableTabs}
       activeClinicBucket={activeClinicBucket}
+      appointmentSortOrder={appointmentSortOrder}
       isLoading={isLoadingSessions}
       error={listError}
       isActionLoading={isActionLoading}
@@ -273,6 +316,7 @@ export default function DoctorPortalPage() {
       onDateToChange={setDateTo}
       onResetFilters={resetFilters}
       onLogout={handleLogout}
+      onAppointmentSortToggle={handleAppointmentSortToggle}
       onPreview={handlePreview}
       onDownload={handleDownload}
     />
