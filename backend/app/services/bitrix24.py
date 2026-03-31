@@ -381,6 +381,30 @@ class Bitrix24Client:
         return doctor_name or None
 
     @staticmethod
+    def _normalize_appointment_datetime_value(raw_value: Any) -> Optional[str]:
+        normalized = Bitrix24Client._extract_first_scalar(raw_value)
+        if normalized is None:
+            return None
+
+        appointment_value = str(normalized).strip()
+        if not appointment_value:
+            return None
+
+        compact_value = " ".join(appointment_value.split())
+        if len(compact_value) == 16:
+            try:
+                parsed_local = datetime.strptime(compact_value, "%d.%m.%Y %H:%M")
+                return parsed_local.strftime("%d.%m.%Y %H:%M")
+            except ValueError:
+                pass
+
+        try:
+            parsed_iso = datetime.fromisoformat(compact_value.replace("Z", "+00:00"))
+            return parsed_iso.strftime("%d.%m.%Y %H:%M")
+        except ValueError:
+            return appointment_value
+
+    @staticmethod
     def _looks_like_bitrix_user_id(value: str) -> bool:
         return value.isdigit()
 
@@ -485,7 +509,7 @@ class Bitrix24Client:
         if not deal_data:
             return None
 
-        return Bitrix24Client._normalize_doctor_field_value(
+        return Bitrix24Client._normalize_appointment_datetime_value(
             deal_data.get(Bitrix24Client.APPOINTMENT_DATETIME_FIELD)
         )
 

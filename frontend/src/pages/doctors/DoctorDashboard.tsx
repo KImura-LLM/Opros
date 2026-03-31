@@ -67,9 +67,16 @@ function formatAppointmentDateTime(value?: string): string {
 
   const normalized = value.trim().replace(/\s+/, ' ')
   const match = normalized.match(/^(\d{2}\.\d{2}\.\d{4})\s+(\d{2}:\d{2})$/)
-  if (!match) return value
+  if (match) {
+    return `${match[1]}, ${match[2]}`
+  }
 
-  return `${match[1]}, ${match[2]}`
+  const parsedDate = new Date(normalized)
+  if (!Number.isNaN(parsedDate.getTime())) {
+    return dateTimeFormatter.format(parsedDate)
+  }
+
+  return value
 }
 
 export default function DoctorDashboard({
