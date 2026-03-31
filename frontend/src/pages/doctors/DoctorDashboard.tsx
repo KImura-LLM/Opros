@@ -62,6 +62,16 @@ function formatDuration(value?: number): string {
   return `${value} мин`
 }
 
+function formatAppointmentDateTime(value?: string): string {
+  if (!value) return 'Не указано'
+
+  const normalized = value.trim().replace(/\s+/, ' ')
+  const match = normalized.match(/^(\d{2}\.\d{2}\.\d{4})\s+(\d{2}:\d{2})$/)
+  if (!match) return value
+
+  return `${match[1]}, ${match[2]}`
+}
+
 export default function DoctorDashboard({
   doctor,
   sessions,
@@ -268,7 +278,7 @@ export default function DoctorDashboard({
                       {session.doctor_name || 'Не указано'}
                     </td>
                     <td className="px-5 py-4 text-sm text-slate-700">
-                      {session.appointment_at || 'Не указано'}
+                      {formatAppointmentDateTime(session.appointment_at)}
                     </td>
                     <td className="px-5 py-4 text-sm text-slate-700">
                       {formatDateTime(session.start_time)}
