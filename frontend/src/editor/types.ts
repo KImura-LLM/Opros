@@ -228,12 +228,11 @@ export const NODE_TYPE_CONFIG: Record<NodeType, NodeTypeInfo> = {
   info_screen: {
     id: 'info_screen',
     name: 'Информационный экран',
-    description: 'Текст без ввода (финиш)',
+    description: 'Текст без ввода',
     icon: 'Info',
     color: '#6b7280',
     has_options: false,
     has_logic: false,
-    can_be_final: true,
   },
   consent_screen: {
     id: 'consent_screen',

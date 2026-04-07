@@ -690,23 +690,7 @@
       "question_text": "Ваша профессия? Связана ли работа с профессиональными вредностями?",
       "description": "Укажите профессию и вредные факторы: пыль, химикаты, шум, вибрация и т.д.",
       "placeholder": "Профессия и условия труда...",
-      "required": false,
-      "logic": [
-        {
-          "default": true,
-          "next_node": "finish"
-        }
-      ]
-    },
-
-    {
-      "id": "finish",
-      "type": "info_screen",
-      "question_text": "Спасибо!",
-      "description": "Ваши ответы сохранены. Врач изучит их перед приёмом и сможет максимально эффективно вам помочь.",
-      "required": false,
-      "is_final": true,
-      "logic": []
+      "required": false
     }
   ]
 }

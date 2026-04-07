@@ -542,24 +542,6 @@ const NodeEditor = () => {
         </div>
       )}
       
-      {/* Настройки для info_screen */}
-      {nodeData.type === 'info_screen' && (
-        <div className="px-4 py-4 border-b border-gray-100">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={localData.is_final ?? true}
-              onChange={(e) => {
-                handleChange('is_final', e.target.checked);
-                updateNode(selectedNodeId!, { is_final: e.target.checked });
-              }}
-              className="w-4 h-4 text-blue-500 rounded focus:ring-blue-500"
-            />
-            <span className="text-sm text-gray-700">Финальный экран (конец опроса)</span>
-          </label>
-        </div>
-      )}
-      
       {/* Группа вопроса (для итогового отчёта) */}
       <div className="px-4 py-4 border-b border-gray-100">
         <label className="block text-xs font-medium text-gray-600 mb-2">

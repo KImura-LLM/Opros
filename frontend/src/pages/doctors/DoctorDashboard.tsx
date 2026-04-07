@@ -103,6 +103,9 @@ function getNearestSessionRowClass(rank?: number): string {
   }
 }
 
+const tableTextCellClass =
+  'whitespace-nowrap px-3 py-3 align-top text-[13px] leading-5 lg:whitespace-normal lg:break-words lg:[overflow-wrap:anywhere]'
+
 interface SortableHeaderProps {
   field: DoctorSessionSortField
   label: string
@@ -331,8 +334,8 @@ export default function DoctorDashboard({
             </div>
           ) : null}
 
-          <div className="overflow-hidden">
-            <table className="w-full table-fixed divide-y divide-slate-200">
+          <div className="overflow-x-auto">
+            <table className="min-w-[58rem] table-fixed divide-y divide-slate-200 lg:min-w-full">
               <colgroup>
                 <col className="w-[17.1%] xl:w-[18.9%]" />
                 <col className="w-[11.9%] xl:w-[16.1%]" />
@@ -419,37 +422,37 @@ export default function DoctorDashboard({
                       className={`transition [&>td:first-child]:rounded-l-lg [&>td:last-child]:rounded-r-lg ${getNearestSessionRowClass(nearestRank)}`}
                     >
                       <td
-                        className="truncate whitespace-nowrap px-3 py-3 text-[13px] font-medium text-slate-900"
+                        className={`${tableTextCellClass} font-medium text-slate-900`}
                         title={session.patient_name || 'Не указано'}
                       >
                         {session.patient_name || 'Не указано'}
                       </td>
                       <td
-                        className="truncate whitespace-nowrap px-3 py-3 text-[13px] text-slate-700"
+                        className={`${tableTextCellClass} text-slate-700`}
                         title={session.doctor_name || 'Не указано'}
                       >
                         {session.doctor_name || 'Не указано'}
                       </td>
                       <td
-                        className="truncate whitespace-nowrap px-3 py-3 text-[13px] text-slate-700"
+                        className={`${tableTextCellClass} text-slate-700`}
                         title={formatAppointmentDateTime(session.appointment_at)}
                       >
                         {formatAppointmentDateTime(session.appointment_at)}
                       </td>
                       <td
-                        className="truncate whitespace-nowrap px-3 py-3 text-[13px] text-slate-700"
+                        className={`${tableTextCellClass} text-slate-700`}
                         title={formatDateTime(session.start_time)}
                       >
                         {formatDateTime(session.start_time)}
                       </td>
                       <td
-                        className="truncate whitespace-nowrap px-3 py-3 text-[13px] text-slate-700"
+                        className={`${tableTextCellClass} text-slate-700`}
                         title={formatDateTime(session.end_time)}
                       >
                         {formatDateTime(session.end_time)}
                       </td>
                       <td
-                        className="truncate whitespace-nowrap px-3 py-3 text-[13px] text-slate-700"
+                        className={`${tableTextCellClass} text-slate-700`}
                         title={formatDuration(session.duration_minutes)}
                       >
                         {formatDuration(session.duration_minutes)}

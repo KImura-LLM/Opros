@@ -386,7 +386,7 @@ export const useEditorStore = create<EditorStore>((set, get) => ({
         ] : undefined,
         min_value: config.has_min_max ? 1 : undefined,
         max_value: config.has_min_max ? 10 : undefined,
-        is_final: type === 'info_screen' ? true : undefined,
+        is_final: undefined,
       },
     };
     

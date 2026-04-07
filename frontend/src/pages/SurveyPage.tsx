@@ -256,17 +256,23 @@ const SurveyPage: React.FC = () => {
       setProgress(response.progress)
 
       if (!response.next_node) {
-        setSubmitError('Сервер не вернул следующий вопрос. Проверьте конфигурацию опросника.')
+        navigate('/complete')
         return
       }
 
-      const nextNodeExists = config?.nodes.some((n) => n.id === response.next_node)
-      if (!nextNodeExists) {
+      const nextNode = config?.nodes.find((n) => n.id === response.next_node)
+      if (!nextNode) {
         setSubmitError('Сервер вернул неизвестный вопрос. Проверьте конфигурацию опросника.')
         return
       }
 
-      setCurrentNode(response.next_node, 'forward')
+      if (nextNode.is_final) {
+        await completeSurvey(sessionId)
+        navigate('/complete')
+        return
+      }
+
+      setCurrentNode(nextNode.id, 'forward')
     } catch (error) {
       console.error('Ошибка при отправке ответа:', error)
       setSubmitError('Не удалось отправить ответ. Попробуйте ещё раз.')

@@ -164,6 +164,60 @@ async def _save_answer(
     await db.execute(stmt)
 
 
+def _is_completion_marker(config_json: dict, node_id: str | None) -> bool:
+    """Проверяет, что следующий узел является старым служебным финальным экраном."""
+    if not node_id:
+        return False
+
+    for node in config_json.get("nodes", []):
+        if node.get("id") == node_id:
+            return bool(node.get("is_final"))
+
+    return False
+
+
+async def _complete_survey_session(
+    session: SurveySession,
+    db: AsyncSession,
+    background_tasks: BackgroundTasks,
+    final_node_id: str | None = None,
+    final_answer_data: dict[str, Any] | None = None,
+    duration_seconds: int | None = None,
+) -> None:
+    """Быстро фиксирует завершение сессии и запускает обработку отчёта в фоне."""
+    if final_node_id and final_answer_data is not None:
+        await _save_answer(
+            db=db,
+            session_id=session.id,
+            node_id=final_node_id,
+            answer_data=final_answer_data,
+            duration_seconds=duration_seconds,
+        )
+
+    session.status = "completed"
+    session.completed_at = datetime.now(timezone.utc)
+
+    audit_log = AuditLog(
+        session_id=session.id,
+        action="survey_completed",
+        details={"background_processing": True},
+    )
+    db.add(audit_log)
+    await db.commit()
+
+    logger.info(f"Опрос завершён (быстрый ответ): session_id={session.id}")
+
+    background_tasks.add_task(
+        _process_survey_report,
+        session_id=session.id,
+        lead_id=session.lead_id,
+        entity_type=session.entity_type,
+        patient_name=session.patient_name,
+        survey_config_id=session.survey_config_id,
+        token_hash=session.token_hash,
+    )
+
+
 # ==========================================
 # Вспомогательная функция проверки владения сессией
 # ==========================================
@@ -392,6 +446,7 @@ async def start_survey(
 async def submit_answer(
     data: SurveyAnswerRequest,
     request: Request,
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     redis: RedisClient = Depends(get_redis),
 ):
@@ -454,11 +509,12 @@ async def submit_answer(
         answer_data=data.answer_data,
         duration_seconds=data.duration_seconds,
     )
-    await db.commit()
-    
     # Определение следующего узла через Survey Engine
     engine = SurveyEngine(config.json_config)
     next_node = engine.get_next_node(data.node_id, data.answer_data, merged_answers)
+    should_complete = next_node is None or _is_completion_marker(config.json_config, next_node)
+    if should_complete:
+        next_node = None
     
     # Обновление прогресса
     progress["answers"] = merged_answers
@@ -475,6 +531,21 @@ async def submit_answer(
     # поэтому прогресс точно отражает открытие/закрытие веток.
     answered_node_ids = list(merged_answers.keys())
     progress_percent = engine.calculate_dynamic_progress(next_node, answered_node_ids)
+
+    if should_complete:
+        await _complete_survey_session(
+            session=session,
+            db=db,
+            background_tasks=background_tasks,
+        )
+
+        return SurveyAnswerResponse(
+            success=True,
+            next_node=None,
+            progress=100.0,
+        )
+
+    await db.commit()
 
     return SurveyAnswerResponse(
         success=True,
@@ -735,38 +806,13 @@ async def complete_survey(
         )
     
     # === БЫСТРАЯ ЧАСТЬ: сохраняем финальный ответ и фиксируем завершение в одной транзакции ===
-    if data.final_node_id and data.final_answer_data is not None:
-        await _save_answer(
-            db=db,
-            session_id=session.id,
-            node_id=data.final_node_id,
-            answer_data=data.final_answer_data,
-            duration_seconds=data.duration_seconds,
-        )
-
-    session.status = "completed"
-    session.completed_at = datetime.now(timezone.utc)
-    
-    # Аудит-лог о завершении (фоновый лог добавится отдельно)
-    audit_log = AuditLog(
-        session_id=session.id,
-        action="survey_completed",
-        details={"background_processing": True},
-    )
-    db.add(audit_log)
-    await db.commit()
-    
-    logger.info(f"Опрос завершён (быстрый ответ): session_id={session.id}")
-    
-    # === ТЯЖЁЛАЯ ЧАСТЬ: отправляем в фон ===
-    background_tasks.add_task(
-        _process_survey_report,
-        session_id=session.id,
-        lead_id=session.lead_id,
-        entity_type=session.entity_type,
-        patient_name=session.patient_name,
-        survey_config_id=session.survey_config_id,
-        token_hash=session.token_hash,
+    await _complete_survey_session(
+        session=session,
+        db=db,
+        background_tasks=background_tasks,
+        final_node_id=data.final_node_id,
+        final_answer_data=data.final_answer_data,
+        duration_seconds=data.duration_seconds,
     )
     
     return SurveyCompleteResponse(

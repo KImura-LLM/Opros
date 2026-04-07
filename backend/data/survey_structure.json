@@ -332,22 +332,7 @@
           "placeholder": "Например: пенициллин, орехи",
           "show_if": "selected contains 'allergy'"
         }
-      ],
-      "logic": [
-        {
-          "default": true,
-          "next_node": "finish"
-        }
       ]
-    },
-    {
-      "id": "finish",
-      "type": "info_screen",
-      "question_text": "Спасибо!",
-      "description": "Анкета заполнена. Данные переданы врачу, он изучит их до начала приема.",
-      "required": false,
-      "is_final": true,
-      "logic": []
     }
   ]
 }

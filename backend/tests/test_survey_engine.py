@@ -137,6 +137,23 @@ class SurveyEngineTests(unittest.TestCase):
         self.assertEqual(progress_before_first_answer, 0.0)
         self.assertEqual(progress_after_first_answer, 50.0)
 
+    def test_progress_counts_skipped_questions_by_next_position(self) -> None:
+        config = {
+            "start_node": "q1",
+            "nodes": [
+                {"id": "q1", "type": "single_choice", "required": True},
+                {"id": "skipped_1", "type": "single_choice", "required": True},
+                {"id": "skipped_2", "type": "single_choice", "required": True},
+                {"id": "q2", "type": "text_input", "required": True},
+                {"id": "q3", "type": "text_input", "required": True},
+            ],
+        }
+        engine = SurveyEngine(config)
+
+        progress_after_skip = engine.calculate_dynamic_progress("q2", ["q1"])
+
+        self.assertEqual(progress_after_skip, 60.0)
+
 
 if __name__ == "__main__":
     unittest.main()

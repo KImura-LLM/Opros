@@ -207,7 +207,7 @@ class SurveyListItem(BaseModel):
 def validate_survey_structure(structure: dict) -> ValidationResult:
     """
     Валидация структуры опросника.
-    Проверяет корректность связей, наличие стартового/финального узла.
+    Проверяет корректность связей и наличие стартового узла.
     """
     errors = []
     warnings = []
@@ -229,15 +229,7 @@ def validate_survey_structure(structure: dict) -> ValidationResult:
             message=f"Стартовый узел '{start_node}' не найден среди узлов"
         ))
     
-    # 2. Проверка наличия финального узла
-    final_nodes = [n for n in nodes if n.get("is_final") or n.get("type") == "info_screen"]
-    if not final_nodes:
-        warnings.append(ValidationError(
-            type="warning",
-            message="Не найден финальный узел (info_screen или is_final=true)"
-        ))
-    
-    # 3. Проверка каждого узла
+    # 2. Проверка каждого узла
     reachable_nodes = set()
     
     def collect_reachable(node_id: str, visited: set):
@@ -283,11 +275,11 @@ def validate_survey_structure(structure: dict) -> ValidationResult:
         
         # Проверка логики переходов
         logic = node.get("logic", [])
-        if not logic and not node.get("is_final") and node_type != "info_screen":
+        if not logic and not node.get("is_final"):
             warnings.append(ValidationError(
                 type="warning",
                 node_id=node_id,
-                message=f"Узел '{node_id}' не имеет правил перехода"
+                message=f"Узел '{node_id}' не имеет правил перехода и будет завершать опрос"
             ))
         
         for rule in logic:
@@ -321,6 +313,46 @@ def validate_survey_structure(structure: dict) -> ValidationResult:
         errors=errors,
         warnings=warnings
     )
+
+
+def strip_completion_markers(config: dict) -> dict:
+    """Убирает старые служебные финальные экраны из схемы для визуального редактора."""
+    nodes = config.get("nodes", [])
+    completion_ids = {
+        node.get("id")
+        for node in nodes
+        if node.get("is_final")
+    }
+    completion_ids.discard(None)
+
+    if not completion_ids:
+        return config
+
+    cleaned_config = dict(config)
+    cleaned_nodes = []
+
+    for node in nodes:
+        node_id = node.get("id")
+        if node_id in completion_ids:
+            continue
+
+        cleaned_node = dict(node)
+        cleaned_node.pop("is_final", None)
+
+        logic = [
+            rule
+            for rule in cleaned_node.get("logic", [])
+            if rule.get("next_node") not in completion_ids
+        ]
+        if logic:
+            cleaned_node["logic"] = logic
+        else:
+            cleaned_node.pop("logic", None)
+
+        cleaned_nodes.append(cleaned_node)
+
+    cleaned_config["nodes"] = cleaned_nodes
+    return cleaned_config
 
 
 def convert_to_json_config(structure: SurveyStructure) -> dict:
@@ -415,7 +447,7 @@ async def get_survey(
             detail="Опросник не найден"
         )
     
-    json_config = config.json_config or {}
+    json_config = strip_completion_markers(config.json_config or {})
     
     return SurveyStructure(
         id=config.id,
@@ -794,12 +826,11 @@ async def get_node_types():
         {
             "id": "info_screen",
             "name": "Информационный экран",
-            "description": "Текстовый экран без ввода (финиш, инструкция)",
+            "description": "Текстовый экран без ввода",
             "icon": "info",
             "color": "#6b7280",
             "has_options": False,
             "has_logic": False,
-            "can_be_final": True,
         },
         {
             "id": "consent_screen",

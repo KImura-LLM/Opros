@@ -157,14 +157,14 @@ const PreviewModal = ({ isOpen, onClose }: PreviewModalProps) => {
     const nextId = getNextNode();
 
     if (nextId) {
+      const nextNode = nodes.find(n => n.id === nextId);
+      if (nextNode?.data.is_final) {
+        setIsComplete(true);
+        return;
+      }
+
       setHistory((prev: string[]) => [...prev, currentNodeId]);
       setCurrentNodeId(nextId);
-      
-      // Проверяем, является ли следующий узел финальным
-      const nextNode = nodes.find(n => n.id === nextId);
-      if (nextNode?.data.is_final || nextNode?.data.type === 'info_screen') {
-        // Показываем финальный экран, потом завершаем
-      }
     } else {
       setIsComplete(true);
     }
@@ -507,7 +507,7 @@ const PreviewModal = ({ isOpen, onClose }: PreviewModalProps) => {
                 disabled:opacity-50 disabled:cursor-not-allowed
               "
             >
-              {nodeData?.type === 'info_screen' && nodeData?.is_final ? 'Завершить' : 'Далее'}
+              Далее
               <ChevronRight size={18} />
             </button>
           </div>

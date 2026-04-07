@@ -68,8 +68,7 @@ class SurveyEngine:
         logic = node.get("logic", [])
         
         if not logic:
-            # Если нет логики, ищем следующий узел по порядку
-            return self._get_default_next_node(current_node_id)
+            return None
         
         # Обработка условий
         for rule in logic:
@@ -91,8 +90,7 @@ class SurveyEngine:
                 logger.info(f"Переход по умолчанию: {default_next}")
                 return default_next
         
-        # Fallback - следующий по порядку
-        return self._get_default_next_node(current_node_id)
+        return None
     
     def _evaluate_condition(
         self,
@@ -215,6 +213,39 @@ class SurveyEngine:
                 return None  # Конец опроса
         
         return None
+
+    def _get_ordered_question_ids(self) -> List[str]:
+        """
+        Возвращает стабильный порядок вопросов по связям от стартового узла.
+
+        Порядок массива nodes в сохранённой схеме может не совпадать с реальным
+        маршрутом прохождения после редактирования в визуальном редакторе.
+        """
+        ordered_ids: List[str] = []
+        visited: set[str] = set()
+
+        def visit(node_id: Optional[str]) -> None:
+            if not node_id or node_id in visited:
+                return
+
+            node = self.get_node(node_id)
+            if not node:
+                return
+
+            visited.add(node_id)
+
+            if node.get("type") != "info_screen":
+                ordered_ids.append(node_id)
+
+            for rule in node.get("logic", []) or []:
+                visit(rule.get("next_node"))
+
+        visit(self.start_node)
+
+        for node in self.config.get("nodes", []):
+            visit(node.get("id"))
+
+        return ordered_ids
     
     def calculate_dynamic_progress(
         self,
@@ -222,12 +253,11 @@ class SurveyEngine:
         answered_nodes: List[str],
     ) -> float:
         """
-        Динамический расчёт прогресса с учётом реального пути ветвления.
+        Расчёт прогресса по общему количеству вопросов в опроснике.
 
-        Формула: answered / (answered + remaining_path_length)
-
-        Метод точно отражает прогресс: если после ответа открылась
-        длинная ветка — процент замедляется, если короткая — ускоряется.
+        Если переход пропускает блок вопросов, шкала сразу заполняется на
+        пройденное по порядку место в структуре. Процент не должен откатываться
+        назад при открытии другой ветки.
 
         Args:
             next_node_id: ID следующего узла (куда перейдёт пользователь)
@@ -240,26 +270,34 @@ class SurveyEngine:
         if next_node_id is None:
             return 100.0
 
-        next_node = self.get_node(next_node_id)
-        if not next_node:
+        ordered_question_ids = self._get_ordered_question_ids()
+        total_questions = len(ordered_question_ids)
+        if total_questions == 0:
             return 100.0
 
-        # Количество реально отвеченных вопросов (не info_screen)
-        answered_count = len([
-            n for n in answered_nodes
-            if n in self.nodes and self.nodes[n].get("type") != "info_screen"
-        ])
+        question_index_by_id = {
+            node_id: index
+            for index, node_id in enumerate(ordered_question_ids)
+        }
 
-        # Оставшийся путь от следующего узла до финала (по default переходам)
-        remaining = self._estimate_remaining_path(next_node_id)
+        answered_count = len({
+            node_id
+            for node_id in answered_nodes
+            if node_id in question_index_by_id
+        })
 
-        total = answered_count + remaining
-        if total == 0:
+        next_index = question_index_by_id.get(next_node_id)
+        if next_index is None:
             return 100.0
 
-        progress = (answered_count / total) * 100
+        latest_answered_position = max(
+            (question_index_by_id[node_id] + 1 for node_id in answered_nodes if node_id in question_index_by_id),
+            default=0,
+        )
+        progress_count = max(answered_count, latest_answered_position, next_index)
+        progress = (progress_count / total_questions) * 100
         logger.debug(
-            f"Прогресс: отвечено={answered_count}, осталось≈{remaining}, "
+            f"Прогресс: отвечено={answered_count}, позиция={next_index}, всего={total_questions}, "
             f"следующий={next_node_id}, итого={progress:.1f}%"
         )
         return round(min(99.0, progress), 1)
@@ -303,13 +341,12 @@ class SurveyEngine:
         # Ищем default-переход в логике
         next_node_id: Optional[str] = None
         logic = node.get("logic", [])
+        if not logic:
+            return current_count
+
         for rule in logic:
             if rule.get("default"):
                 next_node_id = rule.get("next_node")
                 break
-
-        # Fallback — следующий по порядку
-        if next_node_id is None:
-            next_node_id = self._get_default_next_node(node_id)
 
         return current_count + self._estimate_remaining_path(next_node_id, visited)
