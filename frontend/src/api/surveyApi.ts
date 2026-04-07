@@ -14,6 +14,12 @@ import { useSurveyStore } from '@/store/surveyStore'
 
 const API_URL = import.meta.env.VITE_API_URL || '/api/v1'
 
+interface CompleteSurveyPayload {
+  nodeId: string
+  answerData: AnswerData
+  durationSeconds?: number
+}
+
 /**
  * Получение токена сессии из store (для привязки запросов к сессии)
  */
@@ -118,12 +124,21 @@ export async function getProgress(sessionId: string): Promise<SurveyProgressSnap
  * Завершение опроса
  */
 export async function completeSurvey(
-  sessionId: string
+  sessionId: string,
+  finalPayload?: CompleteSurveyPayload
 ): Promise<SurveyCompleteResponse> {
   return apiFetch<SurveyCompleteResponse>('/survey/complete', {
     method: 'POST',
+    keepalive: true,
     body: JSON.stringify({
       session_id: sessionId,
+      ...(finalPayload && {
+        final_node_id: finalPayload.nodeId,
+        final_answer_data: finalPayload.answerData,
+        ...(finalPayload.durationSeconds !== undefined && {
+          duration_seconds: finalPayload.durationSeconds,
+        }),
+      }),
     }),
   })
 }

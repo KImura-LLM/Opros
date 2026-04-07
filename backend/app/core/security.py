@@ -11,6 +11,7 @@ from typing import Optional
 import hashlib
 import secrets
 import string
+from uuid import UUID
 
 from jose import JWTError, jwt
 from pydantic import BaseModel
@@ -23,6 +24,7 @@ from app.core.config import settings
 _SHORT_CODE_ALPHABET = string.ascii_letters + string.digits  # a-zA-Z0-9
 SHORT_CODE_LENGTH = 16  # 16 символов Base62 ≈ 95 бит энтропии
 DOCTOR_TOKEN_EXPIRE_HOURS = 12
+DOCTOR_PDF_SHARE_TOKEN_EXPIRE_HOURS = 24
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -42,6 +44,13 @@ class DoctorTokenData(BaseModel):
 
     doctor_id: int
     username: str
+
+
+class DoctorPdfShareTokenData(BaseModel):
+    """Данные временной ссылки на PDF-отчёт для портала врача."""
+
+    session_id: UUID
+    doctor_id: int
 
 
 def create_access_token(
@@ -119,6 +128,30 @@ def create_doctor_access_token(
     )
 
 
+def create_doctor_pdf_share_token(
+    session_id: UUID,
+    doctor_id: int,
+    expires_delta: Optional[timedelta] = None,
+) -> str:
+    """Создание временной подписанной ссылки на PDF-отчёт."""
+    now = datetime.now(timezone.utc)
+    expire = now + (expires_delta or timedelta(hours=DOCTOR_PDF_SHARE_TOKEN_EXPIRE_HOURS))
+
+    payload = {
+        "sid": str(session_id),
+        "did": doctor_id,
+        "scope": "doctor_pdf_share",
+        "exp": expire,
+        "iat": now,
+    }
+
+    return jwt.encode(
+        payload,
+        settings.JWT_SECRET_KEY,
+        algorithm=settings.JWT_ALGORITHM,
+    )
+
+
 def verify_token(token: str) -> Optional[TokenData]:
     """
     Валидация JWT токена.
@@ -179,6 +212,31 @@ def verify_doctor_token(token: str) -> Optional[DoctorTokenData]:
         )
     except (JWTError, ValueError, TypeError) as e:
         logger.warning(f"Ошибка валидации doctor token: {e}")
+        return None
+
+
+def verify_doctor_pdf_share_token(token: str) -> Optional[DoctorPdfShareTokenData]:
+    """Проверка временной ссылки на PDF-отчёт."""
+    try:
+        payload = jwt.decode(
+            token,
+            settings.JWT_SECRET_KEY,
+            algorithms=[settings.JWT_ALGORITHM],
+        )
+        if payload.get("scope") != "doctor_pdf_share":
+            return None
+
+        session_id = payload.get("sid")
+        doctor_id = payload.get("did")
+        if session_id is None or doctor_id is None:
+            return None
+
+        return DoctorPdfShareTokenData(
+            session_id=UUID(str(session_id)),
+            doctor_id=int(doctor_id),
+        )
+    except (JWTError, ValueError, TypeError) as e:
+        logger.warning(f"Ошибка валидации doctor PDF share token: {e}")
         return None
 
 

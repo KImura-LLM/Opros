@@ -7,21 +7,23 @@ from io import BytesIO
 from urllib.parse import quote
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.v1.endpoints.reports import _get_report_content, _safe_filename
 from app.core.database import get_db
 from app.core.security import (
     create_doctor_access_token,
+    create_doctor_pdf_share_token,
     verify_doctor_token,
+    verify_doctor_pdf_share_token,
     verify_password,
+    DOCTOR_PDF_SHARE_TOKEN_EXPIRE_HOURS,
 )
 from app.models import DoctorUser, SurveySession
-from app.services.bitrix24 import Bitrix24Client
 from app.services.doctor_portal_routing import (
     PORTAL_CLINIC_BUCKET_NOVOSIBIRSK,
     PORTAL_CLINIC_BUCKET_TEST,
@@ -62,6 +64,12 @@ class DoctorSessionItem(BaseModel):
     duration_minutes: int | None = None
     preview_url: str
     download_url: str
+    share_url: str
+
+
+class DoctorPdfShareResponse(BaseModel):
+    share_url: str
+    expires_in_hours: int
 
 
 class DoctorSessionsResponse(BaseModel):
@@ -113,6 +121,21 @@ def _resolve_session_bucket(session: SurveySession) -> str:
         return session.portal_clinic_bucket
 
     return resolve_portal_clinic_bucket(session.bitrix_category_id)
+
+
+def _build_doctor_session_item(session: SurveySession) -> DoctorSessionItem:
+    return DoctorSessionItem(
+        session_id=session.id,
+        patient_name=session.patient_name,
+        doctor_name=session.doctor_name,
+        appointment_at=session.appointment_at,
+        start_time=session.started_at,
+        end_time=session.completed_at,
+        duration_minutes=_calculate_duration_minutes(session.started_at, session.completed_at),
+        preview_url=f"/api/v1/doctors/sessions/{session.id}/preview",
+        download_url=f"/api/v1/doctors/sessions/{session.id}/download/pdf",
+        share_url=f"/api/v1/doctors/sessions/{session.id}/share/pdf",
+    )
 
 
 async def _get_session_for_doctor(
@@ -213,7 +236,11 @@ async def doctor_sessions(
 
     stmt = select(SurveySession).where(SurveySession.status == "completed")
     stmt = stmt.where(
-        func.coalesce(SurveySession.portal_clinic_bucket, PORTAL_CLINIC_BUCKET_TEST) == clinic_bucket
+        or_(
+            SurveySession.portal_clinic_bucket == clinic_bucket,
+            SurveySession.portal_clinic_bucket.is_(None),
+            SurveySession.portal_clinic_bucket == "",
+        )
     )
 
     doctor_filter = (doctor_name or "").strip()
@@ -230,69 +257,14 @@ async def doctor_sessions(
     result = await db.execute(stmt)
     sessions = result.scalars().all()
 
-    bitrix_client: Bitrix24Client | None = None
-    has_updates = False
     items: list[DoctorSessionItem] = []
 
     for session in sessions:
-        raw_doctor_name = (session.doctor_name or "").strip()
-        needs_doctor_resolution = (not raw_doctor_name) or raw_doctor_name.isdigit()
-        needs_routing_resolution = session.bitrix_category_id is None or not session.portal_clinic_bucket
-        needs_appointment_resolution = not (session.appointment_at or "").strip()
-
-        deal_data = None
-        if session.lead_id and (needs_doctor_resolution or needs_routing_resolution or needs_appointment_resolution):
-            if bitrix_client is None:
-                bitrix_client = Bitrix24Client()
-
-            deal_data = await bitrix_client.get_deal(session.lead_id)
-            if isinstance(deal_data, dict) and "ID" not in deal_data:
-                deal_data["ID"] = session.lead_id
-
-        if needs_appointment_resolution and deal_data is not None:
-            resolved_appointment_at = Bitrix24Client.extract_appointment_datetime_from_deal(deal_data)
-            if resolved_appointment_at != session.appointment_at:
-                session.appointment_at = resolved_appointment_at
-                has_updates = True
-
-        if needs_routing_resolution:
-            category_id, resolved_bucket = Bitrix24Client.extract_portal_routing_from_deal(deal_data)
-            if session.bitrix_category_id != category_id:
-                session.bitrix_category_id = category_id
-                has_updates = True
-            if session.portal_clinic_bucket != resolved_bucket:
-                session.portal_clinic_bucket = resolved_bucket
-                has_updates = True
-
-        if needs_doctor_resolution and deal_data is not None and bitrix_client is not None:
-            resolved_name = await bitrix_client.resolve_doctor_name_from_deal_data(deal_data)
-            if resolved_name is None:
-                resolved_name = bitrix_client.extract_doctor_name_from_deal(deal_data)
-
-            if resolved_name and resolved_name != raw_doctor_name:
-                session.doctor_name = resolved_name
-                has_updates = True
-
         effective_bucket = _resolve_session_bucket(session)
         if effective_bucket != clinic_bucket:
             continue
 
-        items.append(
-            DoctorSessionItem(
-                session_id=session.id,
-                patient_name=session.patient_name,
-                doctor_name=session.doctor_name,
-                appointment_at=session.appointment_at,
-                start_time=session.started_at,
-                end_time=session.completed_at,
-                duration_minutes=_calculate_duration_minutes(session.started_at, session.completed_at),
-                preview_url=f"/api/v1/doctors/sessions/{session.id}/preview",
-                download_url=f"/api/v1/doctors/sessions/{session.id}/download/pdf",
-            )
-        )
-
-    if has_updates:
-        await db.commit()
+        items.append(_build_doctor_session_item(session))
 
     return DoctorSessionsResponse(items=items, total=len(items))
 
@@ -328,4 +300,64 @@ async def doctor_download_pdf(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename)}"},
+    )
+
+
+@router.post("/sessions/{session_id}/share/pdf", response_model=DoctorPdfShareResponse)
+async def doctor_share_pdf(
+    session_id: UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    doctor: DoctorUser = Depends(get_current_doctor),
+):
+    await _get_session_for_doctor(session_id, doctor, db)
+    share_token = create_doctor_pdf_share_token(session_id=session_id, doctor_id=doctor.id)
+    return DoctorPdfShareResponse(
+        share_url=str(request.url_for("doctor_shared_pdf", share_token=share_token)),
+        expires_in_hours=DOCTOR_PDF_SHARE_TOKEN_EXPIRE_HOURS,
+    )
+
+
+@router.get("/shared/pdf/{share_token}", name="doctor_shared_pdf")
+async def doctor_shared_pdf(
+    share_token: str,
+    db: AsyncSession = Depends(get_db),
+):
+    token_data = verify_doctor_pdf_share_token(share_token)
+    if token_data is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ссылка на PDF недействительна или устарела.",
+        )
+
+    doctor_result = await db.execute(select(DoctorUser).where(DoctorUser.id == token_data.doctor_id))
+    doctor = doctor_result.scalar_one_or_none()
+    if doctor is None or not doctor.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ссылка на PDF недействительна или устарела.",
+        )
+
+    session, html_content, _ = await _get_report_content(token_data.session_id, db)
+    if session.status != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="PDF-отчёт недоступен.",
+        )
+    _ensure_doctor_can_access_bucket(doctor, _resolve_session_bucket(session))
+
+    from weasyprint import HTML
+
+    pdf_buffer = BytesIO()
+    HTML(string=html_content).write_pdf(pdf_buffer)
+    pdf_bytes = pdf_buffer.getvalue()
+
+    filename = _safe_filename(session.patient_name, token_data.session_id, "pdf")
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"inline; filename*=UTF-8''{quote(filename)}",
+            "Cache-Control": "private, no-store",
+        },
     )

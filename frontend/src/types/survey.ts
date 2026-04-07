@@ -114,6 +114,7 @@ export interface SurveyCompleteResponse {
   success: boolean
   message: string
   report_sent: boolean
+  pdf_sent?: boolean
 }
 
 export interface SurveyProgressSnapshot {

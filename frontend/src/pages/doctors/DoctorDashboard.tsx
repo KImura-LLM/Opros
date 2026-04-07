@@ -8,6 +8,7 @@ import {
   Filter,
   LogOut,
   RefreshCw,
+  Share2,
 } from 'lucide-react'
 
 import type {
@@ -15,6 +16,8 @@ import type {
   DoctorFilters,
   DoctorMeResponse,
   DoctorSessionItem,
+  DoctorSessionSortField,
+  DoctorSessionSortOrder,
 } from '@/types'
 
 interface DoctorClinicTab {
@@ -34,19 +37,22 @@ interface DoctorDashboardProps {
   filters: DoctorFilters
   tabs: DoctorClinicTab[]
   activeClinicBucket: DoctorClinicBucket
-  appointmentSortOrder: 'asc' | 'desc'
+  sortField: DoctorSessionSortField
+  sortOrder: DoctorSessionSortOrder
   isLoading: boolean
   error: string | null
   isActionLoading: boolean
+  shareStatus: string | null
   onClinicBucketChange: (value: DoctorClinicBucket) => void
   onDoctorNameChange: (value: string) => void
   onDateFromChange: (value: string) => void
   onDateToChange: (value: string) => void
   onResetFilters: () => void
   onLogout: () => void
-  onAppointmentSortToggle: () => void
+  onSortChange: (field: DoctorSessionSortField) => void
   onPreview: (session: DoctorSessionItem) => void
   onDownload: (session: DoctorSessionItem) => void
+  onShare: (session: DoctorSessionItem) => void
 }
 
 function formatDateTime(value?: string): string {
@@ -79,6 +85,46 @@ function formatAppointmentDateTime(value?: string): string {
   return value
 }
 
+interface SortableHeaderProps {
+  field: DoctorSessionSortField
+  label: string
+  activeField: DoctorSessionSortField
+  order: DoctorSessionSortOrder
+  onSortChange: (field: DoctorSessionSortField) => void
+}
+
+function SortableHeader({
+  field,
+  label,
+  activeField,
+  order,
+  onSortChange,
+}: SortableHeaderProps) {
+  const isActive = field === activeField
+
+  return (
+    <button
+      className={`inline-flex items-center gap-2 text-left text-xs font-semibold uppercase tracking-[0.2em] transition ${
+        isActive ? 'text-slate-900' : 'text-slate-500 hover:text-slate-700'
+      }`}
+      type="button"
+      onClick={() => onSortChange(field)}
+      title={`Сортировать по колонке "${label}"`}
+    >
+      {label}
+      {isActive ? (
+        order === 'asc' ? (
+          <ArrowUpNarrowWide className="h-4 w-4" />
+        ) : (
+          <ArrowDownNarrowWide className="h-4 w-4" />
+        )
+      ) : (
+        <ArrowDownNarrowWide className="h-4 w-4 opacity-25" />
+      )}
+    </button>
+  )
+}
+
 export default function DoctorDashboard({
   doctor,
   sessions,
@@ -86,19 +132,22 @@ export default function DoctorDashboard({
   filters,
   tabs,
   activeClinicBucket,
-  appointmentSortOrder,
+  sortField,
+  sortOrder,
   isLoading,
   error,
   isActionLoading,
+  shareStatus,
   onClinicBucketChange,
   onDoctorNameChange,
   onDateFromChange,
   onDateToChange,
   onResetFilters,
   onLogout,
-  onAppointmentSortToggle,
+  onSortChange,
   onPreview,
   onDownload,
+  onShare,
 }: DoctorDashboardProps) {
   const activeTabLabel = tabs.find((tab) => tab.id === activeClinicBucket)?.label ?? 'Сессии'
 
@@ -227,11 +276,14 @@ export default function DoctorDashboard({
               <div className="text-sm text-slate-500">
                 {isLoading
                   ? 'Обновляем список...'
-                  : 'Показываются только завершенные анкеты. Сортировка по дате приема переключается по нажатию на заголовок колонки.'}
+                  : 'Показываются только завершенные анкеты. Сортировку можно менять нажатием на заголовок любой колонки.'}
               </div>
             </div>
             {isActionLoading ? (
               <div className="text-sm text-teal-700">Готовим файл или окно предпросмотра...</div>
+            ) : null}
+            {shareStatus ? (
+              <div className="text-sm text-teal-700">{shareStatus}</div>
             ) : null}
           </div>
 
@@ -245,25 +297,60 @@ export default function DoctorDashboard({
             <table className="min-w-full divide-y divide-slate-200">
               <thead className="bg-slate-50/80">
                 <tr className="text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                  <th className="px-5 py-4">Пациент</th>
-                  <th className="px-5 py-4">Врач</th>
                   <th className="px-5 py-4">
-                    <button
-                      className="inline-flex items-center gap-2 text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500 transition hover:text-slate-700"
-                      type="button"
-                      onClick={onAppointmentSortToggle}
-                    >
-                      Дата и время приема
-                      {appointmentSortOrder === 'asc' ? (
-                        <ArrowUpNarrowWide className="h-4 w-4" />
-                      ) : (
-                        <ArrowDownNarrowWide className="h-4 w-4" />
-                      )}
-                    </button>
+                    <SortableHeader
+                      field="patient_name"
+                      label="Пациент"
+                      activeField={sortField}
+                      order={sortOrder}
+                      onSortChange={onSortChange}
+                    />
                   </th>
-                  <th className="px-5 py-4">Начало</th>
-                  <th className="px-5 py-4">Окончание</th>
-                  <th className="px-5 py-4">Длительность</th>
+                  <th className="px-5 py-4">
+                    <SortableHeader
+                      field="doctor_name"
+                      label="Врач"
+                      activeField={sortField}
+                      order={sortOrder}
+                      onSortChange={onSortChange}
+                    />
+                  </th>
+                  <th className="px-5 py-4">
+                    <SortableHeader
+                      field="appointment_at"
+                      label="Дата и время приема"
+                      activeField={sortField}
+                      order={sortOrder}
+                      onSortChange={onSortChange}
+                    />
+                  </th>
+                  <th className="px-5 py-4">
+                    <SortableHeader
+                      field="start_time"
+                      label="Начало"
+                      activeField={sortField}
+                      order={sortOrder}
+                      onSortChange={onSortChange}
+                    />
+                  </th>
+                  <th className="px-5 py-4">
+                    <SortableHeader
+                      field="end_time"
+                      label="Окончание"
+                      activeField={sortField}
+                      order={sortOrder}
+                      onSortChange={onSortChange}
+                    />
+                  </th>
+                  <th className="px-5 py-4">
+                    <SortableHeader
+                      field="duration_minutes"
+                      label="Длительность"
+                      activeField={sortField}
+                      order={sortOrder}
+                      onSortChange={onSortChange}
+                    />
+                  </th>
                   <th className="px-5 py-4">Отчет</th>
                 </tr>
               </thead>
@@ -313,6 +400,14 @@ export default function DoctorDashboard({
                         >
                           <Download className="h-4 w-4" />
                           PDF
+                        </button>
+                        <button
+                          className="inline-flex items-center gap-2 rounded-xl border border-teal-200 bg-teal-50 px-3 py-2 text-sm font-medium text-teal-800 transition hover:border-teal-300 hover:bg-teal-100"
+                          type="button"
+                          onClick={() => onShare(session)}
+                        >
+                          <Share2 className="h-4 w-4" />
+                          Поделиться
                         </button>
                       </div>
                     </td>

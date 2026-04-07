@@ -396,7 +396,7 @@ class Bitrix24Client:
                 parsed_local = datetime.strptime(compact_value, "%d.%m.%Y %H:%M")
                 return parsed_local.strftime("%d.%m.%Y %H:%M")
             except ValueError:
-                pass
+                logger.debug(f"Unexpected Bitrix appointment datetime format: {compact_value!r}")
 
         try:
             parsed_iso = datetime.fromisoformat(compact_value.replace("Z", "+00:00"))

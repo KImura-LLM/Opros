@@ -423,7 +423,7 @@
                 <label>До</label>
                 <input type="text" name="date_to" id="dateTo" placeholder="Выберите дату..." readonly>
                 <button type="submit" class="btn-apply">Применить</button>
-                <button type="button" class="btn-reset" id="btnReset" title="Сбросить на последнюю неделю">По умолчанию</button>
+                <button type="button" class="btn-reset" id="btnReset" title="Показать все сессии">Все время</button>
             </form>
         </div>
 
@@ -949,14 +949,15 @@
 
     document.addEventListener('DOMContentLoaded', function() {
         // Init Flatpickr with restrictions
+        const flatpickrLocale = window.flatpickr?.l10ns?.ru || "default";
         const fpFrom = flatpickr("#dateFrom", {
-            locale: "ru",
+            locale: flatpickrLocale,
             dateFormat: "Y-m-d",
             theme: "dark",
             maxDate: "today"
         });
         const fpTo = flatpickr("#dateTo", {
-            locale: "ru",
+            locale: flatpickrLocale,
             dateFormat: "Y-m-d",
             theme: "dark",
             maxDate: "today"
@@ -967,21 +968,11 @@
         if (params.get('date_from')) fpFrom.setDate(params.get('date_from'));
         if (params.get('date_to')) fpTo.setDate(params.get('date_to'));
 
-        // "Default" button logic (Last 7 days)
+        // Reset button: show all sessions without date restrictions.
         document.getElementById('btnReset').addEventListener('click', function() {
-            const end = new Date();
-            const start = new Date();
-            start.setDate(end.getDate() - 7);
-
-            fpFrom.setDate(start);
-            fpTo.setDate(end);
-            
-             // Use Flatpickr's formatting to get correct string strings
-            const fromStr = fpFrom.formatDate(start, "Y-m-d");
-            const toStr = fpTo.formatDate(end, "Y-m-d");
-
-            // Redirect to reload data
-            window.location.href = '/admin/analytics?date_from=' + fromStr + '&date_to=' + toStr;
+            fpFrom.clear();
+            fpTo.clear();
+            window.location.href = '/admin/analytics';
         });
 
         loadDashboard();

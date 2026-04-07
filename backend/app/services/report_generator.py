@@ -49,6 +49,21 @@ class ReportGenerator:
         "respiratory_details", "cardio_details", "gastro_details",
         "risk_factors",
     }
+    BODY_LOCATION_LABELS = {
+        "head": "Голова",
+        "throat": "Горло",
+        "chest": "Грудная клетка",
+        "abdomen": "Живот",
+        "back": "Поясница",
+        "joints": "Суставы/Конечности",
+    }
+
+    def _format_body_locations(self, locations: Any) -> Optional[str]:
+        if not isinstance(locations, list) or not locations:
+            return None
+
+        loc_names = [self.BODY_LOCATION_LABELS.get(str(loc), str(loc)) for loc in locations]
+        return ", ".join(loc_names)
 
     # ============================================
     # Универсальное форматирование ответа (fallback)
@@ -1207,18 +1222,9 @@ class ReportGenerator:
         parts = ["🩺 <b>ХАРАКТЕРИСТИКА БОЛИ:</b>"]
         
         # Локализация
-        locations = pain_data.get("locations", [])
-        if locations:
-            locations_map = {
-                "head": "Голова",
-                "throat": "Горло",
-                "chest": "Грудная клетка",
-                "abdomen": "Живот",
-                "back": "Поясница",
-                "joints": "Суставы/Конечности",
-            }
-            loc_names = [locations_map.get(loc, loc) for loc in locations]
-            parts.append(f"• <b>Локализация:</b> {', '.join(loc_names)}")
+        loc_names = self._format_body_locations(pain_data.get("locations"))
+        if loc_names:
+            parts.append(f"• <b>Локализация:</b> {loc_names}")
         
         # Интенсивность
         intensity = pain_data.get("intensity")
@@ -1377,18 +1383,9 @@ class ReportGenerator:
         parts = ["<h2>🩺 Характеристика боли</h2>"]
         
         # Локализация
-        locations = pain_data.get("locations", [])
-        if locations:
-            locations_map = {
-                "head": "Голова",
-                "throat": "Горло",
-                "chest": "Грудная клетка",
-                "abdomen": "Живот",
-                "back": "Поясница",
-                "joints": "Суставы/Конечности",
-            }
-            loc_names = [locations_map.get(loc, loc) for loc in locations]
-            parts.append(f"<p><strong>Локализация:</strong> {', '.join(loc_names)}</p>")
+        loc_names = self._format_body_locations(pain_data.get("locations"))
+        if loc_names:
+            parts.append(f"<p><strong>Локализация:</strong> {loc_names}</p>")
         
         # Интенсивность
         intensity = pain_data.get("intensity")
@@ -1548,18 +1545,9 @@ class ReportGenerator:
         
         lines = ["🩺 ХАРАКТЕРИСТИКА БОЛИ"]
         
-        locations = pain_data.get("locations", [])
-        if locations:
-            locations_map = {
-                "head": "Голова",
-                "throat": "Горло",
-                "chest": "Грудная клетка",
-                "abdomen": "Живот",
-                "back": "Поясница",
-                "joints": "Суставы/Конечности",
-            }
-            loc_names = [locations_map.get(loc, loc) for loc in locations]
-            lines.append(f"  • Локализация: {', '.join(loc_names)}")
+        loc_names = self._format_body_locations(pain_data.get("locations"))
+        if loc_names:
+            lines.append(f"  • Локализация: {loc_names}")
         
         intensity = pain_data.get("intensity")
         if intensity:

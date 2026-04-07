@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Any, Dict, Optional, List
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 import json
 
 
@@ -117,6 +117,44 @@ class SurveyNavigationResponse(BaseModel):
 class SurveyCompleteRequest(BaseModel):
     """Запрос на завершение опроса."""
     session_id: UUID
+    final_node_id: Optional[str] = Field(None, description="ID финального вопроса", max_length=200)
+    final_answer_data: Optional[dict] = Field(None, description="Последний ответ пользователя")
+    duration_seconds: Optional[int] = Field(None, description="Время ответа на финальный вопрос в секундах", ge=0, le=7200)
+
+    @field_validator("final_answer_data")
+    @classmethod
+    def validate_final_answer_data_size(cls, v: Optional[dict]) -> Optional[dict]:
+        """Повторно используем ограничения размера для финального ответа."""
+        if v is None:
+            return v
+
+        serialized = json.dumps(v, ensure_ascii=False)
+        if len(serialized) > MAX_ANSWER_DATA_SIZE:
+            raise ValueError(
+                f"Размер ответа превышает допустимый лимит ({MAX_ANSWER_DATA_SIZE // 1024} КБ)"
+            )
+
+        def check_depth(obj, depth=0):
+            if depth > 5:
+                raise ValueError("Слишком глубокая вложенность данных ответа (максимум 5)")
+            if isinstance(obj, dict):
+                for val in obj.values():
+                    check_depth(val, depth + 1)
+            elif isinstance(obj, list):
+                for item in obj:
+                    check_depth(item, depth + 1)
+
+        check_depth(v)
+        return v
+
+    @model_validator(mode="after")
+    def validate_final_answer_payload(self):
+        """Если передаётся финальный ответ, node_id должен прийти вместе с ним."""
+        has_answer = self.final_answer_data is not None
+        has_node = self.final_node_id is not None
+        if has_answer != has_node:
+            raise ValueError("Финальный ответ и final_node_id должны передаваться вместе")
+        return self
 
 
 class SurveyCompleteResponse(BaseModel):

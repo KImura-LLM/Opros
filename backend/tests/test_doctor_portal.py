@@ -1,6 +1,7 @@
 import sys
 import unittest
 from pathlib import Path
+from uuid import uuid4
 from unittest.mock import AsyncMock
 
 
@@ -9,6 +10,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.append(str(BACKEND_DIR))
 
 from app.services.bitrix24 import Bitrix24Client
+from app.core.security import create_doctor_pdf_share_token, verify_doctor_pdf_share_token
 from app.services.doctor_portal_routing import (
     PORTAL_CLINIC_BUCKET_KEMEROVO,
     PORTAL_CLINIC_BUCKET_NOVOSIBIRSK,
@@ -41,6 +43,16 @@ class DoctorPortalRoutingTests(unittest.TestCase):
 
         self.assertEqual(category_id, 1)
         self.assertEqual(clinic_bucket, PORTAL_CLINIC_BUCKET_KEMEROVO)
+
+    def test_creates_and_verifies_pdf_share_token(self) -> None:
+        session_id = uuid4()
+
+        token = create_doctor_pdf_share_token(session_id=session_id, doctor_id=42)
+        token_data = verify_doctor_pdf_share_token(token)
+
+        self.assertIsNotNone(token_data)
+        self.assertEqual(token_data.session_id, session_id)
+        self.assertEqual(token_data.doctor_id, 42)
 
 
 class DoctorPortalBitrixMappingTests(unittest.TestCase):

@@ -216,14 +216,22 @@ const SurveyPage: React.FC = () => {
         setAnswer(currentNodeId, currentAnswer)
       }
 
-      // Fire-and-forget: отправляем последний ответ + завершение, не блокируя UI
-      if (currentNode.type !== 'info_screen') {
-        const elapsed = Math.round((Date.now() - questionStartTime.current) / 1000)
-        submitAnswer(sessionId, currentNodeId, currentAnswer, elapsed).catch((err) =>
-          console.warn('Фоновая отправка ответа:', err)
-        )
-      }
-      completeSurvey(sessionId).catch((err) =>
+      // Один keepalive-запрос: сохраняем финальный ответ и завершаем опрос без гонки.
+      const finalElapsed =
+        currentNode.type !== 'info_screen'
+          ? Math.round((Date.now() - questionStartTime.current) / 1000)
+          : undefined
+
+      completeSurvey(
+        sessionId,
+        currentNode.type !== 'info_screen'
+          ? {
+              nodeId: currentNodeId,
+              answerData: currentAnswer,
+              durationSeconds: finalElapsed,
+            }
+          : undefined
+      ).catch((err) =>
         console.warn('Фоновое завершение опроса:', err)
       )
 

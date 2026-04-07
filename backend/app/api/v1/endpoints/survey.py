@@ -5,15 +5,16 @@
 API для прохождения опроса.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from pydantic import BaseModel
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.ext.asyncio import AsyncSession
 from loguru import logger
-from datetime import timedelta
 
 from app.core.config import settings
 from app.core.database import get_db
@@ -45,6 +46,122 @@ def calculate_progress_percent(config_json: dict, current_node_id: str | None, a
     answered_node_ids = list(answers.keys())
     progress_percent = engine.calculate_dynamic_progress(current_node_id, answered_node_ids)
     return round(progress_percent, 1)
+
+
+def _build_initial_progress(start_node: str, started_at: datetime | None = None) -> dict[str, Any]:
+    """Создаёт базовое серверное состояние прохождения опроса."""
+    progress = {
+        "current_node": start_node,
+        "answers": {},
+        "history": [start_node],
+    }
+    if started_at:
+        progress["started_at"] = started_at.isoformat()
+    return progress
+
+
+def _rebuild_progress_from_answers(
+    config_json: dict,
+    answers: dict[str, Any],
+    started_at: datetime | None = None,
+) -> dict[str, Any]:
+    """
+    Восстанавливает прогресс по данным БД, если Redis потерял состояние.
+
+    Идём от start_node по текущему набору ответов и вычисляем фактический маршрут
+    пользователя на текущий момент.
+    """
+    start_node = config_json.get("start_node", "welcome")
+    progress = _build_initial_progress(start_node, started_at)
+
+    if not answers:
+        return progress
+
+    progress["answers"] = dict(answers)
+    engine = SurveyEngine(config_json)
+    current_node = start_node
+    max_steps = max(1, len(config_json.get("nodes", [])) + 1)
+
+    for _ in range(max_steps):
+        current_answer = progress["answers"].get(current_node)
+        if current_answer is None:
+            break
+
+        next_node = engine.get_next_node(current_node, current_answer, progress["answers"])
+        if not next_node:
+            break
+
+        progress["current_node"] = next_node
+        if progress["history"][-1] != next_node:
+            progress["history"].append(next_node)
+        current_node = next_node
+
+    return progress
+
+
+async def _load_answers_map(db: AsyncSession, session_id: UUID | int) -> dict[str, Any]:
+    """Загружает последние ответы сессии из БД."""
+    stmt = (
+        select(SurveyAnswer)
+        .where(SurveyAnswer.session_id == session_id)
+        .order_by(SurveyAnswer.id.asc())
+    )
+    result = await db.execute(stmt)
+    return {answer.node_id: answer.answer_data for answer in result.scalars()}
+
+
+async def _get_progress_snapshot(
+    session: SurveySession,
+    config: SurveyConfig | None,
+    db: AsyncSession,
+    redis: RedisClient,
+) -> dict[str, Any]:
+    """Возвращает прогресс из Redis или восстанавливает его из БД."""
+    start_node = config.json_config.get("start_node", "welcome") if config else "welcome"
+    progress = await redis.get_survey_progress(str(session.id))
+
+    if progress:
+        progress.setdefault("answers", {})
+        progress["current_node"] = progress.get("current_node") or start_node
+        progress["history"] = progress.get("history") or [progress["current_node"]]
+        return progress
+
+    answers = await _load_answers_map(db, session.id)
+    rebuilt_progress = _rebuild_progress_from_answers(
+        config.json_config if config else {},
+        answers,
+        session.started_at,
+    )
+    await redis.save_survey_progress(str(session.id), rebuilt_progress)
+    return rebuilt_progress
+
+
+async def _save_answer(
+    db: AsyncSession,
+    session_id: UUID | int,
+    node_id: str,
+    answer_data: dict[str, Any],
+    duration_seconds: int | None = None,
+) -> None:
+    """Атомарно сохраняет ответ, не создавая дубли по одному вопросу."""
+    update_values: dict[str, Any] = {
+        "answer_data": answer_data,
+        "updated_at": datetime.now(timezone.utc),
+    }
+    if duration_seconds is not None:
+        update_values["duration_seconds"] = duration_seconds
+
+    stmt = insert(SurveyAnswer).values(
+        session_id=session_id,
+        node_id=node_id,
+        answer_data=answer_data,
+        duration_seconds=duration_seconds,
+    )
+    stmt = stmt.on_conflict_do_update(
+        index_elements=[SurveyAnswer.session_id, SurveyAnswer.node_id],
+        set_=update_values,
+    )
+    await db.execute(stmt)
 
 
 # ==========================================
@@ -211,15 +328,6 @@ async def start_survey(
                 logger.info(f"Имя пациента загружено из CRM при старте опроса: {mask_name(patient_name)}")
         except Exception as e:
             logger.warning(f"Не удалось загрузить имя из CRM: {e}")
-    elif False and settings.BITRIX24_WEBHOOK_URL:
-        try:
-            bitrix_client = Bitrix24Client()
-            entity_type = token_data.entity_type or "DEAL"
-            if entity_type == "DEAL":
-                doctor_name = await bitrix_client.get_doctor_name_from_deal(token_data.lead_id)
-        except Exception as e:
-            logger.warning(f"Не удалось загрузить имя врача из CRM: {e}")
-    
     # Получаем реальный IP клиента (учитываем прокси nginx)
     client_ip = (
         request.headers.get("X-Real-IP")
@@ -228,8 +336,8 @@ async def start_survey(
     )
     user_agent = request.headers.get("user-agent")
     
-    # Установка времени истечения сессии (12 часов с момента создания)
-    expires_at = datetime.now(timezone.utc) + timedelta(hours=12)
+    # Установка времени истечения сессии из единой настройки SESSION_TTL.
+    expires_at = datetime.now(timezone.utc) + timedelta(seconds=settings.SESSION_TTL)
     
     session = SurveySession(
         lead_id=token_data.lead_id,
@@ -266,12 +374,7 @@ async def start_survey(
     start_node = config.json_config.get("start_node", "welcome")
     await redis.save_survey_progress(
         str(session.id),
-        {
-            "current_node": start_node,
-            "answers": {},
-            "history": [start_node],
-            "started_at": datetime.now(timezone.utc).isoformat(),
-        }
+        _build_initial_progress(start_node, session.started_at),
     )
     
     logger.info(f"Создана сессия {session.id} для lead_id={token_data.lead_id}")
@@ -338,49 +441,31 @@ async def submit_answer(
     result = await db.execute(stmt)
     config = result.scalar_one_or_none()
     
-    # Получение прогресса из Redis
-    progress = await redis.get_survey_progress(str(session.id))
-    if not progress:
-        progress = {
-            "current_node": config.json_config.get("start_node", "welcome"),
-            "answers": {},
-            "history": [],
-        }
-    
-    # Сохранение ответа в БД
-    existing_answer = await db.execute(
-        select(SurveyAnswer).where(
-            SurveyAnswer.session_id == session.id,
-            SurveyAnswer.node_id == data.node_id,
-        )
+    progress = await _get_progress_snapshot(session, config, db, redis)
+    merged_answers = {
+        **progress.get("answers", {}),
+        data.node_id: data.answer_data,
+    }
+
+    await _save_answer(
+        db=db,
+        session_id=session.id,
+        node_id=data.node_id,
+        answer_data=data.answer_data,
+        duration_seconds=data.duration_seconds,
     )
-    existing = existing_answer.scalar_one_or_none()
-    
-    if existing:
-        existing.answer_data = data.answer_data
-        existing.updated_at = datetime.now(timezone.utc)
-        if data.duration_seconds is not None:
-            existing.duration_seconds = data.duration_seconds
-    else:
-        answer = SurveyAnswer(
-            session_id=session.id,
-            node_id=data.node_id,
-            answer_data=data.answer_data,
-            duration_seconds=data.duration_seconds,
-        )
-        db.add(answer)
-    
     await db.commit()
     
     # Определение следующего узла через Survey Engine
     engine = SurveyEngine(config.json_config)
-    next_node = engine.get_next_node(data.node_id, data.answer_data, progress["answers"])
+    next_node = engine.get_next_node(data.node_id, data.answer_data, merged_answers)
     
     # Обновление прогресса
-    progress["answers"][data.node_id] = data.answer_data
-    progress["current_node"] = next_node
-    if next_node and next_node not in progress["history"]:
-        progress["history"].append(next_node)
+    progress["answers"] = merged_answers
+    progress["current_node"] = next_node or data.node_id
+    history = progress.setdefault("history", [config.json_config.get("start_node", "welcome")])
+    if next_node and history[-1] != next_node:
+        history.append(next_node)
     
     await redis.save_survey_progress(str(session.id), progress)
     
@@ -388,7 +473,7 @@ async def submit_answer(
     # Формула: answered / (answered + remaining_default_path_length)
     # При каждом ответе remaining пересчитывается от нового next_node,
     # поэтому прогресс точно отражает открытие/закрытие веток.
-    answered_node_ids = list(progress["answers"].keys())
+    answered_node_ids = list(merged_answers.keys())
     progress_percent = engine.calculate_dynamic_progress(next_node, answered_node_ids)
 
     return SurveyAnswerResponse(
@@ -428,27 +513,12 @@ async def get_progress(
     # Проверка владения сессией
     await verify_session_owner(session, request, redis)
     
-    # Получение прогресса из Redis
-    progress = await redis.get_survey_progress(str(session_id))
-    
-    if not progress:
-        # Получение конфига для start_node
-        stmt = select(SurveyConfig).where(SurveyConfig.id == session.survey_config_id)
-        result = await db.execute(stmt)
-        config = result.scalar_one_or_none()
-        start_node = config.json_config.get("start_node", "welcome") if config else "welcome"
-        
-        progress = {
-            "current_node": start_node,
-            "answers": {},
-            "history": [start_node],
-        }
-    
-    # Расчёт процента через динамический алгоритм SurveyEngine
     stmt = select(SurveyConfig).where(SurveyConfig.id == session.survey_config_id)
     result = await db.execute(stmt)
     config = result.scalar_one_or_none()
+    progress = await _get_progress_snapshot(session, config, db, redis)
 
+    # Расчёт процента через динамический алгоритм SurveyEngine
     if config:
         progress_percent = calculate_progress_percent(
             config.json_config,
@@ -664,7 +734,16 @@ async def complete_survey(
             report_sent=True,
         )
     
-    # === БЫСТРАЯ ЧАСТЬ: только обновление статуса в БД ===
+    # === БЫСТРАЯ ЧАСТЬ: сохраняем финальный ответ и фиксируем завершение в одной транзакции ===
+    if data.final_node_id and data.final_answer_data is not None:
+        await _save_answer(
+            db=db,
+            session_id=session.id,
+            node_id=data.final_node_id,
+            answer_data=data.final_answer_data,
+            duration_seconds=data.duration_seconds,
+        )
+
     session.status = "completed"
     session.completed_at = datetime.now(timezone.utc)
     
@@ -738,7 +817,11 @@ async def go_back(
             detail="Опрос уже завершён",
         )
     
-    progress = await redis.get_survey_progress(str(data.session_id))
+    stmt = select(SurveyConfig).where(SurveyConfig.id == session.survey_config_id)
+    result = await db.execute(stmt)
+    config = result.scalar_one_or_none()
+
+    progress = await _get_progress_snapshot(session, config, db, redis)
     
     if not progress or len(progress.get("history", [])) <= 1:
         raise HTTPException(
@@ -759,10 +842,6 @@ async def go_back(
     progress["history"] = history
     
     await redis.save_survey_progress(str(data.session_id), progress)
-
-    stmt = select(SurveyConfig).where(SurveyConfig.id == session.survey_config_id)
-    result = await db.execute(stmt)
-    config = result.scalar_one_or_none()
 
     if not config:
         raise HTTPException(

@@ -44,8 +44,8 @@ async def verify_admin_session(request: Request) -> bool:
                 username, password = credentials.split(":", 1)
                 if username == settings.ADMIN_USERNAME and password == settings.ADMIN_PASSWORD:
                     return True
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"Не удалось разобрать Basic Auth для редактора опроса: {e}")
         
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

@@ -1,6 +1,7 @@
 import { startTransition, useDeferredValue, useEffect, useMemo, useState } from 'react'
 
 import {
+  createDoctorPdfShareLink,
   doctorLogin,
   fetchDoctorPdf,
   fetchDoctorPreviewHtml,
@@ -8,12 +9,15 @@ import {
   getDoctorSessions,
 } from '@/api/doctorApi'
 import { useDoctorStore } from '@/store/doctorStore'
-import type { DoctorClinicBucket, DoctorSessionItem } from '@/types'
+import type {
+  DoctorClinicBucket,
+  DoctorSessionItem,
+  DoctorSessionSortField,
+  DoctorSessionSortOrder,
+} from '@/types'
 
 import DoctorDashboard from './DoctorDashboard'
 import DoctorLogin from './DoctorLogin'
-
-type AppointmentSortOrder = 'asc' | 'desc'
 
 const DOCTOR_PORTAL_TABS: Array<{ id: DoctorClinicBucket; label: string }> = [
   { id: 'novosibirsk', label: 'Новосибирск' },
@@ -21,6 +25,11 @@ const DOCTOR_PORTAL_TABS: Array<{ id: DoctorClinicBucket; label: string }> = [
   { id: 'yaroslavl', label: 'Ярославль' },
   { id: 'test', label: 'Тест' },
 ]
+
+const textCollator = new Intl.Collator('ru-RU', {
+  numeric: true,
+  sensitivity: 'base',
+})
 
 function getAvailableTabs(canViewTestTab: boolean) {
   return DOCTOR_PORTAL_TABS.filter((tab) => canViewTestTab || tab.id !== 'test')
@@ -44,6 +53,67 @@ function parseAppointmentTimestamp(value?: string): number | null {
   }
 
   return new Date(year, month - 1, day, hours, minutes).getTime()
+}
+
+function parseIsoTimestamp(value?: string): number | null {
+  if (!value) return null
+  const timestamp = new Date(value).getTime()
+  return Number.isNaN(timestamp) ? null : timestamp
+}
+
+function compareNullableNumbers(
+  left: number | null,
+  right: number | null,
+  order: DoctorSessionSortOrder
+): number {
+  if (left === null && right === null) return 0
+  if (left === null) return 1
+  if (right === null) return -1
+  return order === 'asc' ? left - right : right - left
+}
+
+function compareNullableStrings(
+  left: string | undefined,
+  right: string | undefined,
+  order: DoctorSessionSortOrder
+): number {
+  const normalizedLeft = left?.trim() || null
+  const normalizedRight = right?.trim() || null
+
+  if (normalizedLeft === null && normalizedRight === null) return 0
+  if (normalizedLeft === null) return 1
+  if (normalizedRight === null) return -1
+
+  const result = textCollator.compare(normalizedLeft, normalizedRight)
+  return order === 'asc' ? result : -result
+}
+
+function compareSessionsByField(
+  left: DoctorSessionItem,
+  right: DoctorSessionItem,
+  field: DoctorSessionSortField,
+  order: DoctorSessionSortOrder
+): number {
+  switch (field) {
+    case 'patient_name':
+      return compareNullableStrings(left.patient_name, right.patient_name, order)
+    case 'doctor_name':
+      return compareNullableStrings(left.doctor_name, right.doctor_name, order)
+    case 'appointment_at':
+      return compareNullableNumbers(
+        parseAppointmentTimestamp(left.appointment_at),
+        parseAppointmentTimestamp(right.appointment_at),
+        order
+      )
+    case 'start_time':
+      return compareNullableNumbers(parseIsoTimestamp(left.start_time), parseIsoTimestamp(right.start_time), order)
+    case 'end_time':
+      return compareNullableNumbers(parseIsoTimestamp(left.end_time), parseIsoTimestamp(right.end_time), order)
+    case 'duration_minutes':
+      return compareNullableNumbers(left.duration_minutes ?? null, right.duration_minutes ?? null, order)
+    default:
+      return 0
+  }
 }
 
 export default function DoctorPortalPage() {
@@ -70,8 +140,10 @@ export default function DoctorPortalPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isLoadingSessions, setIsLoadingSessions] = useState(false)
   const [isActionLoading, setIsActionLoading] = useState(false)
+  const [shareStatus, setShareStatus] = useState<string | null>(null)
   const [sessions, setSessions] = useState<DoctorSessionItem[]>([])
-  const [appointmentSortOrder, setAppointmentSortOrder] = useState<AppointmentSortOrder>('desc')
+  const [sortField, setSortField] = useState<DoctorSessionSortField>('appointment_at')
+  const [sortOrder, setSortOrder] = useState<DoctorSessionSortOrder>('desc')
   const deferredDoctorName = useDeferredValue(filters.doctorName)
 
   useEffect(() => {
@@ -191,18 +263,9 @@ export default function DoctorPortalPage() {
 
   const sortedSessions = useMemo(() => {
     return [...sessions].sort((left, right) => {
-      const leftTimestamp = parseAppointmentTimestamp(left.appointment_at)
-      const rightTimestamp = parseAppointmentTimestamp(right.appointment_at)
-
-      if (leftTimestamp === null && rightTimestamp === null) return 0
-      if (leftTimestamp === null) return appointmentSortOrder === 'asc' ? -1 : 1
-      if (rightTimestamp === null) return appointmentSortOrder === 'asc' ? 1 : -1
-
-      return appointmentSortOrder === 'asc'
-        ? leftTimestamp - rightTimestamp
-        : rightTimestamp - leftTimestamp
+      return compareSessionsByField(left, right, sortField, sortOrder)
     })
-  }, [sessions, appointmentSortOrder])
+  }, [sessions, sortField, sortOrder])
 
   async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -271,6 +334,57 @@ export default function DoctorPortalPage() {
     }
   }
 
+  async function copyTextToClipboard(text: string): Promise<void> {
+    if (navigator.clipboard?.writeText && window.isSecureContext) {
+      await navigator.clipboard.writeText(text)
+      return
+    }
+
+    const textarea = document.createElement('textarea')
+    textarea.value = text
+    textarea.setAttribute('readonly', '')
+    textarea.style.position = 'fixed'
+    textarea.style.left = '-9999px'
+    textarea.style.top = '-9999px'
+    document.body.appendChild(textarea)
+    textarea.select()
+
+    try {
+      if (!document.execCommand('copy')) {
+        throw new Error('copy command failed')
+      }
+    } finally {
+      textarea.remove()
+    }
+  }
+
+  function normalizeShareUrl(value: string): string {
+    if (/^https?:\/\//i.test(value)) {
+      return value
+    }
+
+    const normalizedPath = value.startsWith('/') ? value : `/${value}`
+    return `${window.location.origin}${normalizedPath}`
+  }
+
+  async function handleShare(session: DoctorSessionItem) {
+    setIsActionLoading(true)
+    setListError(null)
+    setShareStatus(null)
+
+    try {
+      const response = await createDoctorPdfShareLink(session.share_url)
+      const shareUrl = normalizeShareUrl(response.share_url)
+      await copyTextToClipboard(shareUrl)
+      setShareStatus(`Ссылка на PDF скопирована. Она действует ${response.expires_in_hours} ч.`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Не удалось скопировать ссылку на PDF.'
+      setListError(message)
+    } finally {
+      setIsActionLoading(false)
+    }
+  }
+
   function handleLogout() {
     clearAuth()
     setSessions([])
@@ -278,10 +392,17 @@ export default function DoctorPortalPage() {
     setPassword('')
     setAuthError(null)
     setListError(null)
+    setShareStatus(null)
   }
 
-  function handleAppointmentSortToggle() {
-    setAppointmentSortOrder((current) => (current === 'asc' ? 'desc' : 'asc'))
+  function handleSortChange(field: DoctorSessionSortField) {
+    if (field === sortField) {
+      setSortOrder((current) => (current === 'asc' ? 'desc' : 'asc'))
+      return
+    }
+
+    setSortField(field)
+    setSortOrder(field === 'appointment_at' || field === 'start_time' || field === 'end_time' ? 'desc' : 'asc')
   }
 
   if (!token || !doctor || isBootstrapping) {
@@ -306,19 +427,22 @@ export default function DoctorPortalPage() {
       filters={filters}
       tabs={availableTabs}
       activeClinicBucket={activeClinicBucket}
-      appointmentSortOrder={appointmentSortOrder}
+      sortField={sortField}
+      sortOrder={sortOrder}
       isLoading={isLoadingSessions}
       error={listError}
       isActionLoading={isActionLoading}
+      shareStatus={shareStatus}
       onClinicBucketChange={setActiveClinicBucket}
       onDoctorNameChange={setDoctorNameFilter}
       onDateFromChange={setDateFrom}
       onDateToChange={setDateTo}
       onResetFilters={resetFilters}
       onLogout={handleLogout}
-      onAppointmentSortToggle={handleAppointmentSortToggle}
+      onSortChange={handleSortChange}
       onPreview={handlePreview}
       onDownload={handleDownload}
+      onShare={handleShare}
     />
   )
 }

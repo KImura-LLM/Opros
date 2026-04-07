@@ -147,7 +147,7 @@ class SurveyAnswer(Base):
     session = relationship("SurveySession", back_populates="answers")
 
     __table_args__ = (
-        Index("ix_survey_answers_session_node", "session_id", "node_id"),
+        Index("ix_survey_answers_session_node", "session_id", "node_id", unique=True),
     )
 
     def __repr__(self):

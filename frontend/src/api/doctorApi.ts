@@ -3,6 +3,7 @@ import type {
   DoctorAuthResponse,
   DoctorClinicBucket,
   DoctorMeResponse,
+  DoctorPdfShareResponse,
   DoctorSessionsResponse,
 } from '@/types'
 
@@ -127,6 +128,13 @@ export async function fetchDoctorPdf(downloadUrl: string): Promise<{
   const filename = parseDownloadFilename(contentDisposition)
 
   return { blob, filename }
+}
+
+export async function createDoctorPdfShareLink(shareUrl: string): Promise<DoctorPdfShareResponse> {
+  const response = await doctorFetchRaw(shareUrl, {
+    method: 'POST',
+  })
+  return response.json() as Promise<DoctorPdfShareResponse>
 }
 
 function parseDownloadFilename(contentDisposition: string): string {
