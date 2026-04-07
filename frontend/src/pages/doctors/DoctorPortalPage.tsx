@@ -26,6 +26,15 @@ const DOCTOR_PORTAL_TABS: Array<{ id: DoctorClinicBucket; label: string }> = [
   { id: 'test', label: 'Тест' },
 ]
 
+const NEAREST_SESSIONS_LIMIT = 3
+
+const CLINIC_BUCKET_UTC_OFFSETS: Record<DoctorClinicBucket, number> = {
+  novosibirsk: 7,
+  kemerovo: 7,
+  yaroslavl: 3,
+  test: 7,
+}
+
 const textCollator = new Intl.Collator('ru-RU', {
   numeric: true,
   sensitivity: 'base',
@@ -53,6 +62,31 @@ function parseAppointmentTimestamp(value?: string): number | null {
   }
 
   return new Date(year, month - 1, day, hours, minutes).getTime()
+}
+
+function parseAppointmentTimestampInClinicTimezone(
+  value: string | undefined,
+  clinicBucket: DoctorClinicBucket
+): number | null {
+  if (!value) return null
+
+  const normalized = value.trim().replace(/\s+/, ' ')
+  const [datePart, timePart = '00:00'] = normalized.split(' ')
+  const [day, month, year] = datePart.split('.').map(Number)
+  const [hours, minutes] = timePart.split(':').map(Number)
+
+  if (
+    !Number.isInteger(day) ||
+    !Number.isInteger(month) ||
+    !Number.isInteger(year) ||
+    !Number.isInteger(hours) ||
+    !Number.isInteger(minutes)
+  ) {
+    return null
+  }
+
+  const utcOffset = CLINIC_BUCKET_UTC_OFFSETS[clinicBucket]
+  return Date.UTC(year, month - 1, day, hours - utcOffset, minutes)
 }
 
 function parseIsoTimestamp(value?: string): number | null {
@@ -116,6 +150,70 @@ function compareSessionsByField(
   }
 }
 
+function normalizeDoctorName(value?: string): string {
+  return value?.trim().toLocaleLowerCase('ru-RU') || 'doctor-name-not-set'
+}
+
+function getNearestSessionRanks(
+  sessions: DoctorSessionItem[],
+  clinicBucket: DoctorClinicBucket,
+  nowTimestamp: number
+): Map<string, number> {
+  const groupedSessions = new Map<
+    string,
+    Array<{ session: DoctorSessionItem; appointmentTimestamp: number; distanceFromNow: number }>
+  >()
+
+  for (const session of sessions) {
+    const appointmentTimestamp = parseAppointmentTimestampInClinicTimezone(session.appointment_at, clinicBucket)
+    if (appointmentTimestamp === null) {
+      continue
+    }
+
+    const doctorName = normalizeDoctorName(session.doctor_name)
+    const group = groupedSessions.get(doctorName) ?? []
+    group.push({
+      session,
+      appointmentTimestamp,
+      distanceFromNow: Math.abs(appointmentTimestamp - nowTimestamp),
+    })
+    groupedSessions.set(doctorName, group)
+  }
+
+  const ranks = new Map<string, number>()
+
+  groupedSessions.forEach((group) => {
+    group
+      .sort((left, right) => left.distanceFromNow - right.distanceFromNow)
+      .slice(0, NEAREST_SESSIONS_LIMIT)
+      .forEach((item, index) => {
+        ranks.set(item.session.session_id, index + 1)
+      })
+  })
+
+  return ranks
+}
+
+function sortNearestSessions(
+  sessions: DoctorSessionItem[],
+  ranks: Map<string, number>,
+  clinicBucket: DoctorClinicBucket
+): DoctorSessionItem[] {
+  return [...sessions]
+    .filter((session) => ranks.has(session.session_id))
+    .sort((left, right) => {
+      const rankCompare = (ranks.get(left.session_id) ?? 0) - (ranks.get(right.session_id) ?? 0)
+      if (rankCompare !== 0) return rankCompare
+
+      const leftTimestamp = parseAppointmentTimestampInClinicTimezone(left.appointment_at, clinicBucket)
+      const rightTimestamp = parseAppointmentTimestampInClinicTimezone(right.appointment_at, clinicBucket)
+      const dateCompare = compareNullableNumbers(leftTimestamp, rightTimestamp, 'asc')
+      if (dateCompare !== 0) return dateCompare
+
+      return compareNullableStrings(left.doctor_name, right.doctor_name, 'asc')
+    })
+}
+
 export default function DoctorPortalPage() {
   const {
     token,
@@ -144,6 +242,8 @@ export default function DoctorPortalPage() {
   const [sessions, setSessions] = useState<DoctorSessionItem[]>([])
   const [sortField, setSortField] = useState<DoctorSessionSortField>('appointment_at')
   const [sortOrder, setSortOrder] = useState<DoctorSessionSortOrder>('desc')
+  const [showNearestOnly, setShowNearestOnly] = useState(false)
+  const [currentTimestamp, setCurrentTimestamp] = useState(() => Date.now())
   const deferredDoctorName = useDeferredValue(filters.doctorName)
 
   useEffect(() => {
@@ -266,6 +366,28 @@ export default function DoctorPortalPage() {
       return compareSessionsByField(left, right, sortField, sortOrder)
     })
   }, [sessions, sortField, sortOrder])
+
+  useEffect(() => {
+    const timerId = window.setInterval(() => {
+      setCurrentTimestamp(Date.now())
+    }, 60_000)
+
+    return () => {
+      window.clearInterval(timerId)
+    }
+  }, [])
+
+  const nearestSessionRanks = useMemo(() => {
+    return getNearestSessionRanks(sessions, activeClinicBucket, currentTimestamp)
+  }, [sessions, activeClinicBucket, currentTimestamp])
+
+  const visibleSessions = useMemo(() => {
+    if (!showNearestOnly) {
+      return sortedSessions
+    }
+
+    return sortNearestSessions(sessions, nearestSessionRanks, activeClinicBucket)
+  }, [sessions, sortedSessions, showNearestOnly, nearestSessionRanks, activeClinicBucket])
 
   async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -393,6 +515,7 @@ export default function DoctorPortalPage() {
     setAuthError(null)
     setListError(null)
     setShareStatus(null)
+    setShowNearestOnly(false)
   }
 
   function handleSortChange(field: DoctorSessionSortField) {
@@ -422,8 +545,8 @@ export default function DoctorPortalPage() {
   return (
     <DoctorDashboard
       doctor={doctor}
-      sessions={sortedSessions}
-      total={sortedSessions.length}
+      sessions={visibleSessions}
+      total={visibleSessions.length}
       filters={filters}
       tabs={availableTabs}
       activeClinicBucket={activeClinicBucket}
@@ -433,11 +556,15 @@ export default function DoctorPortalPage() {
       error={listError}
       isActionLoading={isActionLoading}
       shareStatus={shareStatus}
+      nearestSessionRanks={nearestSessionRanks}
+      showNearestOnly={showNearestOnly}
+      hasNearestSessions={nearestSessionRanks.size > 0}
       onClinicBucketChange={setActiveClinicBucket}
       onDoctorNameChange={setDoctorNameFilter}
       onDateFromChange={setDateFrom}
       onDateToChange={setDateTo}
       onResetFilters={resetFilters}
+      onToggleNearestSessions={() => setShowNearestOnly((current) => !current)}
       onLogout={handleLogout}
       onSortChange={handleSortChange}
       onPreview={handlePreview}

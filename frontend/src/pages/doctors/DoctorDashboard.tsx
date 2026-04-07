@@ -3,6 +3,7 @@ import {
   ArrowUpNarrowWide,
   Building2,
   CalendarRange,
+  Clock,
   Download,
   Eye,
   Filter,
@@ -43,11 +44,15 @@ interface DoctorDashboardProps {
   error: string | null
   isActionLoading: boolean
   shareStatus: string | null
+  nearestSessionRanks: Map<string, number>
+  showNearestOnly: boolean
+  hasNearestSessions: boolean
   onClinicBucketChange: (value: DoctorClinicBucket) => void
   onDoctorNameChange: (value: string) => void
   onDateFromChange: (value: string) => void
   onDateToChange: (value: string) => void
   onResetFilters: () => void
+  onToggleNearestSessions: () => void
   onLogout: () => void
   onSortChange: (field: DoctorSessionSortField) => void
   onPreview: (session: DoctorSessionItem) => void
@@ -85,6 +90,19 @@ function formatAppointmentDateTime(value?: string): string {
   return value
 }
 
+function getNearestSessionRowClass(rank?: number): string {
+  switch (rank) {
+    case 1:
+      return 'rounded-lg bg-[linear-gradient(90deg,_rgba(187,247,208,0.9)_0%,_rgba(220,252,231,0.76)_100%)] shadow-[inset_4px_0_0_rgba(22,163,74,0.72)] hover:bg-[linear-gradient(90deg,_rgba(187,247,208,0.96)_0%,_rgba(220,252,231,0.84)_100%)]'
+    case 2:
+      return 'rounded-lg bg-[linear-gradient(90deg,_rgba(220,252,231,0.78)_0%,_rgba(240,253,244,0.72)_100%)] shadow-[inset_4px_0_0_rgba(34,197,94,0.48)] hover:bg-[linear-gradient(90deg,_rgba(220,252,231,0.9)_0%,_rgba(240,253,244,0.82)_100%)]'
+    case 3:
+      return 'rounded-lg bg-[linear-gradient(90deg,_rgba(240,253,244,0.82)_0%,_rgba(255,255,255,0.7)_100%)] shadow-[inset_4px_0_0_rgba(74,222,128,0.3)] hover:bg-[linear-gradient(90deg,_rgba(240,253,244,0.92)_0%,_rgba(255,255,255,0.78)_100%)]'
+    default:
+      return 'hover:bg-slate-50/80'
+  }
+}
+
 interface SortableHeaderProps {
   field: DoctorSessionSortField
   label: string
@@ -104,7 +122,7 @@ function SortableHeader({
 
   return (
     <button
-      className={`inline-flex items-center gap-2 text-left text-xs font-semibold uppercase tracking-[0.2em] transition ${
+      className={`inline-flex min-w-0 items-center gap-1.5 whitespace-nowrap text-left text-[11px] font-semibold uppercase tracking-[0.08em] transition ${
         isActive ? 'text-slate-900' : 'text-slate-500 hover:text-slate-700'
       }`}
       type="button"
@@ -138,11 +156,15 @@ export default function DoctorDashboard({
   error,
   isActionLoading,
   shareStatus,
+  nearestSessionRanks,
+  showNearestOnly,
+  hasNearestSessions,
   onClinicBucketChange,
   onDoctorNameChange,
   onDateFromChange,
   onDateToChange,
   onResetFilters,
+  onToggleNearestSessions,
   onLogout,
   onSortChange,
   onPreview,
@@ -153,7 +175,7 @@ export default function DoctorDashboard({
 
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,_#f6fbfa_0%,_#eef6f4_48%,_#ffffff_100%)] text-slate-900">
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-[84rem] px-4 py-6 sm:px-6 lg:px-8">
         <header className="mb-6 overflow-hidden rounded-[32px] border border-white/80 bg-[linear-gradient(135deg,_rgba(15,118,110,0.96)_0%,_rgba(17,94,89,0.96)_44%,_rgba(15,23,42,0.96)_100%)] p-6 text-white shadow-[0_24px_70px_-36px_rgba(15,23,42,0.75)]">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div className="space-y-3">
@@ -217,9 +239,25 @@ export default function DoctorDashboard({
         </section>
 
         <section className="mb-6 rounded-[28px] border border-slate-200 bg-white/90 p-5 shadow-[0_24px_60px_-42px_rgba(15,23,42,0.65)] backdrop-blur">
-          <div className="mb-4 flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
-            <Filter className="h-4 w-4" />
-            Фильтры
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">
+              <Filter className="h-4 w-4" />
+              Фильтры
+            </div>
+            <button
+              className={`inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                showNearestOnly
+                  ? 'border-emerald-200 bg-emerald-600 text-white shadow-[0_14px_24px_-18px_rgba(21,128,61,0.9)] hover:bg-emerald-700'
+                  : 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:border-emerald-300 hover:bg-emerald-100'
+              }`}
+              type="button"
+              aria-pressed={showNearestOnly}
+              disabled={!showNearestOnly && !hasNearestSessions}
+              onClick={onToggleNearestSessions}
+            >
+              <Clock className="h-4 w-4" />
+              {showNearestOnly ? 'Показать все сессии' : 'Показать ближайшие сессии'}
+            </button>
           </div>
 
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_repeat(2,minmax(0,0.6fr))_auto]">
@@ -293,11 +331,20 @@ export default function DoctorDashboard({
             </div>
           ) : null}
 
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200">
+          <div className="overflow-hidden">
+            <table className="w-full table-fixed divide-y divide-slate-200">
+              <colgroup>
+                <col className="w-[12%]" />
+                <col className="w-[17%] xl:w-[23%]" />
+                <col className="w-[14%]" />
+                <col className="w-[12%]" />
+                <col className="w-[12%]" />
+                <col className="w-[7.5%]" />
+                <col className="w-[25.5%] xl:w-[19.5%]" />
+              </colgroup>
               <thead className="bg-slate-50/80">
-                <tr className="text-left text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                  <th className="px-5 py-4">
+                <tr className="text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                  <th className="px-3 py-3">
                     <SortableHeader
                       field="patient_name"
                       label="Пациент"
@@ -306,7 +353,7 @@ export default function DoctorDashboard({
                       onSortChange={onSortChange}
                     />
                   </th>
-                  <th className="px-5 py-4">
+                  <th className="px-3 py-3">
                     <SortableHeader
                       field="doctor_name"
                       label="Врач"
@@ -315,16 +362,16 @@ export default function DoctorDashboard({
                       onSortChange={onSortChange}
                     />
                   </th>
-                  <th className="px-5 py-4">
+                  <th className="px-3 py-3">
                     <SortableHeader
                       field="appointment_at"
-                      label="Дата и время приема"
+                      label="Прием"
                       activeField={sortField}
                       order={sortOrder}
                       onSortChange={onSortChange}
                     />
                   </th>
-                  <th className="px-5 py-4">
+                  <th className="px-3 py-3">
                     <SortableHeader
                       field="start_time"
                       label="Начало"
@@ -333,25 +380,25 @@ export default function DoctorDashboard({
                       onSortChange={onSortChange}
                     />
                   </th>
-                  <th className="px-5 py-4">
+                  <th className="px-3 py-3">
                     <SortableHeader
                       field="end_time"
-                      label="Окончание"
+                      label="Конец"
                       activeField={sortField}
                       order={sortOrder}
                       onSortChange={onSortChange}
                     />
                   </th>
-                  <th className="px-5 py-4">
+                  <th className="px-3 py-3">
                     <SortableHeader
                       field="duration_minutes"
-                      label="Длительность"
+                      label="Мин."
                       activeField={sortField}
                       order={sortOrder}
                       onSortChange={onSortChange}
                     />
                   </th>
-                  <th className="px-5 py-4">Отчет</th>
+                  <th className="px-3 py-3">Отчет</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -363,56 +410,84 @@ export default function DoctorDashboard({
                   </tr>
                 ) : null}
 
-                {sessions.map((session) => (
-                  <tr key={session.session_id} className="transition hover:bg-slate-50/80">
-                    <td className="px-5 py-4 text-sm font-medium text-slate-900">
-                      {session.patient_name || 'Не указано'}
-                    </td>
-                    <td className="px-5 py-4 text-sm text-slate-700">
-                      {session.doctor_name || 'Не указано'}
-                    </td>
-                    <td className="px-5 py-4 text-sm text-slate-700">
-                      {formatAppointmentDateTime(session.appointment_at)}
-                    </td>
-                    <td className="px-5 py-4 text-sm text-slate-700">
-                      {formatDateTime(session.start_time)}
-                    </td>
-                    <td className="px-5 py-4 text-sm text-slate-700">
-                      {formatDateTime(session.end_time)}
-                    </td>
-                    <td className="px-5 py-4 text-sm text-slate-700">
-                      {formatDuration(session.duration_minutes)}
-                    </td>
-                    <td className="px-5 py-4">
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
-                          type="button"
-                          onClick={() => onPreview(session)}
-                        >
-                          <Eye className="h-4 w-4" />
-                          Просмотр
-                        </button>
-                        <button
-                          className="inline-flex items-center gap-2 rounded-xl bg-teal-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-teal-700"
-                          type="button"
-                          onClick={() => onDownload(session)}
-                        >
-                          <Download className="h-4 w-4" />
-                          PDF
-                        </button>
-                        <button
-                          className="inline-flex items-center gap-2 rounded-xl border border-teal-200 bg-teal-50 px-3 py-2 text-sm font-medium text-teal-800 transition hover:border-teal-300 hover:bg-teal-100"
-                          type="button"
-                          onClick={() => onShare(session)}
-                        >
-                          <Share2 className="h-4 w-4" />
-                          Поделиться
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {sessions.map((session) => {
+                  const nearestRank = nearestSessionRanks.get(session.session_id)
+
+                  return (
+                    <tr
+                      key={session.session_id}
+                      className={`transition [&>td:first-child]:rounded-l-lg [&>td:last-child]:rounded-r-lg ${getNearestSessionRowClass(nearestRank)}`}
+                    >
+                      <td
+                        className="truncate whitespace-nowrap px-3 py-3 text-[13px] font-medium text-slate-900"
+                        title={session.patient_name || 'Не указано'}
+                      >
+                        {session.patient_name || 'Не указано'}
+                      </td>
+                      <td
+                        className="truncate whitespace-nowrap px-3 py-3 text-[13px] text-slate-700"
+                        title={session.doctor_name || 'Не указано'}
+                      >
+                        {session.doctor_name || 'Не указано'}
+                      </td>
+                      <td
+                        className="truncate whitespace-nowrap px-3 py-3 text-[13px] text-slate-700"
+                        title={formatAppointmentDateTime(session.appointment_at)}
+                      >
+                        {formatAppointmentDateTime(session.appointment_at)}
+                      </td>
+                      <td
+                        className="truncate whitespace-nowrap px-3 py-3 text-[13px] text-slate-700"
+                        title={formatDateTime(session.start_time)}
+                      >
+                        {formatDateTime(session.start_time)}
+                      </td>
+                      <td
+                        className="truncate whitespace-nowrap px-3 py-3 text-[13px] text-slate-700"
+                        title={formatDateTime(session.end_time)}
+                      >
+                        {formatDateTime(session.end_time)}
+                      </td>
+                      <td
+                        className="truncate whitespace-nowrap px-3 py-3 text-[13px] text-slate-700"
+                        title={formatDuration(session.duration_minutes)}
+                      >
+                        {formatDuration(session.duration_minutes)}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-3">
+                        <div className="flex flex-nowrap gap-1.5">
+                          <button
+                            className="inline-flex items-center gap-1 rounded-lg bg-slate-900 px-2 py-1.5 text-xs font-medium text-white transition hover:bg-slate-800"
+                            type="button"
+                            onClick={() => onPreview(session)}
+                            title="Открыть отчет"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                            Отчет
+                          </button>
+                          <button
+                            className="inline-flex items-center gap-1 rounded-lg bg-teal-600 px-2 py-1.5 text-xs font-medium text-white transition hover:bg-teal-700"
+                            type="button"
+                            onClick={() => onDownload(session)}
+                            title="Скачать PDF"
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                            PDF
+                          </button>
+                          <button
+                            className="inline-flex items-center gap-1 rounded-lg border border-teal-200 bg-teal-50 px-2 py-1.5 text-xs font-medium text-teal-800 transition hover:border-teal-300 hover:bg-teal-100"
+                            type="button"
+                            onClick={() => onShare(session)}
+                            title="Скопировать ссылку"
+                          >
+                            <Share2 className="h-3.5 w-3.5" />
+                            Ссылка
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
