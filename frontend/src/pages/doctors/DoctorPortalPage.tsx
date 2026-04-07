@@ -159,24 +159,17 @@ function getNearestSessionRanks(
   clinicBucket: DoctorClinicBucket,
   nowTimestamp: number
 ): Map<string, number> {
-  const groupedSessions = new Map<
-    string,
-    Array<{ session: DoctorSessionItem; appointmentTimestamp: number; distanceFromNow: number }>
-  >()
+  const groupedSessions = new Map<string, Array<{ session: DoctorSessionItem; appointmentTimestamp: number }>>()
 
   for (const session of sessions) {
     const appointmentTimestamp = parseAppointmentTimestampInClinicTimezone(session.appointment_at, clinicBucket)
-    if (appointmentTimestamp === null) {
+    if (appointmentTimestamp === null || appointmentTimestamp <= nowTimestamp) {
       continue
     }
 
     const doctorName = normalizeDoctorName(session.doctor_name)
     const group = groupedSessions.get(doctorName) ?? []
-    group.push({
-      session,
-      appointmentTimestamp,
-      distanceFromNow: Math.abs(appointmentTimestamp - nowTimestamp),
-    })
+    group.push({ session, appointmentTimestamp })
     groupedSessions.set(doctorName, group)
   }
 
@@ -184,7 +177,7 @@ function getNearestSessionRanks(
 
   groupedSessions.forEach((group) => {
     group
-      .sort((left, right) => left.distanceFromNow - right.distanceFromNow)
+      .sort((left, right) => left.appointmentTimestamp - right.appointmentTimestamp)
       .slice(0, NEAREST_SESSIONS_LIMIT)
       .forEach((item, index) => {
         ranks.set(item.session.session_id, index + 1)

@@ -334,8 +334,8 @@ export default function DoctorDashboard({
           <div className="overflow-hidden">
             <table className="w-full table-fixed divide-y divide-slate-200">
               <colgroup>
-                <col className="w-[12%]" />
-                <col className="w-[17%] xl:w-[23%]" />
+                <col className="w-[17.1%] xl:w-[18.9%]" />
+                <col className="w-[11.9%] xl:w-[16.1%]" />
                 <col className="w-[14%]" />
                 <col className="w-[12%]" />
                 <col className="w-[12%]" />
