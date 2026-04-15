@@ -17,10 +17,32 @@ const defaultFilters: DoctorFilters = {
   dateTo: '',
 }
 
+function normalizeFiltersForDoctor(
+  filters: DoctorFilters,
+  doctor: DoctorMeResponse | null
+): DoctorFilters {
+  if (!doctor?.has_strict_doctor_name_filter) {
+    return filters
+  }
+
+  if (!filters.doctorName) {
+    return filters
+  }
+
+  return {
+    ...filters,
+    doctorName: '',
+  }
+}
+
 function normalizeClinicBucketForDoctor(
   clinicBucket: DoctorClinicBucket,
   doctor: DoctorMeResponse | null
 ): DoctorClinicBucket {
+  if (doctor?.allowed_clinic_bucket) {
+    return doctor.allowed_clinic_bucket
+  }
+
   if (clinicBucket === 'test' && !doctor?.can_view_test_tab) {
     return DEFAULT_CLINIC_BUCKET
   }
@@ -48,7 +70,11 @@ function readDoctorAuth(): { token: string; doctor: DoctorMeResponse } | null {
       parsed.doctor &&
       typeof parsed.doctor.id === 'number' &&
       typeof parsed.doctor.username === 'string' &&
-      typeof parsed.doctor.can_view_test_tab === 'boolean'
+      typeof parsed.doctor.can_view_test_tab === 'boolean' &&
+      typeof parsed.doctor.has_strict_doctor_name_filter === 'boolean' &&
+      (parsed.doctor.allowed_clinic_bucket === undefined ||
+        parsed.doctor.allowed_clinic_bucket === null ||
+        typeof parsed.doctor.allowed_clinic_bucket === 'string')
     ) {
       return parsed as { token: string; doctor: DoctorMeResponse }
     }
@@ -97,6 +123,7 @@ export const useDoctorStore = create<DoctorStoreState>()(
         set({
           token: auth.token,
           doctor: auth.doctor,
+          filters: normalizeFiltersForDoctor(get().filters, auth.doctor),
           activeClinicBucket: normalizeClinicBucketForDoctor(
             get().activeClinicBucket,
             auth.doctor
@@ -109,6 +136,7 @@ export const useDoctorStore = create<DoctorStoreState>()(
         set((state) => ({
           token,
           doctor,
+          filters: normalizeFiltersForDoctor(state.filters, doctor),
           activeClinicBucket: normalizeClinicBucketForDoctor(
             state.activeClinicBucket,
             doctor

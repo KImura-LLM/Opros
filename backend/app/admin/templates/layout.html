@@ -596,6 +596,75 @@
             padding: 16px !important;
         }
 
+        {% if '/admin/doctor-user' in request.url.path %}
+        /* Страницы создания/редактирования врача */
+        .card .card-body,
+        .card form,
+        .card form fieldset,
+        .card form .form-fieldset,
+        .card form .row,
+        .card form .row > *,
+        .card form .col,
+        .card form .col-auto,
+        .card form .col-md,
+        .card form .col-lg,
+        .card form .col-sm,
+        .card form .col-sm-2,
+        .card form .col-sm-3,
+        .card form .col-sm-9,
+        .card form .col-md-9,
+        .card form .col-md-10,
+        .card form .col-md-11,
+        .card form .col-sm-10,
+        .card form .form-group,
+        .card form .mb-3,
+        .card form .form-control-plaintext {
+            background: #000000 !important;
+            color: #ffffff !important;
+        }
+
+        .card form fieldset,
+        .card form .form-fieldset {
+            border: 1px solid #1f1f1f !important;
+        }
+
+        .card form label,
+        .card form .form-label,
+        .card form .col-form-label,
+        .card form .form-text,
+        .card form small,
+        .card form .text-muted {
+            color: #ffffff !important;
+        }
+
+        .card form input[type="text"],
+        .card form input[type="password"],
+        .card form input[type="email"],
+        .card form input[type="number"],
+        .card form input[type="search"],
+        .card form input[type="url"],
+        .card form input[type="tel"],
+        .card form input[type="date"],
+        .card form textarea,
+        .card form select,
+        .card form .form-control,
+        .card form .form-select {
+            background: #111111 !important;
+            color: #ffffff !important;
+            border: 1px solid #3a3a3a !important;
+        }
+
+        .card form input::placeholder,
+        .card form textarea::placeholder {
+            color: #bdbdbd !important;
+        }
+
+        .card form option {
+            background: #111111 !important;
+            color: #ffffff !important;
+        }
+        {% endif %}
+
         /* Detail view */
         .detail-view dt {
             color: var(--text-secondary) !important;

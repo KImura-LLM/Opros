@@ -4,10 +4,38 @@ SQLAdmin-представление для управления учетными
 
 from sqladmin import ModelView
 from sqladmin.forms import get_model_form
-from wtforms import PasswordField
+from wtforms import PasswordField, SelectField
 
 from app.core.security import get_password_hash
 from app.models import DoctorUser
+from app.services.doctor_portal_routing import (
+    PORTAL_CLINIC_BUCKET_KEMEROVO,
+    PORTAL_CLINIC_BUCKET_LABELS,
+    PORTAL_CLINIC_BUCKET_NOVOSIBIRSK,
+    PORTAL_CLINIC_BUCKET_YAROSLAVL,
+)
+
+
+DOCTOR_VISIBILITY_BUCKET_CHOICES = [
+    ("", "Все доступные города"),
+    (
+        PORTAL_CLINIC_BUCKET_NOVOSIBIRSK,
+        PORTAL_CLINIC_BUCKET_LABELS[PORTAL_CLINIC_BUCKET_NOVOSIBIRSK],
+    ),
+    (
+        PORTAL_CLINIC_BUCKET_KEMEROVO,
+        PORTAL_CLINIC_BUCKET_LABELS[PORTAL_CLINIC_BUCKET_KEMEROVO],
+    ),
+    (
+        PORTAL_CLINIC_BUCKET_YAROSLAVL,
+        PORTAL_CLINIC_BUCKET_LABELS[PORTAL_CLINIC_BUCKET_YAROSLAVL],
+    ),
+]
+
+
+def _normalize_visibility_text(value: str | None) -> str | None:
+    normalized = " ".join((value or "").split())
+    return normalized or None
 
 
 class DoctorUserAdmin(ModelView, model=DoctorUser):
@@ -22,6 +50,8 @@ class DoctorUserAdmin(ModelView, model=DoctorUser):
         DoctorUser.id,
         DoctorUser.username,
         DoctorUser.is_active,
+        DoctorUser.allowed_clinic_bucket,
+        DoctorUser.session_doctor_name_filter,
         DoctorUser.can_view_test_tab,
         DoctorUser.created_at,
     ]
@@ -29,6 +59,8 @@ class DoctorUserAdmin(ModelView, model=DoctorUser):
         DoctorUser.id,
         DoctorUser.username,
         DoctorUser.is_active,
+        DoctorUser.allowed_clinic_bucket,
+        DoctorUser.session_doctor_name_filter,
         DoctorUser.can_view_test_tab,
         DoctorUser.created_at,
         DoctorUser.updated_at,
@@ -40,12 +72,39 @@ class DoctorUserAdmin(ModelView, model=DoctorUser):
     form_columns = [
         DoctorUser.username,
         DoctorUser.is_active,
+        DoctorUser.allowed_clinic_bucket,
+        DoctorUser.session_doctor_name_filter,
         DoctorUser.can_view_test_tab,
     ]
+    form_overrides = {
+        DoctorUser.allowed_clinic_bucket.key: SelectField,
+    }
+    form_args = {
+        DoctorUser.allowed_clinic_bucket.key: {
+            "choices": DOCTOR_VISIBILITY_BUCKET_CHOICES,
+            "coerce": str,
+            "description": (
+                "Параметры видимости данных. Если выбран город, врач увидит только эту воронку."
+            ),
+        },
+        DoctorUser.session_doctor_name_filter.key: {
+            "description": (
+                "Параметры видимости данных. Если заполнено ФИО, врач увидит только записи "
+                "с точным совпадением по полю «Врач»."
+            ),
+        },
+    }
+    form_widget_args = {
+        DoctorUser.session_doctor_name_filter.key: {
+            "placeholder": "Например, Иванов Иван Иванович",
+        },
+    }
 
     column_labels = {
         DoctorUser.username: "Логин",
         DoctorUser.is_active: "Активен",
+        DoctorUser.allowed_clinic_bucket: "Параметры видимости данных: регион",
+        DoctorUser.session_doctor_name_filter: "Параметры видимости данных: ФИО врача",
         DoctorUser.can_view_test_tab: "Доступ к тестовой вкладке",
         DoctorUser.created_at: "Создан",
         DoctorUser.updated_at: "Обновлен",
@@ -72,6 +131,19 @@ class DoctorUserAdmin(ModelView, model=DoctorUser):
         password = (data.get("password") or "").strip()
         if is_created and not password:
             raise ValueError("Пароль обязателен при создании учетной записи врача.")
+
+        allowed_clinic_bucket = (data.get("allowed_clinic_bucket") or "").strip().lower()
+        if allowed_clinic_bucket and allowed_clinic_bucket not in {
+            PORTAL_CLINIC_BUCKET_NOVOSIBIRSK,
+            PORTAL_CLINIC_BUCKET_KEMEROVO,
+            PORTAL_CLINIC_BUCKET_YAROSLAVL,
+        }:
+            raise ValueError("Выбран неизвестный регион видимости данных.")
+
+        model.allowed_clinic_bucket = allowed_clinic_bucket or None
+        model.session_doctor_name_filter = _normalize_visibility_text(
+            data.get("session_doctor_name_filter")
+        )
 
         if password:
             model.hashed_password = get_password_hash(password)

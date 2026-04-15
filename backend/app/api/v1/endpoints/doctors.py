@@ -16,12 +16,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.endpoints.reports import _get_report_content, _safe_filename
 from app.core.database import get_db
 from app.core.security import (
+    DOCTOR_PDF_SHARE_TOKEN_EXPIRE_HOURS,
     create_doctor_access_token,
     create_doctor_pdf_share_token,
-    verify_doctor_token,
     verify_doctor_pdf_share_token,
     verify_password,
-    DOCTOR_PDF_SHARE_TOKEN_EXPIRE_HOURS,
+    verify_doctor_token,
 )
 from app.models import DoctorUser, SurveySession
 from app.services.doctor_portal_routing import (
@@ -46,6 +46,8 @@ class DoctorMeResponse(BaseModel):
     id: int
     username: str
     can_view_test_tab: bool
+    allowed_clinic_bucket: str | None = None
+    has_strict_doctor_name_filter: bool
 
 
 class DoctorAuthResponse(BaseModel):
@@ -77,6 +79,11 @@ class DoctorSessionsResponse(BaseModel):
     total: int
 
 
+def _normalize_visibility_text(value: str | None) -> str | None:
+    normalized = " ".join((value or "").split())
+    return normalized or None
+
+
 def _normalize_day_bounds(value: date, is_end: bool) -> datetime:
     bound_time = time.max if is_end else time.min
     return datetime.combine(value, bound_time, tzinfo=timezone.utc)
@@ -95,6 +102,8 @@ def _doctor_to_response(doctor: DoctorUser) -> DoctorMeResponse:
         id=doctor.id,
         username=doctor.username,
         can_view_test_tab=doctor.can_view_test_tab,
+        allowed_clinic_bucket=_get_doctor_allowed_bucket(doctor),
+        has_strict_doctor_name_filter=_get_strict_doctor_name_filter(doctor) is not None,
     )
 
 
@@ -108,7 +117,27 @@ def _validate_clinic_bucket(clinic_bucket: str) -> str:
     return normalized_bucket
 
 
+def _get_doctor_allowed_bucket(doctor: DoctorUser) -> str | None:
+    allowed_bucket = (doctor.allowed_clinic_bucket or "").strip().lower()
+    if not allowed_bucket:
+        return None
+    if allowed_bucket not in PORTAL_CLINIC_BUCKETS:
+        return None
+    return allowed_bucket
+
+
+def _get_strict_doctor_name_filter(doctor: DoctorUser) -> str | None:
+    return _normalize_visibility_text(doctor.session_doctor_name_filter)
+
+
 def _ensure_doctor_can_access_bucket(doctor: DoctorUser, clinic_bucket: str) -> None:
+    allowed_bucket = _get_doctor_allowed_bucket(doctor)
+    if allowed_bucket and clinic_bucket != allowed_bucket:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Доступ к выбранной вкладке запрещен.",
+        )
+
     if clinic_bucket == PORTAL_CLINIC_BUCKET_TEST and not doctor.can_view_test_tab:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -121,6 +150,40 @@ def _resolve_session_bucket(session: SurveySession) -> str:
         return session.portal_clinic_bucket
 
     return resolve_portal_clinic_bucket(session.bitrix_category_id)
+
+
+def _doctor_name_matches_strict_filter(session: SurveySession, doctor: DoctorUser) -> bool:
+    strict_filter = _get_strict_doctor_name_filter(doctor)
+    if strict_filter is None:
+        return True
+
+    session_doctor_name = _normalize_visibility_text(session.doctor_name)
+    if session_doctor_name is None:
+        return False
+
+    return session_doctor_name.casefold() == strict_filter.casefold()
+
+
+def _ensure_doctor_can_access_session(session: SurveySession, doctor: DoctorUser) -> None:
+    session_bucket = _resolve_session_bucket(session)
+    allowed_bucket = _get_doctor_allowed_bucket(doctor)
+    if allowed_bucket and session_bucket != allowed_bucket:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Сессия не найдена.",
+        )
+
+    if session_bucket == PORTAL_CLINIC_BUCKET_TEST and not doctor.can_view_test_tab:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Сессия не найдена.",
+        )
+
+    if not _doctor_name_matches_strict_filter(session, doctor):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Сессия не найдена.",
+        )
 
 
 def _build_doctor_session_item(session: SurveySession) -> DoctorSessionItem:
@@ -152,7 +215,7 @@ async def _get_session_for_doctor(
             detail="Сессия не найдена.",
         )
 
-    _ensure_doctor_can_access_bucket(doctor, _resolve_session_bucket(session))
+    _ensure_doctor_can_access_session(session, doctor)
     return session
 
 
@@ -233,6 +296,7 @@ async def doctor_sessions(
 ):
     clinic_bucket = _validate_clinic_bucket(clinic_bucket)
     _ensure_doctor_can_access_bucket(doctor, clinic_bucket)
+    strict_doctor_name_filter = _get_strict_doctor_name_filter(doctor)
 
     stmt = select(SurveySession).where(SurveySession.status == "completed")
     stmt = stmt.where(
@@ -243,9 +307,22 @@ async def doctor_sessions(
         )
     )
 
-    doctor_filter = (doctor_name or "").strip()
-    if doctor_filter:
-        stmt = stmt.where(SurveySession.doctor_name.ilike(f"%{doctor_filter}%"))
+    if strict_doctor_name_filter:
+        normalized_session_doctor_name = func.lower(
+            func.trim(
+                func.regexp_replace(
+                    func.coalesce(SurveySession.doctor_name, ""),
+                    r"\s+",
+                    " ",
+                    "g",
+                )
+            )
+        )
+        stmt = stmt.where(normalized_session_doctor_name == strict_doctor_name_filter.casefold())
+    else:
+        doctor_filter = (doctor_name or "").strip()
+        if doctor_filter:
+            stmt = stmt.where(SurveySession.doctor_name.ilike(f"%{doctor_filter}%"))
 
     if date_from:
         stmt = stmt.where(SurveySession.completed_at >= _normalize_day_bounds(date_from, is_end=False))
@@ -262,6 +339,8 @@ async def doctor_sessions(
     for session in sessions:
         effective_bucket = _resolve_session_bucket(session)
         if effective_bucket != clinic_bucket:
+            continue
+        if not _doctor_name_matches_strict_filter(session, doctor):
             continue
 
         items.append(_build_doctor_session_item(session))
@@ -344,7 +423,7 @@ async def doctor_shared_pdf(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="PDF-отчёт недоступен.",
         )
-    _ensure_doctor_can_access_bucket(doctor, _resolve_session_bucket(session))
+    _ensure_doctor_can_access_session(session, doctor)
 
     from weasyprint import HTML
 

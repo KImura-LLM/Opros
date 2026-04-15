@@ -30,6 +30,16 @@ class DoctorUser(Base):
         server_default=text("false"),
         comment="Доступ к тестовой вкладке портала врачей",
     )
+    allowed_clinic_bucket = Column(
+        String(50),
+        nullable=True,
+        comment="Разрешенная воронка doctor portal: novosibirsk, kemerovo, yaroslavl",
+    )
+    session_doctor_name_filter = Column(
+        String(255),
+        nullable=True,
+        comment="Жесткий фильтр doctor portal по точному ФИО врача",
+    )
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 

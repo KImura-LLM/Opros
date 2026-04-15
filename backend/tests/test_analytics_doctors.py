@@ -1,10 +1,11 @@
 import unittest
 from datetime import UTC, datetime, timedelta
 
+from fastapi import HTTPException
 from sqlalchemy import delete
 
 from app.api.v1.endpoints.analytics import get_dashboard_stats
-from app.api.v1.endpoints.doctors import doctor_sessions
+from app.api.v1.endpoints.doctors import _get_session_for_doctor, doctor_sessions
 from app.core.database import async_session_maker, engine
 from app.models import DoctorUser, SurveyAnswer, SurveyConfig, SurveySession
 from app.services.doctor_portal_routing import PORTAL_CLINIC_BUCKET_NOVOSIBIRSK
@@ -329,6 +330,165 @@ class AnalyticsAndDoctorsTests(unittest.IsolatedAsyncioTestCase):
         )
         for item in response.items:
             self.assertIn(f"/api/v1/doctors/sessions/{item.session_id}/share/pdf", item.share_url)
+
+    async def test_doctor_sessions_apply_strict_visibility_settings(self) -> None:
+        now = datetime(2099, 2, 21, 12, 0, tzinfo=UTC)
+
+        async with async_session_maker() as db:
+            config = SurveyConfig(
+                name="Doctor strict visibility config",
+                description="doctor-strict-visibility",
+                version="test",
+                is_active=False,
+                json_config={"start_node": "welcome", "nodes": []},
+            )
+            doctor = DoctorUser(
+                username="doctor_visibility_user",
+                hashed_password="hashed",
+                is_active=True,
+                allowed_clinic_bucket=PORTAL_CLINIC_BUCKET_NOVOSIBIRSK,
+                session_doctor_name_filter="Иванов Иван Иванович",
+                can_view_test_tab=True,
+            )
+            db.add_all([config, doctor])
+            await db.flush()
+
+            self.created_config_ids.append(config.id)
+            self.created_doctor_ids.append(doctor.id)
+
+            matching_session = SurveySession(
+                lead_id=930001,
+                entity_type="DEAL",
+                patient_name="Пациент видимый",
+                doctor_name="Иванов Иван Иванович",
+                survey_config_id=config.id,
+                token_hash="doctor-visibility-930001",
+                status="completed",
+                consent_given=True,
+                portal_clinic_bucket=PORTAL_CLINIC_BUCKET_NOVOSIBIRSK,
+                started_at=now - timedelta(minutes=30),
+                completed_at=now - timedelta(minutes=10),
+            )
+            normalized_spacing_session = SurveySession(
+                lead_id=930002,
+                entity_type="DEAL",
+                patient_name="Пациент с пробелами",
+                doctor_name="  Иванов   Иван   Иванович  ",
+                survey_config_id=config.id,
+                token_hash="doctor-visibility-930002",
+                status="completed",
+                consent_given=True,
+                portal_clinic_bucket="",
+                bitrix_category_id=0,
+                started_at=now - timedelta(minutes=25),
+                completed_at=now - timedelta(minutes=5),
+            )
+            other_doctor_session = SurveySession(
+                lead_id=930003,
+                entity_type="DEAL",
+                patient_name="Пациент чужой врач",
+                doctor_name="Петров Петр Петрович",
+                survey_config_id=config.id,
+                token_hash="doctor-visibility-930003",
+                status="completed",
+                consent_given=True,
+                portal_clinic_bucket=PORTAL_CLINIC_BUCKET_NOVOSIBIRSK,
+                started_at=now - timedelta(minutes=20),
+                completed_at=now - timedelta(minutes=3),
+            )
+            other_bucket_session = SurveySession(
+                lead_id=930004,
+                entity_type="DEAL",
+                patient_name="Пациент чужой город",
+                doctor_name="Иванов Иван Иванович",
+                survey_config_id=config.id,
+                token_hash="doctor-visibility-930004",
+                status="completed",
+                consent_given=True,
+                portal_clinic_bucket="kemerovo",
+                started_at=now - timedelta(minutes=22),
+                completed_at=now - timedelta(minutes=4),
+            )
+            db.add_all(
+                [
+                    matching_session,
+                    normalized_spacing_session,
+                    other_doctor_session,
+                    other_bucket_session,
+                ]
+            )
+            await db.commit()
+
+            self.created_session_ids.extend(
+                [
+                    matching_session.id,
+                    normalized_spacing_session.id,
+                    other_doctor_session.id,
+                    other_bucket_session.id,
+                ]
+            )
+
+            response = await doctor_sessions(
+                clinic_bucket=PORTAL_CLINIC_BUCKET_NOVOSIBIRSK,
+                doctor_name="Петров",
+                date_from=now.date(),
+                date_to=now.date(),
+                db=db,
+                doctor=doctor,
+            )
+
+        self.assertEqual(response.total, 2)
+        self.assertEqual(
+            {item.patient_name for item in response.items},
+            {"Пациент видимый", "Пациент с пробелами"},
+        )
+
+    async def test_get_session_for_doctor_blocks_direct_access_to_foreign_session(self) -> None:
+        now = datetime(2099, 2, 22, 12, 0, tzinfo=UTC)
+
+        async with async_session_maker() as db:
+            config = SurveyConfig(
+                name="Doctor strict direct access config",
+                description="doctor-strict-direct-access",
+                version="test",
+                is_active=False,
+                json_config={"start_node": "welcome", "nodes": []},
+            )
+            doctor = DoctorUser(
+                username="doctor_direct_access_user",
+                hashed_password="hashed",
+                is_active=True,
+                allowed_clinic_bucket=PORTAL_CLINIC_BUCKET_NOVOSIBIRSK,
+                session_doctor_name_filter="Иванов Иван Иванович",
+            )
+            db.add_all([config, doctor])
+            await db.flush()
+
+            self.created_config_ids.append(config.id)
+            self.created_doctor_ids.append(doctor.id)
+
+            foreign_session = SurveySession(
+                lead_id=940001,
+                entity_type="DEAL",
+                patient_name="Пациент закрытый",
+                doctor_name="Петров Петр Петрович",
+                survey_config_id=config.id,
+                token_hash="doctor-direct-access-940001",
+                status="completed",
+                consent_given=True,
+                portal_clinic_bucket=PORTAL_CLINIC_BUCKET_NOVOSIBIRSK,
+                started_at=now - timedelta(minutes=10),
+                completed_at=now - timedelta(minutes=2),
+            )
+            db.add(foreign_session)
+            await db.commit()
+
+            self.created_session_ids.append(foreign_session.id)
+
+            with self.assertRaises(HTTPException) as error_context:
+                await _get_session_for_doctor(foreign_session.id, doctor, db)
+
+        self.assertEqual(error_context.exception.status_code, 404)
 
 
 if __name__ == "__main__":

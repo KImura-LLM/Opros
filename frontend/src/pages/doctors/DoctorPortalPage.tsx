@@ -11,6 +11,7 @@ import {
 import { useDoctorStore } from '@/store/doctorStore'
 import type {
   DoctorClinicBucket,
+  DoctorMeResponse,
   DoctorSessionItem,
   DoctorSessionSortField,
   DoctorSessionSortOrder,
@@ -40,8 +41,12 @@ const textCollator = new Intl.Collator('ru-RU', {
   sensitivity: 'base',
 })
 
-function getAvailableTabs(canViewTestTab: boolean) {
-  return DOCTOR_PORTAL_TABS.filter((tab) => canViewTestTab || tab.id !== 'test')
+function getAvailableTabs(doctor: DoctorMeResponse | null) {
+  if (doctor?.allowed_clinic_bucket) {
+    return DOCTOR_PORTAL_TABS.filter((tab) => tab.id === doctor.allowed_clinic_bucket)
+  }
+
+  return DOCTOR_PORTAL_TABS.filter((tab) => doctor?.can_view_test_tab || tab.id !== 'test')
 }
 
 function parseAppointmentTimestamp(value?: string): number | null {
@@ -238,6 +243,7 @@ export default function DoctorPortalPage() {
   const [showNearestOnly, setShowNearestOnly] = useState(false)
   const [currentTimestamp, setCurrentTimestamp] = useState(() => Date.now())
   const deferredDoctorName = useDeferredValue(filters.doctorName)
+  const shouldHideDoctorNameFilter = Boolean(doctor?.has_strict_doctor_name_filter)
 
   useEffect(() => {
     hydrateAuth()
@@ -277,10 +283,7 @@ export default function DoctorPortalPage() {
     }
   }, [token, clearAuth, setAuth])
 
-  const availableTabs = useMemo(
-    () => getAvailableTabs(Boolean(doctor?.can_view_test_tab)),
-    [doctor?.can_view_test_tab]
-  )
+  const availableTabs = useMemo(() => getAvailableTabs(doctor), [doctor])
 
   useEffect(() => {
     if (!doctor) return
@@ -307,7 +310,7 @@ export default function DoctorPortalPage() {
 
     getDoctorSessions({
       clinicBucket: activeClinicBucket,
-      doctorName: deferredDoctorName.trim(),
+      doctorName: shouldHideDoctorNameFilter ? '' : deferredDoctorName.trim(),
       dateFrom: filters.dateFrom,
       dateTo: filters.dateTo,
     })
@@ -327,8 +330,11 @@ export default function DoctorPortalPage() {
           return
         }
 
-        if (lowerMessage.includes('доступ к тестовой вкладке')) {
-          setActiveClinicBucket('novosibirsk')
+        if (
+          lowerMessage.includes('доступ к тестовой вкладке') ||
+          lowerMessage.includes('доступ к выбранной вкладке')
+        ) {
+          setActiveClinicBucket(doctor.allowed_clinic_bucket ?? 'novosibirsk')
           return
         }
 
@@ -350,6 +356,7 @@ export default function DoctorPortalPage() {
     filters.dateFrom,
     filters.dateTo,
     deferredDoctorName,
+    shouldHideDoctorNameFilter,
     clearAuth,
     setActiveClinicBucket,
   ])
@@ -541,6 +548,7 @@ export default function DoctorPortalPage() {
       sessions={visibleSessions}
       total={visibleSessions.length}
       filters={filters}
+      showDoctorNameFilter={!shouldHideDoctorNameFilter}
       tabs={availableTabs}
       activeClinicBucket={activeClinicBucket}
       sortField={sortField}

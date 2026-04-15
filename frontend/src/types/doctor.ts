@@ -8,6 +8,8 @@ export interface DoctorMeResponse {
   id: number
   username: string
   can_view_test_tab: boolean
+  allowed_clinic_bucket: DoctorClinicBucket | null
+  has_strict_doctor_name_filter: boolean
 }
 
 export interface DoctorAuthResponse {

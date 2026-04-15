@@ -36,6 +36,7 @@ interface DoctorDashboardProps {
   sessions: DoctorSessionItem[]
   total: number
   filters: DoctorFilters
+  showDoctorNameFilter: boolean
   tabs: DoctorClinicTab[]
   activeClinicBucket: DoctorClinicBucket
   sortField: DoctorSessionSortField
@@ -151,6 +152,7 @@ export default function DoctorDashboard({
   sessions,
   total,
   filters,
+  showDoctorNameFilter,
   tabs,
   activeClinicBucket,
   sortField,
@@ -175,6 +177,9 @@ export default function DoctorDashboard({
   onShare,
 }: DoctorDashboardProps) {
   const activeTabLabel = tabs.find((tab) => tab.id === activeClinicBucket)?.label ?? 'Сессии'
+  const filtersGridClass = showDoctorNameFilter
+    ? 'grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_repeat(2,minmax(0,0.6fr))_auto]'
+    : 'grid gap-4 lg:grid-cols-[repeat(2,minmax(0,0.75fr))_auto]'
 
   return (
     <div className="min-h-screen bg-[linear-gradient(180deg,_#f6fbfa_0%,_#eef6f4_48%,_#ffffff_100%)] text-slate-900">
@@ -191,8 +196,9 @@ export default function DoctorDashboard({
                   Завершенные сессии пациентов
                 </h1>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-200 sm:text-base">
-                  Данные разложены по клиникам. Можно быстро переключаться между вкладками,
-                  сузить список по врачу и периоду, открыть отчет или скачать PDF.
+                  {showDoctorNameFilter
+                    ? 'Данные разложены по клиникам. Можно быстро переключаться между вкладками, сузить список по врачу и периоду, открыть отчет или скачать PDF.'
+                    : 'Интерфейс уже ограничен вашим профилем: показывается только доступный раздел и только ваши записи за выбранный период.'}
                 </p>
               </div>
             </div>
@@ -263,17 +269,19 @@ export default function DoctorDashboard({
             </button>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_repeat(2,minmax(0,0.6fr))_auto]">
-            <label className="block">
-              <span className="mb-2 block text-sm font-medium text-slate-700">Поиск по врачу</span>
-              <input
-                className="input-field"
-                type="text"
-                value={filters.doctorName}
-                onChange={(event) => onDoctorNameChange(event.target.value)}
-                placeholder="Например, Иванова"
-              />
-            </label>
+          <div className={filtersGridClass}>
+            {showDoctorNameFilter ? (
+              <label className="block">
+                <span className="mb-2 block text-sm font-medium text-slate-700">Поиск по врачу</span>
+                <input
+                  className="input-field"
+                  type="text"
+                  value={filters.doctorName}
+                  onChange={(event) => onDoctorNameChange(event.target.value)}
+                  placeholder="Например, Иванова"
+                />
+              </label>
+            ) : null}
 
             <label className="block">
               <span className="mb-2 block text-sm font-medium text-slate-700">Дата от</span>
