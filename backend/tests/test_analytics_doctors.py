@@ -331,6 +331,97 @@ class AnalyticsAndDoctorsTests(unittest.IsolatedAsyncioTestCase):
         for item in response.items:
             self.assertIn(f"/api/v1/doctors/sessions/{item.session_id}/share/pdf", item.share_url)
 
+    async def test_doctor_sessions_filter_by_patient_name_with_doctor_filter(self) -> None:
+        now = datetime(2099, 2, 20, 13, 0, tzinfo=UTC)
+
+        async with async_session_maker() as db:
+            config = SurveyConfig(
+                name="Doctor portal patient filter config",
+                description="doctor-patient-filter-test",
+                version="test",
+                is_active=False,
+                json_config={"start_node": "welcome", "nodes": []},
+            )
+            doctor = DoctorUser(
+                username="doctor_patient_filter_user",
+                hashed_password="hashed",
+                is_active=True,
+                can_view_test_tab=True,
+            )
+            db.add_all([config, doctor])
+            await db.flush()
+
+            self.created_config_ids.append(config.id)
+            self.created_doctor_ids.append(doctor.id)
+
+            matching_session = SurveySession(
+                lead_id=921001,
+                entity_type="DEAL",
+                patient_name="Ivan Petrov",
+                doctor_name="Doctor Alpha",
+                survey_config_id=config.id,
+                token_hash="doctor-patient-filter-921001",
+                status="completed",
+                consent_given=True,
+                portal_clinic_bucket=PORTAL_CLINIC_BUCKET_NOVOSIBIRSK,
+                started_at=now - timedelta(minutes=20),
+                completed_at=now - timedelta(minutes=5),
+            )
+            other_patient_session = SurveySession(
+                lead_id=921002,
+                entity_type="DEAL",
+                patient_name="Pavel Sidorov",
+                doctor_name="Doctor Alpha",
+                survey_config_id=config.id,
+                token_hash="doctor-patient-filter-921002",
+                status="completed",
+                consent_given=True,
+                portal_clinic_bucket=PORTAL_CLINIC_BUCKET_NOVOSIBIRSK,
+                started_at=now - timedelta(minutes=30),
+                completed_at=now - timedelta(minutes=15),
+            )
+            other_doctor_session = SurveySession(
+                lead_id=921003,
+                entity_type="DEAL",
+                patient_name="Ivan Petrov",
+                doctor_name="Doctor Beta",
+                survey_config_id=config.id,
+                token_hash="doctor-patient-filter-921003",
+                status="completed",
+                consent_given=True,
+                portal_clinic_bucket=PORTAL_CLINIC_BUCKET_NOVOSIBIRSK,
+                started_at=now - timedelta(minutes=25),
+                completed_at=now - timedelta(minutes=10),
+            )
+            db.add_all([matching_session, other_patient_session, other_doctor_session])
+            await db.commit()
+
+            self.created_session_ids.extend(
+                [matching_session.id, other_patient_session.id, other_doctor_session.id]
+            )
+
+            patient_only_response = await doctor_sessions(
+                clinic_bucket=PORTAL_CLINIC_BUCKET_NOVOSIBIRSK,
+                patient_name="petrov",
+                date_from=now.date(),
+                date_to=now.date(),
+                db=db,
+                doctor=doctor,
+            )
+            combined_response = await doctor_sessions(
+                clinic_bucket=PORTAL_CLINIC_BUCKET_NOVOSIBIRSK,
+                doctor_name="alpha",
+                patient_name="petrov",
+                date_from=now.date(),
+                date_to=now.date(),
+                db=db,
+                doctor=doctor,
+            )
+
+        self.assertEqual(patient_only_response.total, 2)
+        self.assertEqual(combined_response.total, 1)
+        self.assertEqual(combined_response.items[0].session_id, matching_session.id)
+
     async def test_doctor_sessions_apply_strict_visibility_settings(self) -> None:
         now = datetime(2099, 2, 21, 12, 0, tzinfo=UTC)
 

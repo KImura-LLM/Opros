@@ -13,6 +13,7 @@ const DEFAULT_CLINIC_BUCKET: DoctorClinicBucket = 'novosibirsk'
 
 const defaultFilters: DoctorFilters = {
   doctorName: '',
+  patientName: '',
   dateFrom: '',
   dateTo: '',
 }
@@ -102,6 +103,7 @@ interface DoctorStoreState {
   setAuth: (token: string, doctor: DoctorMeResponse) => void
   clearAuth: () => void
   setDoctorNameFilter: (value: string) => void
+  setPatientNameFilter: (value: string) => void
   setDateFrom: (value: string) => void
   setDateTo: (value: string) => void
   setActiveClinicBucket: (value: DoctorClinicBucket) => void
@@ -154,6 +156,14 @@ export const useDoctorStore = create<DoctorStoreState>()(
           filters: {
             ...state.filters,
             doctorName: value,
+          },
+        })),
+
+      setPatientNameFilter: (value) =>
+        set((state) => ({
+          filters: {
+            ...state.filters,
+            patientName: value,
           },
         })),
 

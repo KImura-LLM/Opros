@@ -222,6 +222,7 @@ export default function DoctorPortalPage() {
     setAuth,
     clearAuth,
     setDoctorNameFilter,
+    setPatientNameFilter,
     setDateFrom,
     setDateTo,
     setActiveClinicBucket,
@@ -243,6 +244,7 @@ export default function DoctorPortalPage() {
   const [showNearestOnly, setShowNearestOnly] = useState(false)
   const [currentTimestamp, setCurrentTimestamp] = useState(() => Date.now())
   const deferredDoctorName = useDeferredValue(filters.doctorName)
+  const deferredPatientName = useDeferredValue(filters.patientName ?? '')
   const shouldHideDoctorNameFilter = Boolean(doctor?.has_strict_doctor_name_filter)
 
   useEffect(() => {
@@ -311,6 +313,7 @@ export default function DoctorPortalPage() {
     getDoctorSessions({
       clinicBucket: activeClinicBucket,
       doctorName: shouldHideDoctorNameFilter ? '' : deferredDoctorName.trim(),
+      patientName: deferredPatientName.trim(),
       dateFrom: filters.dateFrom,
       dateTo: filters.dateTo,
     })
@@ -356,6 +359,7 @@ export default function DoctorPortalPage() {
     filters.dateFrom,
     filters.dateTo,
     deferredDoctorName,
+    deferredPatientName,
     shouldHideDoctorNameFilter,
     clearAuth,
     setActiveClinicBucket,
@@ -562,6 +566,7 @@ export default function DoctorPortalPage() {
       hasNearestSessions={nearestSessionRanks.size > 0}
       onClinicBucketChange={setActiveClinicBucket}
       onDoctorNameChange={setDoctorNameFilter}
+      onPatientNameChange={setPatientNameFilter}
       onDateFromChange={setDateFrom}
       onDateToChange={setDateTo}
       onResetFilters={resetFilters}

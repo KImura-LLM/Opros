@@ -50,6 +50,7 @@ interface DoctorDashboardProps {
   hasNearestSessions: boolean
   onClinicBucketChange: (value: DoctorClinicBucket) => void
   onDoctorNameChange: (value: string) => void
+  onPatientNameChange: (value: string) => void
   onDateFromChange: (value: string) => void
   onDateToChange: (value: string) => void
   onResetFilters: () => void
@@ -166,6 +167,7 @@ export default function DoctorDashboard({
   hasNearestSessions,
   onClinicBucketChange,
   onDoctorNameChange,
+  onPatientNameChange,
   onDateFromChange,
   onDateToChange,
   onResetFilters,
@@ -270,18 +272,31 @@ export default function DoctorDashboard({
           </div>
 
           <div className={filtersGridClass}>
-            {showDoctorNameFilter ? (
+            <div className="space-y-4">
+              {showDoctorNameFilter ? (
+                <label className="block">
+                  <span className="mb-2 block text-sm font-medium text-slate-700">Поиск по врачу</span>
+                  <input
+                    className="input-field"
+                    type="text"
+                    value={filters.doctorName}
+                    onChange={(event) => onDoctorNameChange(event.target.value)}
+                    placeholder="Например, Иванова"
+                  />
+                </label>
+              ) : null}
+
               <label className="block">
-                <span className="mb-2 block text-sm font-medium text-slate-700">Поиск по врачу</span>
+                <span className="mb-2 block text-sm font-medium text-slate-700">Поиск по пациенту</span>
                 <input
                   className="input-field"
                   type="text"
-                  value={filters.doctorName}
-                  onChange={(event) => onDoctorNameChange(event.target.value)}
-                  placeholder="Например, Иванова"
+                  value={filters.patientName ?? ''}
+                  onChange={(event) => onPatientNameChange(event.target.value)}
+                  placeholder="Например, Петров"
                 />
               </label>
-            ) : null}
+            </div>
 
             <label className="block">
               <span className="mb-2 block text-sm font-medium text-slate-700">Дата от</span>

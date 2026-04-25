@@ -98,6 +98,7 @@ export async function getDoctorMe(): Promise<DoctorMeResponse> {
 export async function getDoctorSessions(params: {
   clinicBucket: DoctorClinicBucket
   doctorName?: string
+  patientName?: string
   dateFrom?: string
   dateTo?: string
 }): Promise<DoctorSessionsResponse> {
@@ -105,6 +106,7 @@ export async function getDoctorSessions(params: {
 
   searchParams.set('clinic_bucket', params.clinicBucket)
   if (params.doctorName) searchParams.set('doctor_name', params.doctorName)
+  if (params.patientName) searchParams.set('patient_name', params.patientName)
   if (params.dateFrom) searchParams.set('date_from', params.dateFrom)
   if (params.dateTo) searchParams.set('date_to', params.dateTo)
 

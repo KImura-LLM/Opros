@@ -53,6 +53,7 @@ export type DoctorSessionSortOrder = 'asc' | 'desc'
 
 export interface DoctorFilters {
   doctorName: string
+  patientName: string
   dateFrom: string
   dateTo: string
 }

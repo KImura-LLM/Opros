@@ -84,6 +84,12 @@ def _normalize_visibility_text(value: str | None) -> str | None:
     return normalized or None
 
 
+def _normalize_search_filter(value: str | None) -> str:
+    if not isinstance(value, str):
+        return ""
+    return value.strip()
+
+
 def _normalize_day_bounds(value: date, is_end: bool) -> datetime:
     bound_time = time.max if is_end else time.min
     return datetime.combine(value, bound_time, tzinfo=timezone.utc)
@@ -289,6 +295,7 @@ async def doctor_sessions(
         description="Вкладка портала врачей",
     ),
     doctor_name: str | None = Query(None, description="Фильтр по ФИО врача"),
+    patient_name: str | None = Query(None, description="Фильтр по ФИО пациента"),
     date_from: date | None = Query(None, description="Начало периода"),
     date_to: date | None = Query(None, description="Конец периода"),
     db: AsyncSession = Depends(get_db),
@@ -320,9 +327,13 @@ async def doctor_sessions(
         )
         stmt = stmt.where(normalized_session_doctor_name == strict_doctor_name_filter.casefold())
     else:
-        doctor_filter = (doctor_name or "").strip()
+        doctor_filter = _normalize_search_filter(doctor_name)
         if doctor_filter:
             stmt = stmt.where(SurveySession.doctor_name.ilike(f"%{doctor_filter}%"))
+
+    patient_filter = _normalize_search_filter(patient_name)
+    if patient_filter:
+        stmt = stmt.where(SurveySession.patient_name.ilike(f"%{patient_filter}%"))
 
     if date_from:
         stmt = stmt.where(SurveySession.completed_at >= _normalize_day_bounds(date_from, is_end=False))
