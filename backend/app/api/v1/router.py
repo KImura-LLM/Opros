@@ -7,7 +7,7 @@
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, survey, survey_editor, reports, analytics, bitrix_webhook, doctors
+from app.api.v1.endpoints import auth, survey, survey_editor, reports, analytics, bitrix_webhook, doctors, survey_routing
 
 api_router = APIRouter()
 
@@ -54,4 +54,9 @@ api_router.include_router(
 # Роутер портала врачей
 api_router.include_router(
     doctors.router,
+)
+
+# Роутер маршрутизации опросников
+api_router.include_router(
+    survey_routing.router,
 )

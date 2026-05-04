@@ -329,8 +329,14 @@ class Bitrix24Client:
 
     async def get_deal_field_definition(self, field_name: str) -> Optional[dict]:
         """Возвращает метаданные поля сделки из Bitrix24."""
+        fields = await self.get_deal_fields()
+        field_definition = fields.get(field_name)
+        return field_definition if isinstance(field_definition, dict) else None
+
+    async def get_deal_fields(self) -> dict:
+        """Возвращает metadata всех полей сделки из Bitrix24."""
         if not self.webhook_url:
-            return None
+            return {}
 
         method_url = f"{self.webhook_url.rstrip('/')}/crm.deal.fields"
 
@@ -340,11 +346,10 @@ class Bitrix24Client:
                 response.raise_for_status()
 
                 result = response.json().get("result", {})
-                field_definition = result.get(field_name)
-                return field_definition if isinstance(field_definition, dict) else None
+                return result if isinstance(result, dict) else {}
         except Exception as e:
             logger.error(f"Ошибка получения метаданных поля сделки из Битрикс24: {e}")
-            return None
+            return {}
 
     @staticmethod
     def _extract_first_scalar(value: Any) -> Any:

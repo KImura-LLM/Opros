@@ -12,6 +12,7 @@ import ErrorPage from '@/pages/ErrorPage'
 const EditorPage = lazy(() => import('@/pages/EditorPage'))
 const AnalysisEditorPage = lazy(() => import('@/pages/AnalysisEditorPage'))
 const DoctorPortalPage = lazy(() => import('@/pages/doctors/DoctorPortalPage'))
+const SurveyRoutingPage = lazy(() => import('@/pages/SurveyRoutingPage'))
 
 function App() {
   const location = useLocation()
@@ -48,6 +49,9 @@ function App() {
 
               {/* Редактор системного анализа (для админ-панели) */}
               <Route path="/analysis-editor/:surveyId" element={<AnalysisEditorPage />} />
+
+              {/* Маршрутизация опросников (для админ-панели) */}
+              <Route path="/routing" element={<SurveyRoutingPage />} />
             </Routes>
           </Suspense>
         </motion.div>

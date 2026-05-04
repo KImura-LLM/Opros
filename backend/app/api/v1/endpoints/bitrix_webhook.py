@@ -9,13 +9,17 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession
 from loguru import logger
 
 from app.core.config import settings
+from app.core.database import get_db
 from app.core.security import create_access_token, generate_short_code
 from app.core.log_utils import mask_name
 from app.core.redis import get_redis, RedisClient
+from app.models import AuditLog
 from app.services.bitrix24 import Bitrix24Client
+from app.services.survey_routing import resolve_survey_for_deal
 
 
 router = APIRouter()
@@ -68,6 +72,7 @@ class BitrixWebhookErrorResponse(BaseModel):
 )
 async def bitrix_webhook(
     request: Request,
+    db: AsyncSession = Depends(get_db),
     redis: RedisClient = Depends(get_redis),
 ):
     """
@@ -153,22 +158,30 @@ async def bitrix_webhook(
     if entity_type not in ("DEAL", "LEAD"):
         entity_type = "DEAL"
 
+    bitrix_client = Bitrix24Client() if settings.BITRIX24_WEBHOOK_URL else None
+    deal_data: dict | None = None
+
+    if entity_type == "DEAL" and bitrix_client:
+        try:
+            deal_data = await bitrix_client.get_deal(lead_id)
+            if deal_data:
+                logger.info(f"Данные сделки загружены из CRM для маршрутизации: deal_id={lead_id}")
+        except Exception as e:
+            logger.warning(f"Не удалось получить сделку из CRM для deal_id={lead_id}: {e}")
+
     # Проверка категории воронки (если настроена фильтрация)
     allowed_categories = settings.ALLOWED_CATEGORY_IDS
     if allowed_categories:
         resolved_category_id: Optional[str] = None
 
         # ВСЕГДА получаем category_id из API Битрикс24 — не доверяем параметру из запроса
-        if entity_type == "DEAL" and settings.BITRIX24_WEBHOOK_URL:
+        if entity_type == "DEAL" and deal_data:
             try:
-                bitrix_client = Bitrix24Client()
-                deal_data = await bitrix_client.get_deal(lead_id)
-                if deal_data:
-                    resolved_category_id = str(deal_data.get("CATEGORY_ID", "")).strip() or None
-                    logger.info(
-                        f"CATEGORY_ID загружен из CRM: "
-                        f"deal_id={lead_id}, category_id={resolved_category_id}"
-                    )
+                resolved_category_id = str(deal_data.get("CATEGORY_ID", "")).strip() or None
+                logger.info(
+                    f"CATEGORY_ID загружен из CRM: "
+                    f"deal_id={lead_id}, category_id={resolved_category_id}"
+                )
             except Exception as e:
                 logger.warning(f"Не удалось получить CATEGORY_ID из CRM для сделки {lead_id}: {e}")
 
@@ -204,8 +217,7 @@ async def bitrix_webhook(
             )
     
     # Если имя пациента не передано (или было шаблоном) — получаем из CRM
-    if not patient_name and settings.BITRIX24_WEBHOOK_URL:
-        bitrix_client = Bitrix24Client()
+    if not patient_name and bitrix_client:
         if entity_type == "DEAL":
             patient_name = await bitrix_client.get_patient_name_from_deal(lead_id)
         if patient_name:
@@ -213,19 +225,37 @@ async def bitrix_webhook(
         else:
             logger.warning(f"Не удалось получить имя пациента из CRM для сделки {lead_id}")
 
-    if entity_type == "DEAL" and settings.BITRIX24_WEBHOOK_URL:
+    if entity_type == "DEAL" and bitrix_client:
         try:
-            bitrix_client = Bitrix24Client()
-            doctor_name = await bitrix_client.get_doctor_name_from_deal(lead_id)
+            doctor_name = await bitrix_client.resolve_doctor_name_from_deal_data(deal_data)
             if doctor_name:
                 logger.info(f"Имя врача загружено из CRM для сделки {lead_id}")
         except Exception as e:
             logger.warning(f"Не удалось загрузить имя врача из CRM для сделки {lead_id}: {e}")
+
+    routing_decision = await resolve_survey_for_deal(
+        db=db,
+        deal_data=deal_data if entity_type == "DEAL" else None,
+    )
+    db.add(
+        AuditLog(
+            action="survey_routing_selected",
+            details=routing_decision.audit_details(lead_id=lead_id, entity_type=entity_type),
+            ip_address=request.client.host if request.client else None,
+        )
+    )
+    await db.commit()
+    logger.info(
+        f"Маршрутизация опросника: deal_id={lead_id}, "
+        f"clinic={routing_decision.clinic_key}, survey_config_id={routing_decision.survey_config_id}, "
+        f"rule_id={routing_decision.selected_rule_id}, fallback={routing_decision.fallback_used}"
+    )
     
     # Генерация JWT токена (компактный — без patient_name для короткой ссылки)
     token = create_access_token(
         lead_id=lead_id,
         entity_type=entity_type,
+        survey_config_id=routing_decision.survey_config_id,
     )
     
     # Генерация короткого кода и сохранение маппинга в Redis
@@ -242,20 +272,18 @@ async def bitrix_webhook(
     )
     
     # Обновление данных сделки в Битрикс24
-    if settings.BITRIX24_WEBHOOK_URL:
-        bitrix_client = Bitrix24Client()
-
-        # Запись ссылки в пользовательское поле UF_CRM_1771160085 (для отправки через SMS/WhatsApp)
+    if bitrix_client:
+        # Запись ссылки в пользовательское поле для отправки через SMS/WhatsApp.
         if entity_type == "DEAL":
             updated = await bitrix_client.update_deal_field(
                 deal_id=lead_id,
-                fields={"UF_CRM_1771160085": survey_url}
+                fields={settings.BITRIX24_SURVEY_LINK_FIELD: survey_url}
             )
             if updated:
-                logger.info(f"Ссылка записана в поле UF_CRM_1771160085 сделки {lead_id}")
+                logger.info(f"Ссылка записана в поле {settings.BITRIX24_SURVEY_LINK_FIELD} сделки {lead_id}")
             else:
                 logger.warning(
-                    "Не удалось записать ссылку в поле UF_CRM_1771160085. "
+                    f"Не удалось записать ссылку в поле {settings.BITRIX24_SURVEY_LINK_FIELD}. "
                     "Проверьте, что поле создано в настройках CRM."
                 )
 
@@ -275,6 +303,7 @@ async def bitrix_webhook(
 async def generate_survey_link(
     data: BitrixWebhookRequest,
     request: Request,
+    db: AsyncSession = Depends(get_db),
     redis: RedisClient = Depends(get_redis),
 ):
     """
@@ -306,11 +335,30 @@ async def generate_survey_link(
     entity_type = data.entity_type.upper()
     if entity_type not in ("DEAL", "LEAD"):
         entity_type = "DEAL"
+
+    bitrix_client = Bitrix24Client() if settings.BITRIX24_WEBHOOK_URL else None
+    deal_data = None
+    if entity_type == "DEAL" and bitrix_client:
+        deal_data = await bitrix_client.get_deal(data.lead_id)
+
+    routing_decision = await resolve_survey_for_deal(
+        db=db,
+        deal_data=deal_data if entity_type == "DEAL" else None,
+    )
+    db.add(
+        AuditLog(
+            action="survey_routing_selected",
+            details=routing_decision.audit_details(lead_id=data.lead_id, entity_type=entity_type),
+            ip_address=request.client.host if request.client else None,
+        )
+    )
+    await db.commit()
     
     # Генерация JWT токена (компактный — без patient_name для короткой ссылки)
     token = create_access_token(
         lead_id=data.lead_id,
         entity_type=entity_type,
+        survey_config_id=routing_decision.survey_config_id,
     )
     
     # Генерация короткого кода и сохранение маппинга в Redis
