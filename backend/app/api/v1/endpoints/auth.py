@@ -158,6 +158,7 @@ async def generate_token(
     lead_id: int,
     patient_name: str = None,
     entity_type: str = "DEAL",
+    survey_config_id: int | None = None,
     redis: RedisClient = Depends(get_redis),
 ):
     """
@@ -185,6 +186,7 @@ async def generate_token(
         lead_id=lead_id,
         patient_name=patient_name,
         entity_type=entity_type,
+        survey_config_id=survey_config_id,
     )
     
     # Генерация короткого кода и сохранение маппинга в Redis

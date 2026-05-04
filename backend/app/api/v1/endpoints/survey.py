@@ -36,6 +36,7 @@ from app.schemas import (
 from app.services.survey_engine import SurveyEngine
 from app.services.report_generator import ReportGenerator
 from app.services.bitrix24 import Bitrix24Client
+from app.services.survey_routing import get_active_survey_config, get_global_fallback_survey_config
 
 router = APIRouter()
 
@@ -324,17 +325,6 @@ async def start_survey(
             detail="Ссылка уже была использована",
         )
     
-    # Получение активного конфига
-    stmt = select(SurveyConfig).where(SurveyConfig.is_active == True).limit(1)
-    result = await db.execute(stmt)
-    config = result.scalar_one_or_none()
-    
-    if not config:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Активный опросник не найден",
-        )
-    
     # Проверка существующей сессии
     stmt = select(SurveySession).where(
         SurveySession.token_hash == token_data.token_hash
@@ -348,6 +338,16 @@ async def start_survey(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Опрос уже завершён",
             )
+
+        config_result = await db.execute(
+            select(SurveyConfig).where(SurveyConfig.id == existing_session.survey_config_id)
+        )
+        config = config_result.scalar_one_or_none()
+        if not config:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Опросник, связанный с сессией, не найден",
+            )
         
         # Восстановление сессии
         return SurveyStartResponse(
@@ -356,6 +356,22 @@ async def start_survey(
             survey_config=config.json_config,
             message="Сессия восстановлена. Продолжайте с того места, где остановились.",
             expires_at=existing_session.expires_at,
+        )
+
+    # Получение выбранного конфига из токена маршрутизации или глобального fallback.
+    config = await get_active_survey_config(db, token_data.survey_config_id)
+    if not config and token_data.survey_config_id is not None:
+        logger.warning(
+            f"Опросник из токена недоступен: survey_config_id={token_data.survey_config_id}. "
+            "Используем глобальный fallback."
+        )
+    if not config:
+        config = await get_global_fallback_survey_config(db)
+
+    if not config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Активный опросник не найден",
         )
     
     # Создание новой сессии

@@ -17,6 +17,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
@@ -173,3 +174,117 @@ class AuditLog(Base):
 
     def __repr__(self):
         return f"<AuditLog(id={self.id}, action='{self.action}')>"
+
+
+class SurveyRoutingClinicSetting(Base):
+    """Настройки маршрутизации опросников для одной клиники."""
+
+    __tablename__ = "survey_routing_clinic_settings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    clinic_key = Column(String(100), nullable=False, unique=True, index=True, comment="Ключ клиники из backend-конфигурации")
+    default_survey_config_id = Column(
+        Integer,
+        ForeignKey("survey_configs.id"),
+        nullable=True,
+        comment="Опросник по умолчанию для клиники",
+    )
+    is_enabled = Column(Boolean, nullable=False, default=True, comment="Маршрутизация включена")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    default_survey_config = relationship("SurveyConfig")
+
+
+class SurveyRoutingRule(Base):
+    """Правило выбора опросника по данным сделки Bitrix24."""
+
+    __tablename__ = "survey_routing_rules"
+
+    id = Column(Integer, primary_key=True, index=True)
+    clinic_key = Column(String(100), nullable=False, index=True, comment="Ключ клиники")
+    name = Column(String(255), nullable=False, comment="Название правила")
+    is_active = Column(Boolean, nullable=False, default=True, comment="Правило активно")
+    survey_config_id = Column(Integer, ForeignKey("survey_configs.id"), nullable=False, comment="Выбранный опросник")
+    condition_logic = Column(String(10), nullable=False, default="AND", comment="Логика условий: AND или OR")
+    priority = Column(Integer, nullable=False, default=100, comment="Чем больше значение, тем выше приоритет")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    survey_config = relationship("SurveyConfig")
+    conditions = relationship(
+        "SurveyRoutingCondition",
+        back_populates="rule",
+        cascade="all, delete-orphan",
+        order_by="SurveyRoutingCondition.id",
+    )
+
+    __table_args__ = (
+        Index("ix_survey_routing_rules_clinic_active_priority", "clinic_key", "is_active", "priority"),
+    )
+
+
+class SurveyRoutingCondition(Base):
+    """Одно условие правила маршрутизации опросника."""
+
+    __tablename__ = "survey_routing_conditions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    rule_id = Column(Integer, ForeignKey("survey_routing_rules.id", ondelete="CASCADE"), nullable=False)
+    crm_field_id = Column(String(255), nullable=False, comment="ID поля сделки Bitrix24")
+    operator = Column(String(50), nullable=False, comment="Оператор сравнения")
+    value = Column(JSONB, nullable=True, comment="Значение условия")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    rule = relationship("SurveyRoutingRule", back_populates="conditions")
+
+    __table_args__ = (
+        Index("ix_survey_routing_conditions_rule_id", "rule_id"),
+    )
+
+
+class BitrixCrmField(Base):
+    """Локальный кэш metadata полей сделки Bitrix24."""
+
+    __tablename__ = "bitrix_crm_fields"
+
+    id = Column(Integer, primary_key=True, index=True)
+    entity_type = Column(String(20), nullable=False, default="DEAL", comment="Тип CRM-сущности")
+    field_id = Column(String(255), nullable=False, comment="ID поля Bitrix24")
+    title = Column(String(255), nullable=False, comment="Название поля")
+    type = Column(String(100), nullable=True, comment="Тип поля Bitrix24")
+    is_list = Column(Boolean, nullable=False, default=False, comment="Поле содержит список вариантов")
+    is_active = Column(Boolean, nullable=False, default=True, comment="Поле актуально в последней синхронизации")
+    raw_metadata = Column(JSONB, nullable=True, comment="Исходные metadata Bitrix24")
+    synced_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("entity_type", "field_id", name="uq_bitrix_crm_fields_entity_field"),
+        Index("ix_bitrix_crm_fields_entity_active_title", "entity_type", "is_active", "title"),
+    )
+
+
+class BitrixCrmFieldOption(Base):
+    """Локальный кэш вариантов списочного поля Bitrix24."""
+
+    __tablename__ = "bitrix_crm_field_options"
+
+    id = Column(Integer, primary_key=True, index=True)
+    entity_type = Column(String(20), nullable=False, default="DEAL", comment="Тип CRM-сущности")
+    field_id = Column(String(255), nullable=False, comment="ID поля Bitrix24")
+    option_id = Column(String(255), nullable=False, comment="ID варианта Bitrix24")
+    label = Column(String(255), nullable=False, comment="Отображаемый текст варианта")
+    sort = Column(Integer, nullable=True)
+    is_active = Column(Boolean, nullable=False, default=True)
+    raw_metadata = Column(JSONB, nullable=True)
+    synced_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("entity_type", "field_id", "option_id", name="uq_bitrix_crm_field_options_entity_field_option"),
+        Index("ix_bitrix_crm_field_options_field_active_label", "entity_type", "field_id", "is_active", "label"),
+    )

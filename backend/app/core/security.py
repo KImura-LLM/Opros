@@ -36,6 +36,7 @@ class TokenData(BaseModel):
     lead_id: int
     patient_name: Optional[str] = None
     entity_type: str = "DEAL"
+    survey_config_id: Optional[int] = None
     token_hash: str  # Хэш для инвалидации
 
 
@@ -57,6 +58,7 @@ def create_access_token(
     lead_id: int,
     patient_name: Optional[str] = None,
     entity_type: str = "DEAL",
+    survey_config_id: Optional[int] = None,
     expires_delta: Optional[timedelta] = None,
 ) -> str:
     """
@@ -66,6 +68,7 @@ def create_access_token(
         lead_id: ID сделки/лида в Битрикс24
         patient_name: Имя пациента
         entity_type: Тип сущности (DEAL/LEAD)
+        survey_config_id: ID выбранного опросника
         expires_delta: Время жизни токена
         
     Returns:
@@ -93,6 +96,8 @@ def create_access_token(
     }
     if patient_name:
         payload["n"] = patient_name  # patient_name (опционально)
+    if survey_config_id is not None:
+        payload["s"] = survey_config_id  # survey_config_id (опционально)
     
     encoded_jwt = jwt.encode(
         payload,
@@ -182,6 +187,7 @@ def verify_token(token: str) -> Optional[TokenData]:
             lead_id=lead_id,
             patient_name=payload.get("n") or payload.get("patient_name"),
             entity_type=payload.get("e") or payload.get("entity_type", "DEAL"),
+            survey_config_id=payload.get("s") or payload.get("survey_config_id"),
             token_hash=token_hash,
         )
         

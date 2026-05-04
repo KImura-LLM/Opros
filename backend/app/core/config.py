@@ -67,6 +67,7 @@ class Settings(BaseSettings):
     BITRIX24_INCOMING_TOKEN: str = ""  # Токен для проверки входящих запросов ОТ Битрикс24
     BITRIX24_ALLOWED_CATEGORIES: str = ""  # Разрешённые ID воронок через запятую (например "19,25"). Пусто = все воронки.
     BITRIX24_DEFAULT_RESPONSIBLE_ID: int = 0  # Дефолтный ответственный для дела, если не удалось получить из сделки (0 = не задавать)
+    BITRIX24_SURVEY_LINK_FIELD: str = "UF_CRM_1771160085"  # Поле сделки для ссылки на опрос
     
     @property
     def ALLOWED_CATEGORY_IDS(self) -> List[str]:

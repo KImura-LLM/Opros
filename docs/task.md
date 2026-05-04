@@ -38,3 +38,15 @@
 - [x] Test frontend sorting, filtering, and state persistence
 - [ ] Deploy to production using Git & non-interactive SSH
 - [ ] Verify functionality on live server
+
+## 9. Survey Routing Specification
+- [x] Analyze new survey-routing TZ against current architecture and identify low-refactor implementation boundaries
+- [x] Create full survey-routing TZ document based on current architecture recommendations
+
+## 10. Survey Routing Implementation
+- [x] Add backend routing models, migration, resolver, admin API, Bitrix field sync worker, and webhook/start integration
+- [x] Add frontend admin page for clinic defaults, routing rules, CRM fields, and deal test checks
+- [x] Add resolver unit tests
+- [x] Run backend routing, survey engine, and doctor portal unit tests in Python 3.11 Docker environment
+- [x] Verify Alembic upgrade head on a clean temporary PostgreSQL container
+- [x] Run frontend type-check/build with project dependencies installed

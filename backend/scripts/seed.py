@@ -46,7 +46,7 @@ async def seed_survey_config(version: str = "v2", activate: bool = True):
         return
     
     # Читаем JSON
-    with open(config_path, "r", encoding="utf-8") as f:
+    with open(config_path, "r", encoding="utf-8-sig") as f:
         survey_data = json.load(f)
     
     async with async_session_maker() as session:
