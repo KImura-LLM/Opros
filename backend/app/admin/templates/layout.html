@@ -754,6 +754,15 @@
                             </a>
                         </li>
                         <li class="nav-item">
+                            <a class="nav-link {% if '/admin/routing' in request.url.path %}active{% endif %}" 
+                               href="/admin/routing">
+                                <span class="nav-link-icon d-md-none d-lg-inline-block">
+                                    <i class="fa-solid fa-route"></i>
+                                </span>
+                                <span class="nav-link-title">Маршрутизация</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
                             <a class="nav-link {% if '/admin/analytics' in request.url.path %}active{% endif %}" 
                                href="/admin/analytics">
                                 <span class="nav-link-icon d-md-none d-lg-inline-block">

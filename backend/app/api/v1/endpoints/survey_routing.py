@@ -20,7 +20,7 @@ from app.models import (
     SurveyRoutingRule,
 )
 from app.services.bitrix24 import Bitrix24Client
-from app.services.bitrix_crm_fields import sync_bitrix_deal_fields
+from app.services.bitrix_crm_fields import crm_field_title, sync_bitrix_deal_fields
 from app.services.survey_routing import (
     CONDITION_LOGICS,
     ROUTING_OPERATORS,
@@ -468,7 +468,11 @@ async def list_crm_fields(
         items=[
             CrmFieldItem(
                 field_id=field.field_id,
-                title=field.title,
+                title=(
+                    resolved_title
+                    if (resolved_title := crm_field_title(field.field_id, field.raw_metadata or {})) != field.field_id
+                    else field.title
+                ),
                 type=field.type,
                 is_list=field.is_list,
                 is_active=field.is_active,

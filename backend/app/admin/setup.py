@@ -540,6 +540,20 @@ def setup_admin(app):
             "logs.html",
             {"request": request, "admin": AdminStub()},
         )
+
+    @app.get("/admin/routing", include_in_schema=False)
+    async def admin_routing_page(request: Request):
+        """Переход к экрану маршрутизации опросников."""
+        from starlette.responses import RedirectResponse as RR
+
+        if not request.session.get("admin_authenticated"):
+            return RR(url="/admin/login", status_code=302)
+
+        frontend_url = settings.FRONTEND_URL.rstrip("/")
+        request_host = request.url.hostname or ""
+        if frontend_url.startswith("http://localhost") and request_host not in {"localhost", "127.0.0.1"}:
+            return RR(url="/routing", status_code=302)
+        return RR(url=f"{frontend_url}/routing", status_code=302)
     
     @app.get("/admin/api/session", include_in_schema=False)
     async def admin_api_session(request: Request):

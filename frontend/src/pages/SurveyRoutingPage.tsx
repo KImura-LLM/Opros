@@ -53,6 +53,16 @@ const OPERATOR_LABELS: Record<RoutingOperator, string> = {
 
 const OPERATORS = Object.keys(OPERATOR_LABELS) as RoutingOperator[]
 
+const CRM_FIELD_ID_PATTERN = /^UF_CRM_\d+$/i
+
+function isTechnicalCrmFieldTitle(field: CrmFieldItem): boolean {
+  return CRM_FIELD_ID_PATTERN.test(field.title.trim()) || field.title.trim() === field.field_id
+}
+
+function formatCrmFieldTitle(field: CrmFieldItem): string {
+  return isTechnicalCrmFieldTitle(field) ? field.field_id : field.title
+}
+
 const emptyCondition = (): RoutingCondition => ({
   crm_field_id: '',
   operator: 'equals',
@@ -74,7 +84,7 @@ function formatCondition(
   optionsByField: Record<string, CrmFieldOptionItem[]>
 ): string {
   const field = fieldsById.get(condition.crm_field_id)
-  const fieldTitle = field ? field.title : condition.crm_field_id
+  const fieldTitle = field ? formatCrmFieldTitle(field) : condition.crm_field_id
   const operator = OPERATOR_LABELS[condition.operator]
 
   if (condition.operator === 'is_filled' || condition.operator === 'is_empty') {
@@ -744,7 +754,7 @@ export default function SurveyRoutingPage() {
                             <option value="">CRM-поле</option>
                             {crmFields.map((crmField) => (
                               <option key={crmField.field_id} value={crmField.field_id}>
-                                {crmField.title} ({crmField.field_id})
+                                {formatCrmFieldTitle(crmField)}
                               </option>
                             ))}
                           </select>

@@ -351,6 +351,24 @@ class Bitrix24Client:
             logger.error(f"Ошибка получения метаданных поля сделки из Битрикс24: {e}")
             return {}
 
+    async def get_deal_user_fields(self) -> list[dict[str, Any]]:
+        """Возвращает metadata пользовательских полей сделки из Bitrix24."""
+        if not self.webhook_url:
+            return []
+
+        method_url = f"{self.webhook_url.rstrip('/')}/crm.deal.userfield.list"
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(method_url, json={})
+                response.raise_for_status()
+
+                result = response.json().get("result", [])
+                return result if isinstance(result, list) else []
+        except Exception as e:
+            logger.error(f"Ошибка получения пользовательских полей сделки из Битрикс24: {e}")
+            return []
+
     @staticmethod
     def _extract_first_scalar(value: Any) -> Any:
         """Возвращает первое скалярное значение из поля Bitrix, если оно вложено."""
