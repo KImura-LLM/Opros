@@ -378,7 +378,7 @@ async def resolve_survey_for_deal(
                 SurveyRoutingRule.clinic_key == effective_clinic_key,
                 SurveyRoutingRule.is_active == True,
             )
-            .order_by(SurveyRoutingRule.priority.desc(), SurveyRoutingRule.id.asc())
+            .order_by(SurveyRoutingRule.priority.asc(), SurveyRoutingRule.id.asc())
         )
         rules = result.scalars().all()
 

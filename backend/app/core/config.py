@@ -68,6 +68,16 @@ class Settings(BaseSettings):
     BITRIX24_ALLOWED_CATEGORIES: str = ""  # Разрешённые ID воронок через запятую (например "19,25"). Пусто = все воронки.
     BITRIX24_DEFAULT_RESPONSIBLE_ID: int = 0  # Дефолтный ответственный для дела, если не удалось получить из сделки (0 = не задавать)
     BITRIX24_SURVEY_LINK_FIELD: str = "UF_CRM_1771160085"  # Поле сделки для ссылки на опрос
+
+    # ИИ-анализ через OpenRouter
+    AI_ANALYSIS_ENABLED: bool = False
+    OPENROUTER_API_KEY: str = ""
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+    OPENROUTER_MODEL: str = "nvidia/nemotron-3-super-120b-a12b:free"
+    OPENROUTER_TIMEOUT_SECONDS: int = 90
+    AI_ANALYSIS_MAX_ATTEMPTS: int = 3
+    AI_ANALYSIS_PROMPT_VERSION: str = "v1"
+    AI_ANALYSIS_ZDR_REQUIRED: bool = False
     
     @property
     def ALLOWED_CATEGORY_IDS(self) -> List[str]:
@@ -115,15 +125,16 @@ def get_settings() -> Settings:
     # Проверка критических настроек безопасности — ВСЕГДА, не только в production
     insecure_defaults = []
     
-    if s.SECRET_KEY == "change-me-in-production":
+    # Sentinel defaults are checked here specifically to reject them outside local debug mode.
+    if s.SECRET_KEY == "change-me-in-production":  # nosec B105
         insecure_defaults.append("SECRET_KEY")
-    if s.JWT_SECRET_KEY == "jwt-secret-change-me":
+    if s.JWT_SECRET_KEY == "jwt-secret-change-me":  # nosec B105
         insecure_defaults.append("JWT_SECRET_KEY")
-    if s.ADMIN_PASSWORD == "admin":
+    if s.ADMIN_PASSWORD == "admin":  # nosec B105
         insecure_defaults.append("ADMIN_PASSWORD")
     if s.ADMIN_USERNAME == "admin":
         insecure_defaults.append("ADMIN_USERNAME")
-    if s.POSTGRES_PASSWORD == "opros_password":
+    if s.POSTGRES_PASSWORD == "opros_password":  # nosec B105
         insecure_defaults.append("POSTGRES_PASSWORD")
     
     if insecure_defaults:

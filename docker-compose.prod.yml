@@ -52,7 +52,7 @@ services:
     environment:
       - ENVIRONMENT=production
       - DEBUG=false
-      - ENABLE_API_DOCS=true
+      - ENABLE_API_DOCS=false
     expose:
       - "8000"
     depends_on:
@@ -110,6 +110,34 @@ services:
     networks:
       - opros-network
     command: python -m scripts.sync_bitrix_crm_fields
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"print('ok')\" >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # --------------------------------------------
+  # AI Analysis Worker (OpenRouter + report delivery)
+  # --------------------------------------------
+  ai-analysis-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: opros-ai-analysis-worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=production
+      - DEBUG=false
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - opros-network
+    command: python -m scripts.process_ai_analysis_jobs
     healthcheck:
       test: ["CMD-SHELL", "python -c \"print('ok')\" >/dev/null || exit 1"]
       interval: 30s

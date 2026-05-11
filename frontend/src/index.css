@@ -69,6 +69,164 @@ body {
   }
 }
 
+/* Темная тема страницы маршрутизации: меняется только цветовая гамма */
+.routing-page.routing-dark {
+  background:
+    radial-gradient(circle at top right, rgba(20, 184, 166, 0.18), transparent 32rem),
+    linear-gradient(135deg, #020617 0%, #0f172a 48%, #111827 100%);
+  color: #e2e8f0;
+}
+
+.routing-page.routing-dark header {
+  background-color: rgba(15, 23, 42, 0.88);
+  border-color: rgba(51, 65, 85, 0.9);
+  box-shadow: 0 18px 60px rgba(2, 6, 23, 0.38);
+  backdrop-filter: blur(16px);
+}
+
+.routing-theme-toggle {
+  border: 1px solid #fde68a;
+  background: linear-gradient(135deg, #fef3c7, #f59e0b);
+  color: #78350f;
+  box-shadow: 0 10px 24px rgba(245, 158, 11, 0.24);
+  transition: all 0.2s ease-out;
+}
+
+.routing-theme-toggle:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px rgba(245, 158, 11, 0.34);
+}
+
+.routing-page.routing-dark .routing-theme-toggle {
+  border-color: rgba(251, 191, 36, 0.75);
+  background: linear-gradient(135deg, #fbbf24, #f59e0b);
+  color: #1f2937;
+}
+
+.routing-page.routing-dark .bg-white,
+.routing-page.routing-dark .bg-slate-50 {
+  background-color: rgba(15, 23, 42, 0.86);
+}
+
+.routing-page.routing-dark .bg-slate-100 {
+  background-color: rgba(30, 41, 59, 0.9);
+}
+
+.routing-page.routing-dark .bg-slate-900 {
+  background-color: #14b8a6;
+}
+
+.routing-page.routing-dark .bg-teal-50\/70 {
+  background-color: rgba(20, 184, 166, 0.16);
+}
+
+.routing-page.routing-dark .border-slate-200,
+.routing-page.routing-dark .border-slate-300 {
+  border-color: rgba(71, 85, 105, 0.82);
+}
+
+.routing-page.routing-dark .divide-slate-100 > :not([hidden]) ~ :not([hidden]) {
+  border-color: rgba(51, 65, 85, 0.8);
+}
+
+.routing-page.routing-dark .text-slate-900,
+.routing-page.routing-dark .text-slate-800 {
+  color: #f8fafc;
+}
+
+.routing-page.routing-dark .text-slate-700,
+.routing-page.routing-dark .text-slate-600 {
+  color: #cbd5e1;
+}
+
+.routing-page.routing-dark .text-slate-500,
+.routing-page.routing-dark .text-slate-400 {
+  color: #94a3b8;
+}
+
+.routing-page.routing-dark .text-emerald-700 {
+  color: #6ee7b7;
+}
+
+.routing-page.routing-dark .text-teal-700 {
+  color: #5eead4;
+}
+
+.routing-page.routing-dark .text-red-700,
+.routing-page.routing-dark .text-red-600 {
+  color: #fca5a5;
+}
+
+.routing-page.routing-dark .text-white {
+  color: #042f2e;
+}
+
+.routing-page.routing-dark .btn-secondary {
+  background-color: rgba(30, 41, 59, 0.9);
+  border: 1px solid rgba(71, 85, 105, 0.82);
+  color: #e2e8f0;
+}
+
+.routing-page.routing-dark .btn-primary {
+  background: linear-gradient(135deg, #0d9488, #14b8a6);
+  color: #f8fafc;
+  box-shadow: 0 12px 28px rgba(13, 148, 136, 0.22);
+}
+
+.routing-page.routing-dark .input-field {
+  background-color: rgba(2, 6, 23, 0.46);
+  border-color: rgba(71, 85, 105, 0.88);
+  color: #f8fafc;
+}
+
+.routing-page.routing-dark .input-field::placeholder {
+  color: #64748b;
+}
+
+.routing-page.routing-dark .input-field:focus {
+  border-color: #2dd4bf;
+  box-shadow: 0 0 0 2px rgba(45, 212, 191, 0.16);
+}
+
+.routing-page.routing-dark select.input-field option {
+  background-color: #0f172a;
+  color: #e2e8f0;
+}
+
+.routing-page.routing-dark .hover\:bg-slate-50:hover,
+.routing-page.routing-dark .hover\:bg-slate-100:hover,
+.routing-page.routing-dark .hover\:bg-slate-200:hover {
+  background-color: rgba(51, 65, 85, 0.86);
+}
+
+.routing-page.routing-dark .hover\:bg-red-50:hover {
+  background-color: rgba(127, 29, 29, 0.38);
+}
+
+.routing-page.routing-dark .bg-red-50 {
+  background-color: rgba(127, 29, 29, 0.32);
+}
+
+.routing-page.routing-dark .border-red-200 {
+  border-color: rgba(248, 113, 113, 0.42);
+}
+
+.routing-page.routing-dark .text-red-800 {
+  color: #fecaca;
+}
+
+.routing-page.routing-dark .bg-emerald-50 {
+  background-color: rgba(6, 78, 59, 0.36);
+}
+
+.routing-page.routing-dark .border-emerald-200 {
+  border-color: rgba(52, 211, 153, 0.42);
+}
+
+.routing-page.routing-dark .text-emerald-800 {
+  color: #a7f3d0;
+}
+
 /* Анимации для страниц */
 .page-enter {
   opacity: 0;

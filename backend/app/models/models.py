@@ -113,6 +113,12 @@ class SurveySession(Base):
     survey_config = relationship("SurveyConfig", back_populates="sessions")
     answers = relationship("SurveyAnswer", back_populates="session", cascade="all, delete-orphan")
     audit_logs = relationship("AuditLog", back_populates="session", cascade="all, delete-orphan")
+    ai_analysis = relationship(
+        "SurveyAiAnalysis",
+        back_populates="session",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
 
     __table_args__ = (
         Index("ix_survey_sessions_lead_status", "lead_id", "status"),
@@ -127,6 +133,59 @@ class SurveySession(Base):
 
     def __repr__(self):
         return f"<SurveySession(id={self.id}, lead_id={self.lead_id}, status='{self.status}')>"
+
+
+class SurveyAiAnalysis(Base):
+    """DB-backed очередь и результат ИИ-анализа одной завершённой анкеты."""
+
+    __tablename__ = "survey_ai_analyses"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    session_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("survey_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        comment="Одна актуальная ИИ-задача на анкету",
+    )
+    analysis_case_id = Column(
+        UUID(as_uuid=True),
+        default=uuid.uuid4,
+        nullable=False,
+        unique=True,
+        comment="Случайный внешний ID без связи с пациентом/CRM",
+    )
+    status = Column(
+        String(20),
+        nullable=False,
+        default="pending",
+        comment="pending, running, succeeded, failed, skipped",
+    )
+    model = Column(String(255), nullable=False)
+    prompt_version = Column(String(50), nullable=False)
+    prompt_hash = Column(String(64), nullable=True)
+    request_payload_hash = Column(String(64), nullable=True)
+    response_json = Column(JSONB, nullable=True)
+    overall_priority = Column(String(10), nullable=True)
+    error_code = Column(String(100), nullable=True)
+    error_message = Column(Text, nullable=True)
+    attempts = Column(Integer, nullable=False, default=0)
+    queued_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), onupdate=func.now())
+
+    session = relationship("SurveySession", back_populates="ai_analysis")
+
+    __table_args__ = (
+        UniqueConstraint("session_id", name="uq_survey_ai_analyses_session_id"),
+        Index("ix_survey_ai_analyses_status_queued_at", "status", "queued_at"),
+        Index("ix_survey_ai_analyses_completed_at", "completed_at"),
+        Index("ix_survey_ai_analyses_overall_priority", "overall_priority"),
+    )
+
+    def __repr__(self):
+        return f"<SurveyAiAnalysis(id={self.id}, status='{self.status}')>"
 
 
 class SurveyAnswer(Base):

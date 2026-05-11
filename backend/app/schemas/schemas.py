@@ -68,7 +68,7 @@ class SurveyAnswerRequest(BaseModel):
     
     @field_validator("answer_data")
     @classmethod
-    def validate_answer_data_size(cls, v: dict) -> dict:
+    def validate_answer_data_size(_cls, v: dict) -> dict:
         """Проверка размера и глубины answer_data для защиты от DoS."""
         serialized = json.dumps(v, ensure_ascii=False)
         if len(serialized) > MAX_ANSWER_DATA_SIZE:
@@ -123,7 +123,7 @@ class SurveyCompleteRequest(BaseModel):
 
     @field_validator("final_answer_data")
     @classmethod
-    def validate_final_answer_data_size(cls, v: Optional[dict]) -> Optional[dict]:
+    def validate_final_answer_data_size(_cls, v: Optional[dict]) -> Optional[dict]:
         """Повторно используем ограничения размера для финального ответа."""
         if v is None:
             return v

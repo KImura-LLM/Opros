@@ -1,4 +1,4 @@
-# ============================================
+﻿# ============================================
 # 🏥 Опросник пациента - Docker Compose (Dev)
 # ============================================
 # Запуск: docker compose up -d
@@ -52,6 +52,7 @@ services:
     environment:
       - ENVIRONMENT=development
       - DEBUG=true
+      - BITRIX24_WEBHOOK_URL=
     volumes:
       - ./backend:/app
     ports:
@@ -64,6 +65,32 @@ services:
     networks:
       - opros-network
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # --------------------------------------------
+  # 🤖 AI Analysis Worker (Dev)
+  # --------------------------------------------
+  ai-analysis-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: opros-ai-analysis-worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - BITRIX24_WEBHOOK_URL=
+    volumes:
+      - ./backend:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - opros-network
+    command: python -m scripts.process_ai_analysis_jobs
 
   # --------------------------------------------
   # ⚛️ Frontend (Vite Dev Server)

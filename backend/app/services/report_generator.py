@@ -7,6 +7,7 @@
 """
 
 from datetime import datetime
+from html import escape
 from typing import Any, Dict, List, Optional
 
 
@@ -31,6 +32,11 @@ class ReportGenerator:
         self.nodes = {node["id"]: node for node in config.get("nodes", [])}
         # Автоматическое определение версии опросника
         self.survey_version = self._detect_version()
+
+    @staticmethod
+    def _escape_html(value: Any) -> str:
+        """Экранирование динамического текста перед вставкой в HTML-отчёт."""
+        return escape(str(value), quote=True)
     
     def _detect_version(self) -> int:
         """Определение версии опросника по наличию узлов."""
@@ -174,24 +180,28 @@ class ReportGenerator:
                 line += " (" + "; ".join(extra_parts) + ")"
             return line
 
+        question_html = self._escape_html(question)
+        answer_html = self._escape_html(answer_text)
+        extra_html = [self._escape_html(part) for part in extra_parts]
+
         if fmt == "readable":
             parts = [
                 '<li class="qa-row">'
-                f'<span class="qa-question">{question}</span>'
+                f'<span class="qa-question">{question_html}</span>'
                 '<span class="qa-kicker qa-answer-kicker">Ответ</span>'
-                f'<span class="qa-answer">{answer_text}</span>'
+                f'<span class="qa-answer">{answer_html}</span>'
             ]
-            if extra_parts:
+            if extra_html:
                 parts.append(
-                    f'<span class="qa-extra"><em>({"; ".join(extra_parts)})</em></span>'
+                    f'<span class="qa-extra"><em>({"; ".join(extra_html)})</em></span>'
                 )
             parts.append("</li>")
             return "".join(parts)
 
         # html (Битрикс)
-        line = f"• <b>{question}:</b> {answer_text}"
-        if extra_parts:
-            line += " <i>(" + "; ".join(extra_parts) + ")</i>"
+        line = f"• <b>{question_html}:</b> {answer_html}"
+        if extra_html:
+            line += " <i>(" + "; ".join(extra_html) + ")</i>"
         return line
 
     def _collect_unhandled_answers(
@@ -430,6 +440,207 @@ class ReportGenerator:
         "green":  {"bg": "#f0fdf4", "border": "#86efac", "text": "#166534", "emoji": "🟢"},
     }
 
+    AI_PRIORITY_COLOR_MAP = {
+        "red": {"bg": "#fef2f2", "border": "#fca5a5", "text": "#991b1b", "emoji": "🔴"},
+        "yellow": {"bg": "#fefce8", "border": "#fde047", "text": "#854d0e", "emoji": "🟡"},
+        "green": {"bg": "#f0fdf4", "border": "#86efac", "text": "#166534", "emoji": "🟢"},
+    }
+
+    AI_DISCLAIMER = "ИИ-анализ является вспомогательным инструментом и не заменяет клиническое решение врача."
+
+    def _normalize_ai_analysis(self, ai_analysis: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Возвращает валидированный AI result в виде dict или None."""
+        if not isinstance(ai_analysis, dict):
+            return None
+        if not ai_analysis.get("summary") or not ai_analysis.get("overall_priority"):
+            return None
+        return ai_analysis
+
+    def _ai_palette(self, priority: str | None) -> Dict[str, str]:
+        return self.AI_PRIORITY_COLOR_MAP.get(str(priority or "yellow"), self.AI_PRIORITY_COLOR_MAP["yellow"])
+
+    def _format_ai_evidence_readable(self, evidence: Any) -> str:
+        """HTML-список оснований ИИ-вывода; все строки экранируются."""
+        if not isinstance(evidence, list) or not evidence:
+            return ""
+
+        items: List[str] = []
+        for item in evidence[:10]:
+            if not isinstance(item, dict):
+                continue
+            node_id = self._escape_html(item.get("node_id", ""))
+            question = self._escape_html(item.get("question", ""))
+            answer = self._escape_html(item.get("answer", ""))
+            items.append(
+                '<li>'
+                f'<span style="color:#64748b">[{node_id}]</span> '
+                f'{question}: <strong>{answer}</strong>'
+                '</li>'
+            )
+        if not items:
+            return ""
+        return '<ul style="margin:4px 0 0 16px">' + "".join(items) + "</ul>"
+
+    def _format_ai_evidence_text(self, evidence: Any) -> List[str]:
+        """Текстовые строки оснований ИИ-вывода для TXT fallback."""
+        if not isinstance(evidence, list) or not evidence:
+            return []
+
+        lines: List[str] = []
+        for item in evidence[:10]:
+            if not isinstance(item, dict):
+                continue
+            node_id = self._escape_html(item.get("node_id", ""))
+            question = self._escape_html(item.get("question", ""))
+            answer = self._escape_html(item.get("answer", ""))
+            lines.append(f"      Основание [{node_id}]: {question} — {answer}")
+        return lines
+
+    def _format_ai_card_readable(
+        self,
+        *,
+        title: str,
+        description: str,
+        priority: str,
+        evidence: Any = None,
+    ) -> str:
+        palette = self._ai_palette(priority)
+        title_html = self._escape_html(title)
+        description_html = self._escape_html(description)
+        evidence_html = self._format_ai_evidence_readable(evidence)
+        return (
+            f'<div style="background:{palette["bg"]};border-left:4px solid {palette["border"]};'
+            f'padding:8px 10px;margin-bottom:7px;border-radius:6px;color:{palette["text"]};'
+            f'font-size:8.5pt;line-height:1.55">'
+            f'{palette["emoji"]} <strong>{title_html}</strong><br>{description_html}'
+            f'{evidence_html}</div>'
+        )
+
+    def _generate_ai_analysis_block_readable(self, ai_analysis: Optional[Dict[str, Any]]) -> Optional[str]:
+        """Генерация отдельного AI-блока для HTML preview/PDF выше rule-based анализа."""
+        analysis = self._normalize_ai_analysis(ai_analysis)
+        if not analysis:
+            return None
+
+        priority = str(analysis.get("overall_priority", "yellow"))
+        palette = self._ai_palette(priority)
+        summary = self._escape_html(analysis.get("summary", ""))
+        limitations = self._escape_html(analysis.get("limitations", self.AI_DISCLAIMER))
+
+        parts: List[str] = [
+            '<div class="block ai-analysis-block" '
+            f'style="border:1.5pt solid {palette["border"]};background:{palette["bg"]};margin-bottom:8px;">',
+            '<div class="block-title" '
+            f'style="background:{palette["bg"]};border-bottom:1pt solid {palette["border"]};'
+            f'color:{palette["text"]};font-size:9.5pt;">🤖 ИИ-анализ для врача</div>',
+            '<div class="block-body">',
+            f'<p style="font-size:8pt;color:{palette["text"]};margin-bottom:5px;"><em>{self.AI_DISCLAIMER}</em></p>',
+            f'<p><strong>Общий приоритет:</strong> {palette["emoji"]} {self._escape_html(priority)}</p>',
+            f'<p><strong>Краткое резюме:</strong> {summary}</p>',
+        ]
+
+        red_flags = analysis.get("red_flags") or []
+        if isinstance(red_flags, list) and red_flags:
+            parts.append("<h2>Красные флаги</h2>")
+            for item in red_flags[:10]:
+                if isinstance(item, dict):
+                    parts.append(
+                        self._format_ai_card_readable(
+                            title=item.get("title", "Красный флаг"),
+                            description=item.get("description", ""),
+                            priority="red",
+                            evidence=item.get("evidence"),
+                        )
+                    )
+
+        key_findings = analysis.get("key_findings") or []
+        if isinstance(key_findings, list) and key_findings:
+            parts.append("<h2>Ключевые наблюдения</h2>")
+            for item in key_findings[:10]:
+                if isinstance(item, dict):
+                    parts.append(
+                        self._format_ai_card_readable(
+                            title=item.get("title", "Наблюдение"),
+                            description=item.get("description", ""),
+                            priority=item.get("priority", "yellow"),
+                            evidence=item.get("evidence"),
+                        )
+                    )
+
+        recommendations = analysis.get("doctor_recommendations") or []
+        if isinstance(recommendations, list) and recommendations:
+            parts.append("<h2>Рекомендации врачу</h2>")
+            for item in recommendations[:10]:
+                if not isinstance(item, dict):
+                    continue
+                rec_palette = self._ai_palette(item.get("priority", "yellow"))
+                text_html = self._escape_html(item.get("text", ""))
+                parts.append(
+                    f'<div style="background:#fff;border-left:4px solid {rec_palette["border"]};'
+                    f'padding:6px 9px;margin-bottom:6px;border-radius:6px;color:{rec_palette["text"]};'
+                    f'font-size:8.5pt;line-height:1.5">{rec_palette["emoji"]} {text_html}</div>'
+                )
+
+        parts.append(f'<p style="font-size:8pt;color:#64748b;"><em>{limitations}</em></p>')
+        parts.append("</div></div>")
+        return "".join(parts)
+
+    def _generate_ai_analysis_block_text(self, ai_analysis: Optional[Dict[str, Any]]) -> Optional[str]:
+        """Текстовый AI-блок для TXT fallback в Bitrix24."""
+        analysis = self._normalize_ai_analysis(ai_analysis)
+        if not analysis:
+            return None
+
+        lines: List[str] = [
+            "🤖 ИИ-АНАЛИЗ ДЛЯ ВРАЧА",
+            self.AI_DISCLAIMER,
+            f"Общий приоритет: {self._escape_html(analysis.get('overall_priority', 'yellow'))}",
+            f"Краткое резюме: {self._escape_html(analysis.get('summary', ''))}",
+        ]
+
+        red_flags = analysis.get("red_flags") or []
+        if isinstance(red_flags, list) and red_flags:
+            lines.append("")
+            lines.append("КРАСНЫЕ ФЛАГИ")
+            for item in red_flags[:10]:
+                if isinstance(item, dict):
+                    lines.append(
+                        f"  • {self._escape_html(item.get('title', 'Красный флаг'))}: "
+                        f"{self._escape_html(item.get('description', ''))}"
+                    )
+                    lines.extend(self._format_ai_evidence_text(item.get("evidence")))
+
+        key_findings = analysis.get("key_findings") or []
+        if isinstance(key_findings, list) and key_findings:
+            lines.append("")
+            lines.append("КЛЮЧЕВЫЕ НАБЛЮДЕНИЯ")
+            for item in key_findings[:10]:
+                if isinstance(item, dict):
+                    lines.append(
+                        f"  • [{self._escape_html(item.get('priority', 'yellow'))}] "
+                        f"{self._escape_html(item.get('title', 'Наблюдение'))}: "
+                        f"{self._escape_html(item.get('description', ''))}"
+                    )
+                    lines.extend(self._format_ai_evidence_text(item.get("evidence")))
+
+        recommendations = analysis.get("doctor_recommendations") or []
+        if isinstance(recommendations, list) and recommendations:
+            lines.append("")
+            lines.append("РЕКОМЕНДАЦИИ ВРАЧУ")
+            for item in recommendations[:10]:
+                if isinstance(item, dict):
+                    lines.append(
+                        f"  • [{self._escape_html(item.get('priority', 'yellow'))}] "
+                        f"{self._escape_html(item.get('text', ''))}"
+                    )
+
+        limitations = analysis.get("limitations")
+        if limitations:
+            lines.append("")
+            lines.append(f"Ограничения: {self._escape_html(limitations)}")
+
+        return "\n".join(lines)
+
     def _generate_analysis_block_html(self, answers: Dict[str, Any]) -> Optional[str]:
         """
         Генерация HTML-блока «Системный анализ для врача» (формат Битрикс24).
@@ -443,8 +654,8 @@ class ReportGenerator:
         for item in triggered:
             color = item.get("color", "red")
             palette = self.TRIGGER_COLOR_MAP.get(color, self.TRIGGER_COLOR_MAP["red"])
-            name = item.get("name", "")
-            message = item.get("message", "")
+            name = self._escape_html(item.get("name") or "")
+            message = self._escape_html(item.get("message") or "")
             label = f"<b>{name}</b>: " if name else ""
             parts.append(
                 f'<div style="background:{palette["bg"]};border-left:4px solid {palette["border"]};'
@@ -466,8 +677,8 @@ class ReportGenerator:
         for item in triggered:
             color = item.get("color", "red")
             palette = self.TRIGGER_COLOR_MAP.get(color, self.TRIGGER_COLOR_MAP["red"])
-            name = item.get("name", "")
-            message = item.get("message", "")
+            name = self._escape_html(item.get("name") or "")
+            message = self._escape_html(item.get("message") or "")
             label = f"<strong>{name}:</strong> " if name else ""
             items_html += (
                 f'<div class="analysis-trigger-card" style="background:{palette["bg"]};'
@@ -482,6 +693,25 @@ class ReportGenerator:
             f'<div class="block-body">{items_html}</div>'
             '</div>'
         )
+
+    def _generate_analysis_block_text(self, answers: Dict[str, Any]) -> Optional[str]:
+        """Генерация текстового блока rule-based системного анализа."""
+        triggered = self._evaluate_analysis_rules_with_color(answers)
+        if not triggered:
+            return None
+
+        lines = ["⚠️ СИСТЕМНЫЙ АНАЛИЗ ДЛЯ ВРАЧА"]
+        for item in triggered:
+            color = item.get("color", "red")
+            palette = self.TRIGGER_COLOR_MAP.get(color, self.TRIGGER_COLOR_MAP["red"])
+            name = item.get("name") or ""
+            message = item.get("message") or ""
+            prefix = f"{palette['emoji']} "
+            if name:
+                lines.append(f"  • {prefix}{name}: {message}")
+            else:
+                lines.append(f"  • {prefix}{message}")
+        return "\n".join(lines)
     
     # ============================================
     # Группировка вопросов для структурированного отчёта
@@ -578,6 +808,7 @@ class ReportGenerator:
         self,
         patient_name: Optional[str],
         answers: Dict[str, Any],
+        ai_analysis: Optional[Dict[str, Any]] = None,
     ) -> str:
         """
         Генерация читаемого HTML-отчёта для просмотра и экспорта.
@@ -591,13 +822,14 @@ class ReportGenerator:
             Полный HTML-документ с встроенными стилями
         """
         if self.survey_version == 2:
-            return self._generate_readable_html_report_v2(patient_name, answers)
-        return self._generate_readable_html_report_v1(patient_name, answers)
+            return self._generate_readable_html_report_v2(patient_name, answers, ai_analysis)
+        return self._generate_readable_html_report_v1(patient_name, answers, ai_analysis)
     
     def _generate_readable_html_report_v1(
         self,
         patient_name: Optional[str],
         answers: Dict[str, Any],
+        ai_analysis: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Генерация читаемого HTML-отчёта для v1 опросника."""
         # Генерируем содержимое
@@ -605,6 +837,7 @@ class ReportGenerator:
         
         # Заголовок
         name = patient_name or "Не указано"
+        name_html = self._escape_html(name)
         date = datetime.now().strftime("%d.%m.%Y %H:%M")
         
         content_parts.append(f"""
@@ -612,13 +845,18 @@ class ReportGenerator:
             <h1>📋 АНКЕТА ПАЦИЕНТА</h1>
             <p class="subtitle">Предварительный опрос</p>
             <div class="patient-info">
-                <div><strong>Пациент:</strong> {name}</div>
+                <div><strong>Пациент:</strong> {name_html}</div>
                 <div><strong>Дата:</strong> {date}</div>
             </div>
         </div>
         """)
         
-        # Системный анализ для врача (в самый верх, перед остальными результатами)
+        # ИИ-анализ для врача — отдельный вспомогательный блок выше rule-based анализа.
+        ai_analysis_html = self._generate_ai_analysis_block_readable(ai_analysis)
+        if ai_analysis_html:
+            content_parts.append(ai_analysis_html)
+
+        # Системный анализ для врача (rule-based, ниже AI-блока)
         analysis_html = self._generate_analysis_block_readable(answers)
         if analysis_html:
             content_parts.append(analysis_html)
@@ -659,7 +897,7 @@ class ReportGenerator:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Анкета пациента - {name}</title>
+    <title>Анкета пациента - {name_html}</title>
     <style>
         * {{
             margin: 0;
@@ -803,6 +1041,7 @@ class ReportGenerator:
         self,
         patient_name: Optional[str],
         answers: Dict[str, Any],
+        ai_analysis: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Генерация читаемого HTML-отчёта для v2 опросника — один лист А4.
 
@@ -810,6 +1049,9 @@ class ReportGenerator:
         """
         name = patient_name or "Не указано"
         date = datetime.now().strftime("%d.%m.%Y %H:%M")
+
+        # ИИ-анализ для врача — отдельный вспомогательный блок выше rule-based анализа.
+        ai_analysis_html = self._generate_ai_analysis_block_readable(ai_analysis) or ""
 
         # Системный анализ для врача
         analysis_html = self._generate_analysis_block_readable(answers) or ""
@@ -820,9 +1062,10 @@ class ReportGenerator:
         # Блоки групп (строго над «Результаты опроса»)
         groups_html = ""
         for group_name, items in grouped:
+            group_name_html = self._escape_html(group_name)
             groups_html += (
                 '<div class="block">'
-                f'<div class="block-title">📁 {group_name}</div>'
+                f'<div class="block-title">📁 {group_name_html}</div>'
                 '<div class="block-body"><ul>'
                 + "".join(items)
                 + '</ul></div>'
@@ -841,17 +1084,18 @@ class ReportGenerator:
                 '</div>'
             )
 
-        section_html = analysis_html + groups_html + answers_html
+        section_html = ai_analysis_html + analysis_html + groups_html + answers_html
         html = self._wrap_in_html_document_compact(name, date, section_html)
         return html
     
     def _wrap_in_html_document_compact(self, patient_name: str, date: str, sections_html: str) -> str:
         """Компактный HTML-документ для вывода на одном листе А4."""
+        patient_name_html = self._escape_html(patient_name)
         return f"""<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Анкета — {patient_name}</title>
+    <title>Анкета — {patient_name_html}</title>
     <style>
         @page {{ size: A4; margin: 8mm 10mm; }}
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
@@ -1055,7 +1299,7 @@ class ReportGenerator:
     <div class="report-header">
         <h1>📋 АНКЕТА ПАЦИЕНТА</h1>
         <div class="report-meta">
-            <div><strong>Пациент:</strong> {patient_name}</div>
+            <div><strong>Пациент:</strong> {patient_name_html}</div>
             <div><strong>Дата:</strong> {date}</div>
         </div>
     </div>
@@ -1068,6 +1312,7 @@ class ReportGenerator:
         self,
         patient_name: Optional[str],
         answers: Dict[str, Any],
+        ai_analysis: Optional[Dict[str, Any]] = None,
     ) -> str:
         """
         Генерация текстового отчёта для экспорта в TXT.
@@ -1080,13 +1325,14 @@ class ReportGenerator:
             Текстовая строка отчёта
         """
         if self.survey_version == 2:
-            return self._generate_text_report_v2(patient_name, answers)
-        return self._generate_text_report_v1(patient_name, answers)
+            return self._generate_text_report_v2(patient_name, answers, ai_analysis)
+        return self._generate_text_report_v1(patient_name, answers, ai_analysis)
     
     def _generate_text_report_v1(
         self,
         patient_name: Optional[str],
         answers: Dict[str, Any],
+        ai_analysis: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Генерация текстового отчёта для v1 опросника."""
         lines = []
@@ -1102,6 +1348,16 @@ class ReportGenerator:
         lines.append(f"Дата: {date}")
         lines.append("=" * 70)
         lines.append("")
+
+        ai_text = self._generate_ai_analysis_block_text(ai_analysis)
+        if ai_text:
+            lines.append(ai_text)
+            lines.append("")
+
+        system_analysis = self._generate_analysis_block_text(answers)
+        if system_analysis:
+            lines.append(system_analysis)
+            lines.append("")
         
         # Основная жалоба
         main_complaint = self._generate_text_main_complaint(answers)
@@ -1145,6 +1401,7 @@ class ReportGenerator:
         self,
         patient_name: Optional[str],
         answers: Dict[str, Any],
+        ai_analysis: Optional[Dict[str, Any]] = None,
     ) -> str:
         """Генерация текстового отчёта для v2 опросника.
 
@@ -1161,6 +1418,16 @@ class ReportGenerator:
         lines.append(f"Дата: {date}")
         lines.append("=" * 70)
         lines.append("")
+
+        ai_text = self._generate_ai_analysis_block_text(ai_analysis)
+        if ai_text:
+            lines.append(ai_text)
+            lines.append("")
+
+        system_analysis = self._generate_analysis_block_text(answers)
+        if system_analysis:
+            lines.append(system_analysis)
+            lines.append("")
         
         # Группированные ответы
         grouped, ungrouped = self._generate_grouped_answers(answers, fmt="text")
@@ -1185,11 +1452,12 @@ class ReportGenerator:
     def _generate_header(self, patient_name: Optional[str]) -> str:
         """Генерация заголовка отчёта."""
         name = patient_name or "Не указано"
+        name_html = self._escape_html(name)
         date = datetime.now().strftime("%d.%m.%Y %H:%M")
         
         return (
             f"<b>📋 АНКЕТА ПАЦИЕНТА</b> (Предварительный опрос)<br>"
-            f"<b>Пациент:</b> {name}<br>"
+            f"<b>Пациент:</b> {name_html}<br>"
             f"<b>Дата:</b> {date}"
         )
     
@@ -1208,7 +1476,7 @@ class ReportGenerator:
             "checkup": "Плановый осмотр / Справка / Анализы",
         }
         
-        complaint_text = complaints_map.get(selected, selected)
+        complaint_text = self._escape_html(complaints_map.get(selected, selected))
         
         return f"📌 <b>ОСНОВНАЯ ПРИЧИНА ОБРАЩЕНИЯ:</b> {complaint_text}"
     
@@ -1224,12 +1492,12 @@ class ReportGenerator:
         # Локализация
         loc_names = self._format_body_locations(pain_data.get("locations"))
         if loc_names:
-            parts.append(f"• <b>Локализация:</b> {loc_names}")
+            parts.append(f"• <b>Локализация:</b> {self._escape_html(loc_names)}")
         
         # Интенсивность
         intensity = pain_data.get("intensity")
         if intensity:
-            parts.append(f"• <b>Интенсивность:</b> {intensity}/10")
+            parts.append(f"• <b>Интенсивность:</b> {self._escape_html(intensity)}/10")
         
         return "<br>".join(parts)
     
@@ -1263,7 +1531,7 @@ class ReportGenerator:
                 # Курение
                 smoking_years = respiratory_details.get("smoking_years")
                 if smoking_years and smoking_years > 0:
-                    resp_parts.append(f"• 🚬 Стаж курения: {smoking_years} лет")
+                    resp_parts.append(f"• 🚬 Стаж курения: {self._escape_html(smoking_years)} лет")
                 
                 parts.append("<br>".join(resp_parts))
         
@@ -1286,7 +1554,7 @@ class ReportGenerator:
                 edema = cardio_details.get("edema")
                 if edema and edema != "none":
                     edema_map = {"legs": "Отёки на ногах", "face": "Отёки на лице"}
-                    cardio_parts.append(f"• {edema_map.get(edema, edema)}")
+                    cardio_parts.append(f"• {self._escape_html(edema_map.get(edema, edema))}")
                 
                 parts.append("<br>".join(cardio_parts))
         
@@ -1347,7 +1615,7 @@ class ReportGenerator:
         # Детали аллергии
         allergy_details = risk_data.get("allergy_details")
         if allergy_details:
-            parts.append(f"  └ Детали: {allergy_details}")
+            parts.append(f"  └ Детали: {self._escape_html(allergy_details)}")
         
         return "<br>".join(parts)
     
@@ -1369,7 +1637,7 @@ class ReportGenerator:
             "checkup": "Плановый осмотр / Справка / Анализы",
         }
         
-        complaint_text = complaints_map.get(selected, selected)
+        complaint_text = self._escape_html(complaints_map.get(selected, selected))
         
         return f"<h2>📌 Основная причина обращения</h2><p><strong>{complaint_text}</strong></p>"
     
@@ -1385,12 +1653,12 @@ class ReportGenerator:
         # Локализация
         loc_names = self._format_body_locations(pain_data.get("locations"))
         if loc_names:
-            parts.append(f"<p><strong>Локализация:</strong> {loc_names}</p>")
+            parts.append(f"<p><strong>Локализация:</strong> {self._escape_html(loc_names)}</p>")
         
         # Интенсивность
         intensity = pain_data.get("intensity")
         if intensity:
-            parts.append(f'<p><strong>Интенсивность:</strong> <span class="intensity-badge">{intensity}/10</span></p>')
+            parts.append(f'<p><strong>Интенсивность:</strong> <span class="intensity-badge">{self._escape_html(intensity)}/10</span></p>')
         
         return "".join(parts)
     
@@ -1424,7 +1692,7 @@ class ReportGenerator:
                 
                 smoking_years = respiratory_details.get("smoking_years")
                 if smoking_years and smoking_years > 0:
-                    parts.append(f'<li>🚬 Стаж курения: <strong>{smoking_years} лет</strong></li>')
+                    parts.append(f'<li>🚬 Стаж курения: <strong>{self._escape_html(smoking_years)} лет</strong></li>')
                 
                 parts.append("</ul>")
         
@@ -1446,7 +1714,7 @@ class ReportGenerator:
                 edema = cardio_details.get("edema")
                 if edema and edema != "none":
                     edema_map = {"legs": "Отёки на ногах", "face": "Отёки на лице"}
-                    parts.append(f"<li>{edema_map.get(edema, edema)}</li>")
+                    parts.append(f"<li>{self._escape_html(edema_map.get(edema, edema))}</li>")
                 
                 parts.append("</ul>")
         
@@ -1510,7 +1778,7 @@ class ReportGenerator:
         # Детали аллергии
         allergy_details = risk_data.get("allergy_details")
         if allergy_details:
-            parts.append(f"<p><em>Детали аллергии: {allergy_details}</em></p>")
+            parts.append(f"<p><em>Детали аллергии: {self._escape_html(allergy_details)}</em></p>")
         
         return "".join(parts)
     
