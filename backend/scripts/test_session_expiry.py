@@ -20,12 +20,14 @@ from sqlalchemy import select
 async def create_test_session_with_short_expiry():
     """Создаёт тестовую сессию с истечением через 2 минуты."""
     async with async_session_maker() as db:
+        token_hash = f"test_short_expiry_{int(datetime.now(timezone.utc).timestamp())}"
+
         # Создаём тестовую сессию
         session = SurveySession(
             lead_id=999999,
             patient_name="Тест - Короткая сессия",
             survey_config_id=1,
-            token_hash="test_short_expiry",
+            token_hash=token_hash,
             status="in_progress",
             consent_given=True,
             consent_timestamp=datetime.now(timezone.utc),

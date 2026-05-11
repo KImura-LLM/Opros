@@ -190,6 +190,27 @@ async def _next_priority(db: AsyncSession, clinic_key: str) -> int:
     return int(current or 0) + 10
 
 
+async def _ensure_priority_available(
+    db: AsyncSession,
+    clinic_key: str,
+    priority: int,
+    exclude_rule_id: int | None = None,
+) -> None:
+    query = select(SurveyRoutingRule.id).where(
+        SurveyRoutingRule.clinic_key == clinic_key,
+        SurveyRoutingRule.priority == priority,
+    )
+    if exclude_rule_id is not None:
+        query = query.where(SurveyRoutingRule.id != exclude_rule_id)
+
+    result = await db.execute(query)
+    if result.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Приоритет {priority} уже используется в этой клинике. Измените приоритет правила.",
+        )
+
+
 def _rule_to_response(rule: SurveyRoutingRule) -> RoutingRuleResponse:
     return RoutingRuleResponse(
         id=rule.id,
@@ -264,7 +285,7 @@ async def get_routing_clinic(
             selectinload(SurveyRoutingRule.survey_config),
         )
         .where(SurveyRoutingRule.clinic_key == clinic_key)
-        .order_by(SurveyRoutingRule.priority.desc(), SurveyRoutingRule.id.asc())
+        .order_by(SurveyRoutingRule.priority.asc(), SurveyRoutingRule.id.asc())
     )
     rules = result.scalars().all()
 
@@ -313,6 +334,8 @@ async def create_routing_rule(
 ):
     _ensure_known_clinic(clinic_key)
     await _ensure_survey_exists(db, payload.survey_config_id)
+    priority = payload.priority if payload.priority is not None else await _next_priority(db, clinic_key)
+    await _ensure_priority_available(db, clinic_key, priority)
 
     rule = SurveyRoutingRule(
         clinic_key=clinic_key,
@@ -320,7 +343,7 @@ async def create_routing_rule(
         is_active=payload.is_active,
         survey_config_id=payload.survey_config_id,
         condition_logic=payload.condition_logic,
-        priority=payload.priority if payload.priority is not None else await _next_priority(db, clinic_key),
+        priority=priority,
     )
     for condition in payload.conditions:
         rule.conditions.append(
@@ -363,12 +386,14 @@ async def update_routing_rule(
     if rule is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Правило не найдено.")
 
+    priority = payload.priority if payload.priority is not None else rule.priority
+    await _ensure_priority_available(db, rule.clinic_key, priority, exclude_rule_id=rule.id)
+
     rule.name = payload.name.strip()
     rule.is_active = payload.is_active
     rule.survey_config_id = payload.survey_config_id
     rule.condition_logic = payload.condition_logic
-    if payload.priority is not None:
-        rule.priority = payload.priority
+    rule.priority = priority
     rule.updated_at = datetime.now(timezone.utc)
 
     await db.execute(delete(SurveyRoutingCondition).where(SurveyRoutingCondition.rule_id == rule.id))

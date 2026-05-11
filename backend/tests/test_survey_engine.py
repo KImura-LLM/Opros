@@ -12,10 +12,10 @@ if str(BACKEND_DIR) not in sys.path:
 
 if "loguru" not in sys.modules:
     dummy_logger = types.SimpleNamespace(
-        info=lambda *args, **kwargs: None,
-        debug=lambda *args, **kwargs: None,
-        warning=lambda *args, **kwargs: None,
-        error=lambda *args, **kwargs: None,
+        info=lambda *_args, **_kwargs: None,
+        debug=lambda *_args, **_kwargs: None,
+        warning=lambda *_args, **_kwargs: None,
+        error=lambda *_args, **_kwargs: None,
     )
     sys.modules["loguru"] = types.SimpleNamespace(logger=dummy_logger)
 

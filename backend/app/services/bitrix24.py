@@ -357,14 +357,34 @@ class Bitrix24Client:
             return []
 
         method_url = f"{self.webhook_url.rstrip('/')}/crm.deal.userfield.list"
+        items: list[dict[str, Any]] = []
+        start: int | None = 0
 
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(method_url, json={})
-                response.raise_for_status()
+                while start is not None:
+                    payload = {"start": start} if start else {}
+                    response = await client.post(method_url, json=payload)
+                    response.raise_for_status()
 
-                result = response.json().get("result", [])
-                return result if isinstance(result, list) else []
+                    data = response.json()
+                    result = data.get("result", [])
+                    if isinstance(result, list):
+                        items.extend(item for item in result if isinstance(item, dict))
+
+                    next_start = data.get("next")
+                    if next_start is None:
+                        break
+
+                    try:
+                        next_start = int(next_start)
+                    except (TypeError, ValueError):
+                        break
+                    if next_start == start:
+                        break
+                    start = next_start
+
+                return items
         except Exception as e:
             logger.error(f"Ошибка получения пользовательских полей сделки из Битрикс24: {e}")
             return []

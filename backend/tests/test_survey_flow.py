@@ -10,7 +10,7 @@ from app.core.database import async_session_maker
 from app.core.redis import redis_client
 from app.core.config import settings
 from app.main import app
-from app.models import AuditLog, SurveyAnswer, SurveySession
+from app.models import AuditLog, SurveyAiAnalysis, SurveyAnswer, SurveySession
 from app.schemas.schemas import SurveyCompleteRequest
 
 
@@ -58,6 +58,7 @@ class SurveyFlowTests(unittest.IsolatedAsyncioTestCase):
         async with async_session_maker() as db:
             if self.created_session_ids:
                 await db.execute(delete(AuditLog).where(AuditLog.session_id.in_(self.created_session_ids)))
+                await db.execute(delete(SurveyAiAnalysis).where(SurveyAiAnalysis.session_id.in_(self.created_session_ids)))
                 await db.execute(delete(SurveyAnswer).where(SurveyAnswer.session_id.in_(self.created_session_ids)))
                 await db.execute(delete(SurveySession).where(SurveySession.id.in_(self.created_session_ids)))
                 await db.commit()

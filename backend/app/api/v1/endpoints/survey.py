@@ -37,6 +37,7 @@ from app.services.survey_engine import SurveyEngine
 from app.services.report_generator import ReportGenerator
 from app.services.bitrix24 import Bitrix24Client
 from app.services.survey_routing import get_active_survey_config, get_global_fallback_survey_config
+from app.services.ai_analysis.service import queue_ai_analysis_job
 
 router = APIRouter()
 
@@ -185,7 +186,7 @@ async def _complete_survey_session(
     final_answer_data: dict[str, Any] | None = None,
     duration_seconds: int | None = None,
 ) -> None:
-    """Быстро фиксирует завершение сессии и запускает обработку отчёта в фоне."""
+    """Быстро фиксирует завершение сессии и ставит обработку отчёта в DB-backed очередь."""
     if final_node_id and final_answer_data is not None:
         await _save_answer(
             db=db,
@@ -201,21 +202,15 @@ async def _complete_survey_session(
     audit_log = AuditLog(
         session_id=session.id,
         action="survey_completed",
-        details={"background_processing": True},
+        details={"db_backed_processing": True},
     )
     db.add(audit_log)
+    analysis, created = await queue_ai_analysis_job(db, session)
     await db.commit()
 
-    logger.info(f"Опрос завершён (быстрый ответ): session_id={session.id}")
-
-    background_tasks.add_task(
-        _process_survey_report,
-        session_id=session.id,
-        lead_id=session.lead_id,
-        entity_type=session.entity_type,
-        patient_name=session.patient_name,
-        survey_config_id=session.survey_config_id,
-        token_hash=session.token_hash,
+    logger.info(
+        "Опрос завершён (быстрый ответ), задача обработки поставлена в очередь: "
+        f"session_id={session.id}, analysis_id={analysis.id}, created={created}"
     )
 
 
@@ -626,9 +621,9 @@ async def get_progress(
 
 
 # ==========================================
-# Фоновая задача: генерация отчёта и отправка в Битрикс24
-# Выполняется ПОСЛЕ того, как ответ уже отдан клиенту,
-# чтобы пользователь не ждал 5-10 секунд.
+# Legacy fallback: генерация отчёта и отправка в Битрикс24.
+# Production-путь теперь выполняется отдельным DB-backed worker-ом
+# через survey_ai_analyses, чтобы пациент не ждал OpenRouter/PDF/Bitrix24.
 # ==========================================
 
 async def _process_survey_report(
@@ -791,8 +786,8 @@ async def complete_survey(
     """
     Завершение опроса — мгновенный ответ клиенту.
     
-    Тяжёлые операции (PDF, Битрикс24) выполняются в фоне через BackgroundTasks,
-    чтобы пользователь не ждал 5-10 секунд.
+    Тяжёлые операции (ИИ, PDF, Битрикс24) выполняются отдельным worker-ом
+    через DB-backed очередь, чтобы пользователь не ждал OpenRouter/PDF.
     
     Args:
         data: ID сессии
@@ -815,6 +810,8 @@ async def complete_survey(
     await verify_session_owner(session, request, redis)
     
     if session.status == "completed":
+        await queue_ai_analysis_job(db, session)
+        await db.commit()
         return SurveyCompleteResponse(
             success=True,
             message="Опрос уже был завершён ранее",

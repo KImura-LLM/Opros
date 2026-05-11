@@ -1,6 +1,7 @@
 """Синхронизация metadata CRM-полей Bitrix24 в локальную БД."""
 
 from datetime import datetime, timezone
+import re
 from typing import Any
 
 from loguru import logger
@@ -27,7 +28,16 @@ def _metadata_text(value: Any) -> str | None:
     return None
 
 
+CRM_FIELD_ID_PATTERN = re.compile(r"^UF_CRM_\d+$", re.IGNORECASE)
+
+
+def _is_technical_field_title(field_id: str, value: str) -> bool:
+    normalized_value = value.strip()
+    return normalized_value == field_id or bool(CRM_FIELD_ID_PATTERN.fullmatch(normalized_value))
+
+
 def crm_field_title(field_id: str, metadata: dict[str, Any]) -> str:
+    fallback_title: str | None = None
     for key in (
         "title",
         "TITLE",
@@ -51,9 +61,13 @@ def crm_field_title(field_id: str, metadata: dict[str, Any]) -> str:
         "NAME",
     ):
         value = _metadata_text(metadata.get(key))
-        if value:
-            return value
-    return field_id
+        if not value:
+            continue
+        if _is_technical_field_title(field_id, value):
+            fallback_title = fallback_title or value
+            continue
+        return value
+    return fallback_title or field_id
 
 
 def _field_title(field_id: str, metadata: dict[str, Any]) -> str:

@@ -9,6 +9,7 @@ import {
   Route,
   Save,
   Search,
+  Sun,
   Trash2,
   X,
 } from 'lucide-react'
@@ -117,6 +118,7 @@ export default function SurveyRoutingPage() {
   const [dealId, setDealId] = useState('')
   const [testResult, setTestResult] = useState<RoutingTestDealResponse | null>(null)
   const [isTesting, setIsTesting] = useState(false)
+  const [isDarkTheme, setIsDarkTheme] = useState(false)
 
   const fieldsById = useMemo(
     () => new Map(crmFields.map((field) => [field.field_id, field])),
@@ -384,9 +386,9 @@ export default function SurveyRoutingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900">
+    <div className={`routing-page min-h-screen bg-slate-50 text-slate-900 ${isDarkTheme ? 'routing-dark' : ''}`}>
       <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-[96rem] flex-col gap-4 px-5 py-5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="mx-auto flex max-w-[104rem] flex-col gap-4 px-5 py-5 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-teal-600 text-white">
               <Route className="h-5 w-5" />
@@ -408,6 +410,16 @@ export default function SurveyRoutingPage() {
               <RefreshCw className="h-4 w-4" />
               Обновить CRM-поля
             </button>
+            <button
+              className="routing-theme-toggle inline-flex h-10 w-10 items-center justify-center rounded-lg"
+              type="button"
+              aria-label={isDarkTheme ? 'Выключить темную тему' : 'Включить темную тему'}
+              aria-pressed={isDarkTheme}
+              title={isDarkTheme ? 'Выключить темную тему' : 'Включить темную тему'}
+              onClick={() => setIsDarkTheme((value) => !value)}
+            >
+              <Sun className="h-5 w-5" />
+            </button>
             <a className="btn-secondary rounded-lg px-4 py-2" href="/admin/">
               Админка
             </a>
@@ -415,7 +427,7 @@ export default function SurveyRoutingPage() {
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-[96rem] gap-5 px-5 py-5 xl:grid-cols-[17rem_minmax(0,1fr)_28rem]">
+      <main className="mx-auto grid max-w-[104rem] gap-5 px-5 py-5 xl:grid-cols-[16rem_minmax(0,1fr)_26rem]">
         <aside className="rounded-lg border border-slate-200 bg-white p-3">
           <div className="mb-3 text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
             Клиники
@@ -567,7 +579,7 @@ export default function SurveyRoutingPage() {
                       </td>
                       <td className="px-4 py-3 text-slate-700">{rule.survey_name || rule.survey_config_id}</td>
                       <td className="px-4 py-3 text-slate-600">
-                        <div className="max-w-[28rem] truncate">
+                        <div className="max-w-[42rem] truncate">
                           {rule.conditions
                             .map((condition) => formatCondition(condition, fieldsById, optionsByField))
                             .join(rule.condition_logic === 'AND' ? ' И ' : ' ИЛИ ')}

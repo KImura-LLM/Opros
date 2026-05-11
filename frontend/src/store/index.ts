@@ -3,4 +3,3 @@ export {
   getSessionFromStorage,
   clearSessionStorage,
 } from './surveyStore'
-export { useDoctorStore } from './doctorStore'

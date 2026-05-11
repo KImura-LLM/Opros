@@ -10,12 +10,29 @@ import type {
 const FILTERS_STORAGE_KEY = 'opros_doctor_filters'
 const AUTH_STORAGE_KEY = 'opros_doctor_auth'
 const DEFAULT_CLINIC_BUCKET: DoctorClinicBucket = 'novosibirsk'
+const DOCTOR_CLINIC_BUCKETS: readonly DoctorClinicBucket[] = [
+  'novosibirsk',
+  'kemerovo',
+  'yaroslavl',
+  'test',
+]
 
 const defaultFilters: DoctorFilters = {
   doctorName: '',
   patientName: '',
   dateFrom: '',
   dateTo: '',
+}
+
+type PersistedDoctorUiState = {
+  activeClinicBucket: DoctorClinicBucket
+}
+
+function isDoctorClinicBucket(value: unknown): value is DoctorClinicBucket {
+  return (
+    typeof value === 'string' &&
+    DOCTOR_CLINIC_BUCKETS.includes(value as DoctorClinicBucket)
+  )
 }
 
 function normalizeFiltersForDoctor(
@@ -195,11 +212,21 @@ export const useDoctorStore = create<DoctorStoreState>()(
     }),
     {
       name: FILTERS_STORAGE_KEY,
+      version: 1,
       storage: createJSONStorage(() => localStorage),
-      partialize: (state) => ({
-        filters: state.filters,
+      // В localStorage не сохраняем ФИО врача/пациента из фильтров.
+      // Храним только неперсональную UI-настройку региона.
+      partialize: (state): PersistedDoctorUiState => ({
         activeClinicBucket: state.activeClinicBucket,
       }),
+      migrate: (persistedState): PersistedDoctorUiState => {
+        const state = persistedState as Partial<DoctorStoreState> | null
+        return {
+          activeClinicBucket: isDoctorClinicBucket(state?.activeClinicBucket)
+            ? state.activeClinicBucket
+            : DEFAULT_CLINIC_BUCKET,
+        }
+      },
     }
   )
 )

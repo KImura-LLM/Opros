@@ -21,6 +21,11 @@ from loguru import logger
 from app.core.database import get_db
 from app.models import SurveySession, SurveyAnswer, SurveyConfig
 from app.services.report_generator import ReportGenerator
+from app.services.ai_analysis.service import (
+    build_ai_snapshot_metadata,
+    get_ai_analysis_for_session,
+    get_successful_ai_analysis,
+)
 from app.api.v1.endpoints.survey_editor import verify_admin_session
 
 
@@ -80,14 +85,19 @@ async def _get_report_content(session_id: UUID, db: AsyncSession) -> tuple[Surve
     if not config:
         raise HTTPException(status_code=404, detail="Конфигурация опросника не найдена")
 
+    ai_analysis = await get_successful_ai_analysis(db, session_id)
+    ai_result = ai_analysis.response_json if ai_analysis else None
+
     report_gen = ReportGenerator(config.json_config)
     html = report_gen.generate_readable_html_report(
         patient_name=session.patient_name,
         answers=answers_dict,
+        ai_analysis=ai_result,
     )
     txt = report_gen.generate_text_report(
         patient_name=session.patient_name,
         answers=answers_dict,
+        ai_analysis=ai_result,
     )
     return session, html, txt
 
@@ -244,14 +254,19 @@ async def regenerate_report(
         if not config:
             raise HTTPException(status_code=404, detail="Конфигурация опросника не найдена")
 
+        ai_analysis = await get_ai_analysis_for_session(db, session_id)
+        ai_result = ai_analysis.response_json if ai_analysis and ai_analysis.status == "succeeded" else None
+
         report_gen = ReportGenerator(config.json_config)
         html = report_gen.generate_readable_html_report(
             patient_name=session.patient_name,
             answers=answers_dict,
+            ai_analysis=ai_result,
         )
         txt = report_gen.generate_text_report(
             patient_name=session.patient_name,
             answers=answers_dict,
+            ai_analysis=ai_result,
         )
 
         session.report_snapshot = {
@@ -260,6 +275,7 @@ async def regenerate_report(
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "config_version": config.version,
             "regenerated": True,
+            "ai_analysis": build_ai_snapshot_metadata(ai_analysis, included=bool(ai_result)),
         }
         await db.commit()
 

@@ -10,11 +10,19 @@ from sqladmin.authentication import AuthenticationBackend
 from starlette.requests import Request
 from pathlib import Path
 from loguru import logger
+from markupsafe import Markup, escape
 
 from app.core.config import settings
 from app.core.database import engine
 from app.models import SurveyConfig, SurveySession, SurveyAnswer, AuditLog
 from app.admin.doctor_view import DoctorUserAdmin
+from app.admin.routing_view import SurveyRoutingAdmin
+from app.admin.ai_analysis_view import SurveyAiAnalysisAdmin
+
+
+def _safe_admin_markup(html: str) -> Markup:
+    """Return SQLAdmin HTML after callers have escaped all dynamic values."""
+    return Markup(html)  # nosec B704
 
 
 class AdminAuth(AuthenticationBackend):
@@ -110,13 +118,12 @@ class SurveyConfigAdmin(ModelView, model=SurveyConfig):
     
     # Форматтер для списка
     @staticmethod
-    def _edit_link_formatter(model, prop):
+    def _edit_link_formatter(model, _prop):
         """Рендеринг кнопки визуального редактора."""
-        from markupsafe import Markup
         # Используем FRONTEND_URL из настроек
-        editor_url = f"{settings.FRONTEND_URL}/editor/{model.id}"
+        editor_url = escape(f"{settings.FRONTEND_URL}/editor/{model.id}")
         
-        return Markup(f'''
+        return _safe_admin_markup(f'''
             <a href="{editor_url}" 
                target="_blank"
                style="
@@ -142,12 +149,11 @@ class SurveyConfigAdmin(ModelView, model=SurveyConfig):
         ''')
     
     @staticmethod
-    def _analysis_link_formatter(model, prop):
+    def _analysis_link_formatter(model, _prop):
         """Рендеринг кнопки редактора системного анализа."""
-        from markupsafe import Markup
-        analysis_url = f"{settings.FRONTEND_URL}/analysis-editor/{model.id}"
+        analysis_url = escape(f"{settings.FRONTEND_URL}/analysis-editor/{model.id}")
         
-        return Markup(f'''
+        return _safe_admin_markup(f'''
             <a href="{analysis_url}" 
                target="_blank"
                style="
@@ -213,20 +219,18 @@ class SurveySessionAdmin(ModelView, model=SurveySession):
     
     # Форматтер для кнопок экспорта
     @staticmethod
-    def _report_actions_formatter(model, prop):
+    def _report_actions_formatter(model, _prop):
         """Рендеринг кнопок экспорта отчёта и индикатора статуса снимка."""
-        from markupsafe import Markup
-
         # Показываем кнопки только для завершённых сессий
         if model.status != "completed":
             return Markup('<span style="color: #94a3b8; font-size: 12px;">Сессия не завершена</span>')
 
-        base_url = f"/api/v1/reports/{model.id}"
+        base_url = escape(f"/api/v1/reports/{model.id}")
 
         # ── Индикатор состояния снимка отчёта ──
         if model.report_snapshot:
             generated_at = model.report_snapshot.get("generated_at", "")
-            config_ver = model.report_snapshot.get("config_version", "?")
+            config_ver = escape(model.report_snapshot.get("config_version", "?"))
             is_regen = model.report_snapshot.get("regenerated", False)
             if generated_at:
                 try:
@@ -237,6 +241,7 @@ class SurveySessionAdmin(ModelView, model=SurveySession):
                     date_str = generated_at[:16]
             else:
                 date_str = "—"
+            date_str = escape(date_str)
 
             if is_regen:
                 badge = (
@@ -301,7 +306,7 @@ class SurveySessionAdmin(ModelView, model=SurveySession):
             '</button>'
         )
 
-        return Markup(f'''
+        return _safe_admin_markup(f'''
             <div style="display: flex; flex-direction: column; gap: 6px; min-width: 220px;">
                 <div>{badge}</div>
                 <div style="display: flex; gap: 5px; flex-wrap: wrap;">
@@ -376,16 +381,14 @@ class SurveySessionAdmin(ModelView, model=SurveySession):
     
     # Форматтер для предпросмотра в деталях
     @staticmethod
-    def _report_preview_formatter(model, prop):
+    def _report_preview_formatter(model, _prop):
         """Рендеринг встроенного предпросмотра отчёта."""
-        from markupsafe import Markup
-        
         if model.status != "completed":
             return Markup('<div style="padding: 20px; background: #fef2f2; border-radius: 8px; color: #991b1b;"><p>Предпросмотр отчёта доступен только для завершённых сессий.</p></div>')
         
-        preview_url = f"/api/v1/reports/{model.id}/preview"
+        preview_url = escape(f"/api/v1/reports/{model.id}/preview")
         
-        return Markup(f'''
+        return _safe_admin_markup(f'''
             <div style="background: #f8fafc; padding: 20px; border-radius: 8px; border: 1px solid #e2e8f0;">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                     <h3 style="margin: 0; color: #1e293b; font-size: 18px;">📋 Предпросмотр отчёта</h3>
@@ -522,8 +525,9 @@ def setup_admin(app):
             title = "Опросник - Админ"
         
         return _analytics_tpl.TemplateResponse(
+            request,
             "analytics.html",
-            {"request": request, "admin": AdminStub()},
+            {"admin": AdminStub()},
         )
     
     @app.get("/admin/logs", response_class=HTMLResponse, include_in_schema=False)
@@ -537,24 +541,11 @@ def setup_admin(app):
             title = "Опросник - Админ"
         
         return _analytics_tpl.TemplateResponse(
+            request,
             "logs.html",
-            {"request": request, "admin": AdminStub()},
+            {"admin": AdminStub()},
         )
 
-    @app.get("/admin/routing", include_in_schema=False)
-    async def admin_routing_page(request: Request):
-        """Переход к экрану маршрутизации опросников."""
-        from starlette.responses import RedirectResponse as RR
-
-        if not request.session.get("admin_authenticated"):
-            return RR(url="/admin/login", status_code=302)
-
-        frontend_url = settings.FRONTEND_URL.rstrip("/")
-        request_host = request.url.hostname or ""
-        if frontend_url.startswith("http://localhost") and request_host not in {"localhost", "127.0.0.1"}:
-            return RR(url="/routing", status_code=302)
-        return RR(url=f"{frontend_url}/routing", status_code=302)
-    
     @app.get("/admin/api/session", include_in_schema=False)
     async def admin_api_session(request: Request):
         """Проверка статуса сессии администратора. Используется фронтендом (EditorPage)."""
@@ -714,6 +705,36 @@ def setup_admin(app):
         logger.info(f"Ручная очистка: завершено {count} истёкших/зависших сессий")
         return JSONResponse({"success": True, "closed": count, "timestamp": now.isoformat()})
 
+    @app.post("/admin/api/ai-analysis/{analysis_id}/retry", include_in_schema=False)
+    async def admin_retry_ai_analysis(request: Request, analysis_id: str):
+        """Ручной повтор failed/skipped ИИ-анализа без создания дублей."""
+        from fastapi.responses import JSONResponse
+        from uuid import UUID
+        from app.core.database import async_session_maker
+        from app.services.ai_analysis.service import retry_failed_ai_analysis
+
+        if not request.session.get("admin_authenticated"):
+            return JSONResponse({"error": "Не авторизован"}, status_code=403)
+
+        try:
+            parsed_id = UUID(analysis_id)
+        except ValueError:
+            return JSONResponse({"error": "Некорректный ID ИИ-анализа"}, status_code=400)
+
+        async with async_session_maker() as db:
+            try:
+                analysis = await retry_failed_ai_analysis(db, parsed_id)
+                await db.commit()
+                logger.info(f"ИИ-анализ поставлен в очередь повторно администратором: analysis_id={analysis.id}")
+                return JSONResponse({"success": True, "analysis_id": str(analysis.id), "status": analysis.status})
+            except ValueError as exc:
+                await db.rollback()
+                return JSONResponse({"error": str(exc)}, status_code=400)
+            except Exception as exc:
+                await db.rollback()
+                logger.error(f"Ошибка ручного retry ИИ-анализа: {exc}")
+                return JSONResponse({"error": "Ошибка постановки ИИ-анализа в очередь"}, status_code=500)
+
     # --- Инициализация SQLAdmin ---
     admin = Admin(
         app,
@@ -727,6 +748,8 @@ def setup_admin(app):
     # Регистрация моделей
     admin.add_view(SurveyConfigAdmin)
     admin.add_view(SurveySessionAdmin)
+    admin.add_view(SurveyAiAnalysisAdmin)
     admin.add_view(SurveyAnswerAdmin)
     admin.add_view(AuditLogAdmin)
     admin.add_view(DoctorUserAdmin)
+    admin.add_view(SurveyRoutingAdmin)

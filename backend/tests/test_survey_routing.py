@@ -12,6 +12,7 @@ from app.services.survey_routing import (
     compare_condition,
     normalize_bitrix_category_id,
     resolve_clinic_key_from_deal,
+    resolve_survey_for_deal,
     rule_matches,
 )
 
@@ -98,6 +99,43 @@ class SurveyRoutingConditionTests(unittest.TestCase):
 
     def test_normalizes_numeric_category(self) -> None:
         self.assertEqual(normalize_bitrix_category_id("03"), "3")
+
+
+class EmptyAsyncResult:
+    def scalar_one_or_none(self):
+        return None
+
+    def scalars(self):
+        return self
+
+    def all(self):
+        return []
+
+
+class CapturingDb:
+    def __init__(self) -> None:
+        self.statements: list[str] = []
+
+    async def execute(self, query):
+        self.statements.append(str(query.compile(compile_kwargs={"literal_binds": True})))
+        return EmptyAsyncResult()
+
+
+class SurveyRoutingPriorityOrderTests(unittest.IsolatedAsyncioTestCase):
+    async def test_resolve_checks_active_rules_by_ascending_priority(self) -> None:
+        db = CapturingDb()
+
+        await resolve_survey_for_deal(db, {"CATEGORY_ID": "0"})
+
+        rules_query = next(
+            statement
+            for statement in db.statements
+            if "FROM survey_routing_rules" in statement and "is_active" in statement
+        )
+        self.assertIn(
+            "ORDER BY survey_routing_rules.priority ASC, survey_routing_rules.id ASC",
+            rules_query,
+        )
 
 
 if __name__ == "__main__":
