@@ -147,6 +147,24 @@ class ReportGeneratorFormattingTests(unittest.TestCase):
         self.assertIn("РЕКОМЕНДАЦИИ ВРАЧУ", report)
         self.assertIn("Rule-based warning", report)
 
+    def test_ai_block_hides_bracket_garbage_limitations(self) -> None:
+        generator = ReportGenerator({"nodes": []})
+        ai_result = {
+            "overall_priority": "yellow",
+            "summary": "AI summary",
+            "red_flags": [],
+            "key_findings": [],
+            "doctor_recommendations": [],
+            "limitations": "}]}]" * 80,
+        }
+
+        html = generator.generate_readable_html_report("Пациент", {}, ai_analysis=ai_result)
+        text = generator.generate_text_report("Пациент", {}, ai_analysis=ai_result)
+
+        self.assertIn("ИИ-анализ является вспомогательным инструментом", html)
+        self.assertNotIn("}]}]}]}", html)
+        self.assertNotIn("}]}]}]}", text)
+
 
 if __name__ == "__main__":
     unittest.main()

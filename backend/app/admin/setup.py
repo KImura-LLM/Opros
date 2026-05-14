@@ -9,15 +9,18 @@ from sqladmin import Admin, ModelView
 from sqladmin.authentication import AuthenticationBackend
 from starlette.requests import Request
 from pathlib import Path
+from typing import Any
+
 from loguru import logger
 from markupsafe import Markup, escape
 
 from app.core.config import settings
 from app.core.database import engine
-from app.models import SurveyConfig, SurveySession, SurveyAnswer, AuditLog
+from app.models import AuditLog, SurveyAnswer, SurveyConfig, SurveySession
 from app.admin.doctor_view import DoctorUserAdmin
 from app.admin.routing_view import SurveyRoutingAdmin
 from app.admin.ai_analysis_view import SurveyAiAnalysisAdmin
+from app.services.survey_config_deletion import get_survey_config_delete_error
 
 
 def _safe_admin_markup(html: str) -> Markup:
@@ -188,6 +191,26 @@ class SurveyConfigAdmin(ModelView, model=SurveyConfig):
         "analysis_link": "Системный анализ",
     }
 
+    async def delete_model(self, request: Request, pk: Any) -> None:
+        """
+        Запрещаем физическое удаление опросника, если на него уже есть ссылки.
+
+        SQLAlchemy по умолчанию пытается отвязать связанные SurveySession через
+        survey_config_id=NULL, но поле обязательное. Для медицинских данных
+        безопаснее явно остановить удаление и предложить деактивацию опросника.
+        """
+        try:
+            config_id = int(pk)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Некорректный ID опросника: {pk}") from exc
+
+        async with self.session_maker() as session:
+            delete_error = await get_survey_config_delete_error(session, config_id)
+        if delete_error:
+            raise ValueError(delete_error)
+
+        await super().delete_model(request, pk)
+
 
 class SurveySessionAdmin(ModelView, model=SurveySession):
     """Админ-представление для сессий опроса."""
@@ -273,22 +296,49 @@ class SurveySessionAdmin(ModelView, model=SurveySession):
         # чтобы избежать ошибок синтаксиса при конкатенации Python/JS
         _js = (
             "(function(btn){"
-            "if(!confirm('Пересчитать отчёт по текущей версии опросника?\\nСтарый снимок будет заменён.'))return;"
+            "if(!confirm('Пересчитать отчёт по текущей версии опросника?\\nСтарый снимок будет заменён.\\nИИ-анализ повторно запускаться не будет.'))return;"
             "btn.disabled=true;btn.textContent='⏳ Обновление...';"
+            "function done(text){btn.textContent=text;btn.style.background='linear-gradient(135deg,#059669 0%,#047857 100%)';setTimeout(function(){location.reload();},1200);}"
             f"fetch('/api/v1/reports/{sid}/regenerate',"
             "{method:'POST',credentials:'include'})"
             ".then(function(r){return r.json();})"
             ".then(function(d){"
             "if(d.success){"
-            "btn.textContent='✅ Обновлено!';"
-            "btn.style.background='linear-gradient(135deg,#059669 0%,#047857 100%)';"
-            "setTimeout(function(){location.reload();},1200);"
+            "done('✅ Обновлено!');"
             "}else{"
             "alert('Ошибка: '+(d.detail||'неизвестная ошибка'));"
             "btn.disabled=false;btn.textContent='🔄 Обновить отчёт';"
             "}}).catch(function(){"
             "alert('Ошибка запроса к серверу');"
             "btn.disabled=false;btn.textContent='🔄 Обновить отчёт';"
+            "})})(this)"
+        )
+        _ai_js = (
+            "(function(btn){"
+            "if(!confirm('Повторно запустить ИИ-анализ для этой анкеты?\\nОтчёт будет обновлён после завершения ИИ.'))return;"
+            "btn.disabled=true;btn.textContent='🤖 ИИ-анализ...';"
+            "function done(text){btn.textContent=text;btn.style.background='linear-gradient(135deg,#059669 0%,#047857 100%)';setTimeout(function(){location.reload();},1200);}"
+            "function pollAi(n){"
+            f"fetch('/api/v1/reports/{sid}/ai-status',"
+            "{method:'GET',credentials:'include'})"
+            ".then(function(r){return r.json();})"
+            ".then(function(s){"
+            "if(s.status==='succeeded'&&s.included){done('✅ ИИ обновлён!');return;}"
+            "if(s.status==='failed'||s.status==='skipped'){done('⚠️ ИИ не выполнен');return;}"
+            "if(n<=0){done('⏳ ИИ ещё обрабатывается');return;}"
+            "btn.textContent='🤖 ИИ-анализ... '+s.status;"
+            "setTimeout(function(){pollAi(n-1);},3000);"
+            "}).catch(function(){if(n<=0){done('⏳ ИИ ещё обрабатывается');return;}setTimeout(function(){pollAi(n-1);},3000);});"
+            "}"
+            f"fetch('/api/v1/reports/{sid}/regenerate-ai',"
+            "{method:'POST',credentials:'include'})"
+            ".then(function(r){return r.json();})"
+            ".then(function(d){"
+            "if(d.success){pollAi(40);}"
+            "else{alert('Ошибка: '+(d.detail||'неизвестная ошибка'));btn.disabled=false;btn.textContent='🤖 Обновить ИИ-анализ';}"
+            "}).catch(function(){"
+            "alert('Ошибка запроса к серверу');"
+            "btn.disabled=false;btn.textContent='🤖 Обновить ИИ-анализ';"
             "})})(this)"
         )
         refresh_btn = (
@@ -303,6 +353,20 @@ class SurveySessionAdmin(ModelView, model=SurveySession):
             " onmouseout=\"this.style.transform='translateY(0)';this.style.boxShadow='0 1px 3px rgba(124,58,237,0.3)';\""
             ' title="Пересчитать отчёт с текущей версией опросника (заменит сохранённый снимок)">'
             '🔄 Обновить отчёт'
+            '</button>'
+        )
+        refresh_ai_btn = (
+            f'<button onclick="{_ai_js}"'
+            ' style="display:inline-flex;align-items:center;gap:4px;'
+            'padding:5px 10px;'
+            'background:linear-gradient(135deg,#0f766e 0%,#0d9488 100%);'
+            'color:white;border:none;border-radius:4px;'
+            'font-size:11px;font-weight:500;cursor:pointer;'
+            'box-shadow:0 1px 3px rgba(15,118,110,0.3);transition:all 0.2s;"'
+            " onmouseover=\"this.style.transform='translateY(-1px)';this.style.boxShadow='0 3px 6px rgba(15,118,110,0.45)';\""
+            " onmouseout=\"this.style.transform='translateY(0)';this.style.boxShadow='0 1px 3px rgba(15,118,110,0.3)';\""
+            ' title="Повторно запустить только ИИ-анализ для этой анкеты">'
+            '🤖 Обновить ИИ-анализ'
             '</button>'
         )
 
@@ -353,6 +417,7 @@ class SurveySessionAdmin(ModelView, model=SurveySession):
                         <i class="fa-solid fa-file-lines"></i> TXT
                     </a>
                     {refresh_btn}
+                    {refresh_ai_btn}
                 </div>
             </div>
         ''')

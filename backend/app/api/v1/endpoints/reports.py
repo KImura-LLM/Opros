@@ -25,6 +25,7 @@ from app.services.ai_analysis.service import (
     build_ai_snapshot_metadata,
     get_ai_analysis_for_session,
     get_successful_ai_analysis,
+    refresh_ai_analysis_for_session,
 )
 from app.api.v1.endpoints.survey_editor import verify_admin_session
 
@@ -289,6 +290,7 @@ async def regenerate_report(
             "message": "Отчёт успешно пересчитан по текущей версии опросника",
             "config_version": config.version,
             "generated_at": session.report_snapshot["generated_at"],
+            "ai_analysis_status": ai_analysis.status if ai_analysis else "missing",
         }
 
     except HTTPException:
@@ -296,3 +298,62 @@ async def regenerate_report(
     except Exception as e:
         logger.error(f"Ошибка принудительной перегенерации отчёта: {e}")
         raise HTTPException(status_code=500, detail="Ошибка пересчёта отчёта")
+
+
+@router.post("/{session_id}/regenerate-ai")
+async def regenerate_ai_analysis(
+    session_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    _admin: bool = Depends(verify_admin_session),
+):
+    """
+    Отдельное админское обновление только AI-анализа.
+
+    Ставит AI-задачу в очередь даже если прошлый анализ уже был успешным.
+    Сам отчёт не пересчитывается синхронно в этом endpoint; snapshot обновит
+    AI-worker после завершения анализа.
+    """
+    try:
+        session = await _get_completed_session(session_id, db)
+        analysis, queued = await refresh_ai_analysis_for_session(db, session)
+        await db.commit()
+
+        logger.info(
+            f"AI-анализ обновляется администратором: "
+            f"session_id={session_id}, analysis_id={analysis.id}, queued={queued}, status={analysis.status}"
+        )
+
+        return {
+            "success": True,
+            "message": "ИИ-анализ поставлен в очередь" if queued else "ИИ-анализ уже выполняется",
+            "ai_analysis_queued": queued,
+            "ai_analysis_status": analysis.status,
+            "analysis_id": str(analysis.id),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка обновления AI-анализа: {e}")
+        raise HTTPException(status_code=500, detail="Ошибка обновления ИИ-анализа")
+
+
+@router.get("/{session_id}/ai-status")
+async def get_report_ai_status(
+    session_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    _admin: bool = Depends(verify_admin_session),
+):
+    """Статус AI-анализа для polling после админского обновления отчёта."""
+    session = await _get_completed_session(session_id, db)
+    ai_analysis = await get_ai_analysis_for_session(db, session_id)
+    snapshot_ai = {}
+    if isinstance(session.report_snapshot, dict):
+        snapshot_ai = session.report_snapshot.get("ai_analysis") or {}
+
+    return {
+        "success": True,
+        "status": ai_analysis.status if ai_analysis else "missing",
+        "included": bool(snapshot_ai.get("included")),
+        "snapshot_status": snapshot_ai.get("status", "missing"),
+        "generated_at": session.report_snapshot.get("generated_at") if isinstance(session.report_snapshot, dict) else None,
+    }

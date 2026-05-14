@@ -17,6 +17,7 @@ from loguru import logger
 from app.core.database import get_db
 from app.core.config import settings
 from app.models import SurveyConfig
+from app.services.survey_config_deletion import get_survey_config_delete_error
 
 
 router = APIRouter()
@@ -577,6 +578,13 @@ async def delete_survey(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Опросник не найден"
+        )
+
+    delete_error = await get_survey_config_delete_error(db, survey_id)
+    if delete_error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=delete_error,
         )
     
     await db.delete(config)

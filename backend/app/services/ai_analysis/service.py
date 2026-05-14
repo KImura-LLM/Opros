@@ -149,6 +149,56 @@ async def retry_failed_ai_analysis(db: AsyncSession, analysis_id: UUID | str) ->
     return analysis
 
 
+async def refresh_ai_analysis_for_session(db: AsyncSession, session: SurveySession) -> tuple[SurveyAiAnalysis, bool]:
+    """
+    Force-refresh AI analysis for an admin action.
+
+    Creates a job when it is missing, reuses pending/running jobs without
+    duplication, and resets any final job (including succeeded) to pending.
+    """
+    existing_result = await db.execute(
+        select(SurveyAiAnalysis).where(SurveyAiAnalysis.session_id == session.id)
+    )
+    analysis = existing_result.scalar_one_or_none()
+    if analysis is None:
+        return await queue_ai_analysis_job(db, session)
+
+    if analysis.status in PENDING_AI_STATUSES:
+        return analysis, False
+
+    previous_status = analysis.status
+    analysis.analysis_case_id = uuid.uuid4()
+    analysis.status = "pending"
+    analysis.model = settings.OPENROUTER_MODEL
+    analysis.prompt_version = settings.AI_ANALYSIS_PROMPT_VERSION
+    analysis.prompt_hash = get_prompt_hash()
+    analysis.request_payload_hash = None
+    analysis.response_json = None
+    analysis.overall_priority = None
+    analysis.error_code = None
+    analysis.error_message = None
+    analysis.attempts = 0
+    analysis.queued_at = _now()
+    analysis.started_at = None
+    analysis.completed_at = None
+    db.add(analysis)
+    db.add(
+        AuditLog(
+            session_id=analysis.session_id,
+            action="ai_analysis_queued",
+            details={
+                "analysis_id": str(analysis.id),
+                "analysis_case_id": str(analysis.analysis_case_id),
+                "manual_refresh": True,
+                "previous_status": previous_status,
+                "model": analysis.model,
+                "prompt_version": analysis.prompt_version,
+            },
+        )
+    )
+    return analysis, True
+
+
 async def get_successful_ai_analysis(db: AsyncSession, session_id: UUID | str) -> SurveyAiAnalysis | None:
     result = await db.execute(
         select(SurveyAiAnalysis).where(
