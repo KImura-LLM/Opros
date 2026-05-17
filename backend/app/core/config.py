@@ -64,6 +64,7 @@ class Settings(BaseSettings):
     
     # Битрикс24
     BITRIX24_WEBHOOK_URL: str = ""  # Исходящий вебхук (для отправки данных В Битрикс24)
+    BITRIX24_CRM_FIELDS_WEBHOOK_URL: str = ""  # Только чтение metadata CRM-полей для локальной маршрутизации
     BITRIX24_INCOMING_TOKEN: str = ""  # Токен для проверки входящих запросов ОТ Битрикс24
     BITRIX24_ALLOWED_CATEGORIES: str = ""  # Разрешённые ID воронок через запятую (например "19,25"). Пусто = все воронки.
     BITRIX24_DEFAULT_RESPONSIBLE_ID: int = 0  # Дефолтный ответственный для дела, если не удалось получить из сделки (0 = не задавать)

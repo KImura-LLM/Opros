@@ -10,6 +10,8 @@ services:
   nginx:
     image: nginx:alpine
     container_name: opros-nginx
+    profiles:
+      - edge
     restart: unless-stopped
     ports:
       - "80:80"
@@ -32,6 +34,8 @@ services:
   certbot:
     image: certbot/certbot
     container_name: opros-certbot
+    profiles:
+      - edge
     restart: unless-stopped
     volumes:
       - ./certbot/conf:/etc/letsencrypt
@@ -53,10 +57,13 @@ services:
       - ENVIRONMENT=development
       - DEBUG=true
       - BITRIX24_WEBHOOK_URL=
+      - BITRIX24_CRM_FIELDS_WEBHOOK_URL=${BITRIX24_WEBHOOK_URL:-}
+      - FRONTEND_URL=http://localhost:5173
+      - CORS_ORIGINS_STR=http://localhost:3000,http://localhost:5173
     volumes:
       - ./backend:/app
     ports:
-      - "8000:8000"
+      - "8001:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -107,7 +114,7 @@ services:
     ports:
       - "5173:5173"
     environment:
-      - VITE_API_URL=http://localhost:8000/api/v1
+      - VITE_API_URL=http://localhost:8001/api/v1
     networks:
       - opros-network
     command: npm run dev -- --host 0.0.0.0
@@ -126,7 +133,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:15432:5432"
     networks:
       - opros-network
     healthcheck:
@@ -143,7 +150,7 @@ services:
     container_name: opros-redis
     restart: unless-stopped
     ports:
-      - "127.0.0.1:6379:6379"
+      - "127.0.0.1:16379:6379"
     volumes:
       - redis_data:/data
     networks:

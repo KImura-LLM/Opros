@@ -55,6 +55,21 @@ const OPERATOR_LABELS: Record<RoutingOperator, string> = {
 const OPERATORS = Object.keys(OPERATOR_LABELS) as RoutingOperator[]
 
 const CRM_FIELD_ID_PATTERN = /^UF_CRM_\d+$/i
+const API_URL = import.meta.env.VITE_API_URL || ''
+const ADMIN_URL = getAdminUrl(API_URL)
+
+function getAdminUrl(apiUrl: string): string {
+  if (!apiUrl || apiUrl.startsWith('/')) {
+    return '/admin/'
+  }
+
+  try {
+    const url = new URL(apiUrl)
+    return `${url.origin}/admin/`
+  } catch {
+    return '/admin/'
+  }
+}
 
 function isTechnicalCrmFieldTitle(field: CrmFieldItem): boolean {
   return CRM_FIELD_ID_PATTERN.test(field.title.trim()) || field.title.trim() === field.field_id
@@ -349,6 +364,9 @@ export default function SurveyRoutingPage() {
     setStatus(null)
     try {
       const result = await syncCrmFields()
+      if (!result.success) {
+        throw new Error(result.message || 'Bitrix24 не вернул metadata CRM-полей')
+      }
       await loadCrmFields(fieldSearch)
       setStatus(`CRM-поля обновлены: ${result.fields_updated}, варианты: ${result.options_updated}`)
     } catch (err) {
@@ -420,7 +438,7 @@ export default function SurveyRoutingPage() {
             >
               <Sun className="h-5 w-5" />
             </button>
-            <a className="btn-secondary rounded-lg px-4 py-2" href="/admin/">
+            <a className="btn-secondary rounded-lg px-4 py-2" href={ADMIN_URL}>
               Админка
             </a>
           </div>
