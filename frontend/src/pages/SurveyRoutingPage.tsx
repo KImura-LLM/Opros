@@ -126,6 +126,7 @@ export default function SurveyRoutingPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [warning, setWarning] = useState<string | null>(null)
   const [status, setStatus] = useState<string | null>(null)
   const [editingRuleId, setEditingRuleId] = useState<number | null>(null)
   const [ruleForm, setRuleForm] = useState<RoutingRulePayload>(emptyRuleForm())
@@ -176,6 +177,7 @@ export default function SurveyRoutingPage() {
     if (!isAuthenticated) return
     setIsLoading(true)
     setError(null)
+    setWarning(null)
 
     Promise.all([loadClinics(), getRoutingSurveys(), loadCrmFields()])
       .then(([, surveyItems]) => {
@@ -213,6 +215,7 @@ export default function SurveyRoutingPage() {
     if (!activeClinicKey || !activeClinic) return
     setIsSaving(true)
     setError(null)
+    setWarning(null)
     setStatus(null)
     try {
       await saveRoutingClinicSettings(activeClinicKey, {
@@ -305,6 +308,7 @@ export default function SurveyRoutingPage() {
     if (!activeClinicKey) return
     setIsSaving(true)
     setError(null)
+    setWarning(null)
     setStatus(null)
     try {
       const payload = buildRulePayload()
@@ -327,6 +331,7 @@ export default function SurveyRoutingPage() {
     if (!confirm('Удалить правило маршрутизации?')) return
     setIsSaving(true)
     setError(null)
+    setWarning(null)
     try {
       await deleteRoutingRule(ruleId)
       if (activeClinicKey) await loadClinic(activeClinicKey)
@@ -361,11 +366,13 @@ export default function SurveyRoutingPage() {
   const handleSyncFields = async () => {
     setIsSaving(true)
     setError(null)
+    setWarning(null)
     setStatus(null)
     try {
       const result = await syncCrmFields()
       if (!result.success) {
-        throw new Error(result.message || 'Bitrix24 не вернул metadata CRM-полей')
+        setWarning(result.message || 'CRM-поля не были обновлены')
+        return
       }
       await loadCrmFields(fieldSearch)
       setStatus(`CRM-поля обновлены: ${result.fields_updated}, варианты: ${result.options_updated}`)
@@ -380,6 +387,7 @@ export default function SurveyRoutingPage() {
     if (!activeClinicKey || !dealId.trim()) return
     setIsTesting(true)
     setError(null)
+    setWarning(null)
     setTestResult(null)
     try {
       const result = await testDealRouting(activeClinicKey, Number(dealId))
@@ -472,6 +480,11 @@ export default function SurveyRoutingPage() {
           {error ? (
             <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
               {error}
+            </div>
+          ) : null}
+          {warning ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              {warning}
             </div>
           ) : null}
           {status ? (
