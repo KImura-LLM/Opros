@@ -2,7 +2,7 @@
 
 import asyncio
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from io import BytesIO
 from typing import Any
 from uuid import UUID
@@ -39,6 +39,18 @@ def _safe_error_message(message: str | None, limit: int = 500) -> str | None:
     if not message:
         return None
     return " ".join(str(message).split())[:limit]
+
+
+def _running_stale_cutoff() -> datetime:
+    """
+    Cutoff for reclaiming interrupted running jobs.
+
+    A normal OpenRouter request is bounded by OPENROUTER_TIMEOUT_SECONDS. Add a
+    small safety margin, but do not let a killed worker leave the UI in
+    "running" forever.
+    """
+    stale_after_seconds = max(settings.OPENROUTER_TIMEOUT_SECONDS + 30, 180)
+    return _now() - timedelta(seconds=stale_after_seconds)
 
 
 def _ai_snapshot_metadata(analysis: SurveyAiAnalysis | None, *, included: bool) -> dict[str, Any]:
@@ -241,8 +253,48 @@ async def get_ai_analysis_for_session(db: AsyncSession, session_id: UUID | str) 
     return result.scalar_one_or_none()
 
 
+async def requeue_stale_running_ai_analyses(db: AsyncSession) -> int:
+    """Return stale running jobs to pending after worker interruption/timeout."""
+    cutoff = _running_stale_cutoff()
+    result = await db.execute(
+        select(SurveyAiAnalysis)
+        .where(
+            SurveyAiAnalysis.status == "running",
+            SurveyAiAnalysis.started_at < cutoff,
+        )
+        .with_for_update(skip_locked=True)
+        .limit(10)
+    )
+    analyses = list(result.scalars().all())
+    for analysis in analyses:
+        analysis.status = "pending"
+        analysis.error_code = "requeued_stale_running"
+        analysis.error_message = "AI analysis worker was interrupted or timed out"
+        analysis.attempts = 0
+        analysis.started_at = None
+        analysis.completed_at = None
+        analysis.queued_at = _now()
+        db.add(
+            AuditLog(
+                session_id=analysis.session_id,
+                action="ai_analysis_requeued",
+                details={
+                    "analysis_id": str(analysis.id),
+                    "analysis_case_id": str(analysis.analysis_case_id),
+                    "reason": "stale_running",
+                    "model": analysis.model,
+                    "prompt_version": analysis.prompt_version,
+                },
+            )
+        )
+    if analyses:
+        await db.flush()
+    return len(analyses)
+
+
 async def fetch_next_pending_ai_analysis(db: AsyncSession) -> SurveyAiAnalysis | None:
     """Returns one pending job using PostgreSQL row locking for multi-worker safety."""
+    await requeue_stale_running_ai_analyses(db)
     result = await db.execute(
         select(SurveyAiAnalysis)
         .where(SurveyAiAnalysis.status == "pending")
@@ -402,7 +454,17 @@ async def process_ai_analysis_job(db: AsyncSession, analysis: SurveyAiAnalysis) 
             analysis.attempts = attempt
             await db.commit()
             try:
-                ai_response = await client.analyze(payload)
+                try:
+                    ai_response = await asyncio.wait_for(
+                        client.analyze(payload),
+                        timeout=settings.OPENROUTER_TIMEOUT_SECONDS + 15,
+                    )
+                except asyncio.TimeoutError as exc:
+                    raise OpenRouterClientError(
+                        "timeout",
+                        "OpenRouter request timed out",
+                        retryable=True,
+                    ) from exc
                 response_json = ai_response.model_dump(mode="json")
                 analysis.response_json = response_json
                 analysis.overall_priority = ai_response.overall_priority
