@@ -106,6 +106,8 @@ class ReportGeneratorFormattingTests(unittest.TestCase):
         self.assertIn("Красные флаги", report)
         self.assertIn("&lt;script&gt;alert(&quot;ai&quot;)&lt;/script&gt;", report)
         self.assertIn("&lt;b&gt;опасно&lt;/b&gt;", report)
+        self.assertIn("Есть боль?: <strong>Да</strong>", report)
+        self.assertNotIn("[pain]", report)
         self.assertNotIn("<script>alert", report)
 
     def test_text_report_contains_ai_and_system_sections(self) -> None:
@@ -132,7 +134,14 @@ class ReportGeneratorFormattingTests(unittest.TestCase):
             "overall_priority": "yellow",
             "summary": "AI summary",
             "red_flags": [],
-            "key_findings": [],
+            "key_findings": [
+                {
+                    "title": "Боль",
+                    "priority": "yellow",
+                    "description": "Есть жалоба",
+                    "evidence": [{"node_id": "pain", "question": "Есть боль?", "answer": "Да"}],
+                }
+            ],
             "doctor_recommendations": [{"priority": "yellow", "text": "Уточнить детали"}],
             "limitations": "Только анкета",
         }
@@ -145,6 +154,8 @@ class ReportGeneratorFormattingTests(unittest.TestCase):
 
         self.assertLess(report.index("ИИ-АНАЛИЗ ДЛЯ ВРАЧА"), report.index("СИСТЕМНЫЙ АНАЛИЗ ДЛЯ ВРАЧА"))
         self.assertIn("РЕКОМЕНДАЦИИ ВРАЧУ", report)
+        self.assertIn("Основание: Есть боль? — Да", report)
+        self.assertNotIn("[pain]", report)
         self.assertIn("Rule-based warning", report)
 
     def test_ai_block_hides_bracket_garbage_limitations(self) -> None:

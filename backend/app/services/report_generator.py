@@ -495,14 +495,12 @@ class ReportGenerator:
         for item in evidence[:10]:
             if not isinstance(item, dict):
                 continue
-            node_id = self._escape_html(item.get("node_id", ""))
             question = self._escape_html(self._clean_ai_text(item.get("question", "")))
             answer = self._escape_html(self._clean_ai_text(item.get("answer", "")))
             if not question and not answer:
                 continue
             items.append(
                 '<li>'
-                f'<span style="color:#64748b">[{node_id}]</span> '
                 f'{question}: <strong>{answer}</strong>'
                 '</li>'
             )
@@ -519,12 +517,11 @@ class ReportGenerator:
         for item in evidence[:10]:
             if not isinstance(item, dict):
                 continue
-            node_id = self._escape_html(item.get("node_id", ""))
             question = self._escape_html(self._clean_ai_text(item.get("question", "")))
             answer = self._escape_html(self._clean_ai_text(item.get("answer", "")))
             if not question and not answer:
                 continue
-            lines.append(f"      Основание [{node_id}]: {question} — {answer}")
+            lines.append(f"      Основание: {question} — {answer}")
         return lines
 
     def _format_ai_card_readable(

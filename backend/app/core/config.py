@@ -74,9 +74,9 @@ class Settings(BaseSettings):
     AI_ANALYSIS_ENABLED: bool = False
     OPENROUTER_API_KEY: str = ""
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
-    OPENROUTER_MODEL: str = "nvidia/nemotron-3-super-120b-a12b:free"
+    OPENROUTER_MODEL: str = "openai/gpt-oss-120b:nitro"
     OPENROUTER_TIMEOUT_SECONDS: int = 90
-    AI_ANALYSIS_MAX_ATTEMPTS: int = 3
+    AI_ANALYSIS_MAX_ATTEMPTS: int = 5
     AI_ANALYSIS_PROMPT_VERSION: str = "v1"
     AI_ANALYSIS_ZDR_REQUIRED: bool = False
     

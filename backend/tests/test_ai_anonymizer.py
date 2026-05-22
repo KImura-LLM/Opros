@@ -16,6 +16,13 @@ class AiAnonymizerTests(unittest.TestCase):
     def test_payload_contains_only_allowlisted_clinical_context(self) -> None:
         config = {
             "version": "2.0",
+            "analysis_rules": [
+                {
+                    "name": "Системное правило",
+                    "message": "СИСТЕМНЫЙ АНАЛИЗ НЕ ДОЛЖЕН УЙТИ В ИИ",
+                    "triggers": [{"node_id": "pain", "option_value": "yes"}],
+                }
+            ],
             "nodes": [
                 {
                     "id": "complaint",
@@ -35,9 +42,11 @@ class AiAnonymizerTests(unittest.TestCase):
                 "complaint",
                 {
                     "text": "болит горло",
-                    "patient_name": "Иванов Иван",
+                    "patient_name": "PATIENT_SECRET_NAME",
                     "lead_id": 123,
                     "token_hash": "secret",
+                    "system_analysis": "SYSTEM_ANALYSIS_SENTINEL",
+                    "analysis_rules": "ANALYSIS_RULES_SENTINEL",
                 },
                 3,
             ),
@@ -56,9 +65,14 @@ class AiAnonymizerTests(unittest.TestCase):
         self.assertIn("case-123", payload_text)
         self.assertIn("болит горло", payload_text)
         self.assertIn("Да", payload_text)
-        self.assertNotIn("Иванов", payload_text)
+        self.assertNotIn("PATIENT_SECRET_NAME", payload_text)
         self.assertNotIn("lead_id", payload_text)
         self.assertNotIn("token_hash", payload_text)
+        self.assertNotIn("СИСТЕМНЫЙ АНАЛИЗ НЕ ДОЛЖЕН УЙТИ В ИИ", payload_text)
+        self.assertNotIn("SYSTEM_ANALYSIS_SENTINEL", payload_text)
+        self.assertNotIn("ANALYSIS_RULES_SENTINEL", payload_text)
+        self.assertNotIn("analysis_rules", payload_text)
+        self.assertNotIn("system_analysis", payload_text)
         self.assertNotIn("session_id", payload)
 
     def test_free_text_is_truncated(self) -> None:

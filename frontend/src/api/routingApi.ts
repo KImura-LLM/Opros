@@ -9,6 +9,7 @@ import type {
   RoutingSurveyListItem,
   RoutingTestDealResponse,
 } from '@/types'
+import { redirectToAdminLogin } from './adminUrl'
 
 const API_URL = import.meta.env.VITE_API_URL || '/api/v1'
 
@@ -26,8 +27,7 @@ async function fetchWithAdminAuth<T>(
   })
 
   if (response.status === 401) {
-    document.cookie = `admin_redirect=${encodeURIComponent(window.location.pathname)}; path=/; SameSite=Lax; max-age=300`
-    window.location.href = '/admin/login'
+    redirectToAdminLogin()
     throw new Error('Требуется вход администратора')
   }
 

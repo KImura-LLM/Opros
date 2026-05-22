@@ -270,6 +270,9 @@ async def regenerate_report(
             ai_analysis=ai_result,
         )
 
+        previous_snapshot = session.report_snapshot if isinstance(session.report_snapshot, dict) else {}
+        previous_bitrix_report = previous_snapshot.get("bitrix_report") if isinstance(previous_snapshot, dict) else None
+
         session.report_snapshot = {
             "html": html,
             "txt": txt,
@@ -277,6 +280,12 @@ async def regenerate_report(
             "config_version": config.version,
             "regenerated": True,
             "ai_analysis": build_ai_snapshot_metadata(ai_analysis, included=bool(ai_result)),
+            "bitrix_report": previous_bitrix_report or {
+                "upload_attempted": False,
+                "report_sent": False,
+                "pdf_sent": False,
+                "skipped_reason": "manual_report_regeneration",
+            },
         }
         await db.commit()
 

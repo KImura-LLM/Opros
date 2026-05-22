@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 
 import {
+  getAdminBaseUrl,
   createRoutingRule,
   deleteRoutingRule,
   getCrmFieldOptions,
@@ -55,21 +56,7 @@ const OPERATOR_LABELS: Record<RoutingOperator, string> = {
 const OPERATORS = Object.keys(OPERATOR_LABELS) as RoutingOperator[]
 
 const CRM_FIELD_ID_PATTERN = /^UF_CRM_\d+$/i
-const API_URL = import.meta.env.VITE_API_URL || ''
-const ADMIN_URL = getAdminUrl(API_URL)
-
-function getAdminUrl(apiUrl: string): string {
-  if (!apiUrl || apiUrl.startsWith('/')) {
-    return '/admin/'
-  }
-
-  try {
-    const url = new URL(apiUrl)
-    return `${url.origin}/admin/`
-  } catch {
-    return '/admin/'
-  }
-}
+const ADMIN_URL = getAdminBaseUrl()
 
 function isTechnicalCrmFieldTitle(field: CrmFieldItem): boolean {
   return CRM_FIELD_ID_PATTERN.test(field.title.trim()) || field.title.trim() === field.field_id

@@ -62,7 +62,7 @@ services:
     volumes:
       - ./backend:/app
     ports:
-      - "8001:8000"
+      - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -115,7 +115,7 @@ services:
     ports:
       - "5173:5173"
     environment:
-      - VITE_API_URL=http://localhost:8001/api/v1
+      - VITE_API_URL=http://localhost:8000/api/v1
     networks:
       - opros-network
     command: npm run dev -- --host 0.0.0.0

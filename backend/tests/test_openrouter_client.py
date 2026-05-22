@@ -1,4 +1,5 @@
-﻿import unittest
+﻿import json
+import unittest
 
 import httpx
 
@@ -20,6 +21,7 @@ VALID_AI_JSON = {
     "doctor_recommendations": [{"priority": "yellow", "text": "Уточнить длительность."}],
     "limitations": "Основано только на анкете.",
 }
+VALID_AI_JSON_STRING = json.dumps(VALID_AI_JSON, ensure_ascii=False)
 
 
 class OpenRouterClientTests(unittest.IsolatedAsyncioTestCase):
@@ -38,6 +40,50 @@ class OpenRouterClientTests(unittest.IsolatedAsyncioTestCase):
         result = await client.analyze({"analysis_case_id": "case", "answers": []})
         self.assertEqual(result.overall_priority, "yellow")
         self.assertEqual(result.key_findings[0].evidence[0].node_id, "pain")
+
+    async def test_markdown_wrapped_json_response_is_validated(self) -> None:
+        def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={"choices": [{"message": {"content": f"```json\n{VALID_AI_JSON_STRING}\n```"}}]},
+            )
+
+        client = OpenRouterClient(
+            api_key="test-key",
+            base_url="https://openrouter.test/api/v1",
+            model="test-model",
+            transport=httpx.MockTransport(handler),
+        )
+
+        result = await client.analyze({"analysis_case_id": "case", "answers": []})
+        self.assertEqual(result.overall_priority, "yellow")
+
+    async def test_json_extraction_prefers_root_analysis_object(self) -> None:
+        nested_evidence = '{"node_id":"pain","question":"Боль?","answer":"Да"}'
+
+        def handler(_request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    "choices": [
+                        {
+                            "message": {
+                                "content": f"пример основания: {nested_evidence}\nитоговый JSON:\n{VALID_AI_JSON_STRING}"
+                            }
+                        }
+                    ]
+                },
+            )
+
+        client = OpenRouterClient(
+            api_key="test-key",
+            base_url="https://openrouter.test/api/v1",
+            model="test-model",
+            transport=httpx.MockTransport(handler),
+        )
+
+        result = await client.analyze({"analysis_case_id": "case", "answers": []})
+        self.assertEqual(result.summary, VALID_AI_JSON["summary"])
 
     async def test_http_429_is_retryable_without_exposing_api_key(self) -> None:
         def handler(_request: httpx.Request) -> httpx.Response:

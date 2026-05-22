@@ -1,6 +1,7 @@
 ﻿"""OpenRouter OpenAI-compatible client for Opros AI analysis."""
 
 import json
+import re
 from typing import Any
 
 import httpx
@@ -19,6 +20,43 @@ class OpenRouterClientError(Exception):
         self.code = code
         self.safe_message = message
         self.retryable = retryable
+
+
+def _safe_validation_summary(exc: ValidationError, *, limit: int = 5) -> str:
+    """Summarize schema errors without including model output values."""
+    parts: list[str] = []
+    for error in exc.errors(include_input=False, include_context=False)[:limit]:
+        loc = ".".join(str(part) for part in error.get("loc", ())) or "<root>"
+        error_type = error.get("type", "validation_error")
+        parts.append(f"{loc}:{error_type}")
+    if exc.error_count() > limit:
+        parts.append(f"...+{exc.error_count() - limit}")
+    return "; ".join(parts)
+
+
+def _safe_json_profile(content: str) -> str:
+    """Return non-content diagnostics for invalid model JSON."""
+    text = content.strip()
+    if not text:
+        return "empty_after_strip"
+    first = text[0]
+    if first == "{":
+        first_kind = "object"
+    elif first == "[":
+        first_kind = "array"
+    elif first == "`":
+        first_kind = "fence"
+    elif first == "<":
+        first_kind = "tag"
+    elif first.isalpha():
+        first_kind = "letter"
+    else:
+        first_kind = "other"
+    return (
+        f"chars={len(text)}; first={first_kind}; "
+        f"open_braces={text.count('{')}; close_braces={text.count('}')}; "
+        f"has_root_keys={int('overall_priority' in text and 'summary' in text and 'limitations' in text)}"
+    )
 
 
 class OpenRouterClient:
@@ -56,7 +94,7 @@ class OpenRouterClient:
             "model": self.model,
             "messages": build_messages(payload),
             "temperature": 0.2,
-            "max_tokens": 2200,
+            "max_tokens": 3500,
             "response_format": build_response_format(),
         }
         if settings.AI_ANALYSIS_ZDR_REQUIRED:
@@ -100,14 +138,73 @@ class OpenRouterClient:
         if isinstance(content, dict):
             parsed_content = content
         elif isinstance(content, str) and content.strip():
-            try:
-                parsed_content = json.loads(content)
-            except json.JSONDecodeError as exc:
-                raise OpenRouterClientError("invalid_model_json", "AI response is not valid JSON", retryable=True) from exc
+            parsed_content = self._parse_model_json(content)
         else:
             raise OpenRouterClientError("empty_response", "AI response content is empty", retryable=True)
 
         try:
             return AiAnalysisResponse.model_validate(parsed_content)
         except ValidationError as exc:
-            raise OpenRouterClientError("schema_validation_failed", "AI response does not match schema", retryable=True) from exc
+            summary = _safe_validation_summary(exc)
+            message = "AI response does not match schema"
+            if summary:
+                message = f"{message}: {summary}"
+            raise OpenRouterClientError("schema_validation_failed", message, retryable=True) from exc
+
+    @staticmethod
+    def _parse_model_json(content: str) -> dict[str, Any]:
+        """
+        Parse model JSON without logging or storing raw content.
+
+        Some OpenRouter models occasionally ignore response_format partially and
+        wrap the object in Markdown fences or short prose. We still accept a
+        single valid JSON object, but reject responses where no complete object
+        can be decoded.
+        """
+        text = content.strip()
+        try:
+            parsed = json.loads(text)
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            pass
+
+        fenced = re.fullmatch(r"```(?:json)?\s*(\{.*\})\s*```", text, flags=re.DOTALL | re.IGNORECASE)
+        if fenced:
+            try:
+                parsed = json.loads(fenced.group(1))
+                if isinstance(parsed, dict):
+                    return parsed
+            except json.JSONDecodeError:
+                pass
+
+        decoder = json.JSONDecoder()
+        expected_root_keys = {
+            "overall_priority",
+            "summary",
+            "red_flags",
+            "key_findings",
+            "doctor_recommendations",
+            "limitations",
+        }
+        candidates: list[dict[str, Any]] = []
+        for start_index, char in enumerate(text):
+            if char != "{":
+                continue
+            try:
+                parsed, end_index = decoder.raw_decode(text[start_index:])
+            except json.JSONDecodeError:
+                continue
+            if isinstance(parsed, dict) and expected_root_keys.issubset(parsed.keys()):
+                return parsed
+            if isinstance(parsed, dict) and expected_root_keys.intersection(parsed.keys()):
+                candidates.append(parsed)
+
+        if candidates:
+            return max(candidates, key=lambda item: len(expected_root_keys.intersection(item.keys())))
+
+        raise OpenRouterClientError(
+            "invalid_model_json",
+            f"AI response is not valid JSON: {_safe_json_profile(content)}",
+            retryable=True,
+        )

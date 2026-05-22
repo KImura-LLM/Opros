@@ -62,6 +62,16 @@ def _ai_snapshot_metadata(analysis: SurveyAiAnalysis | None, *, included: bool) 
     return metadata
 
 
+def _has_bitrix_report_upload_attempt(previous_snapshot: dict[str, Any] | None) -> bool:
+    """Conservative marker: old snapshots without metadata are treated as already finalized."""
+    if previous_snapshot is None:
+        return False
+    bitrix_report = previous_snapshot.get("bitrix_report")
+    if isinstance(bitrix_report, dict):
+        return bool(bitrix_report.get("upload_attempted"))
+    return True
+
+
 def build_ai_snapshot_metadata(analysis: SurveyAiAnalysis | None, *, included: bool) -> dict[str, Any]:
     """Public wrapper for report regeneration code."""
     return _ai_snapshot_metadata(analysis, included=included)
@@ -161,7 +171,22 @@ async def refresh_ai_analysis_for_session(db: AsyncSession, session: SurveySessi
     )
     analysis = existing_result.scalar_one_or_none()
     if analysis is None:
-        return await queue_ai_analysis_job(db, session)
+        analysis, created = await queue_ai_analysis_job(db, session)
+        db.add(
+            AuditLog(
+                session_id=analysis.session_id,
+                action="ai_analysis_queued",
+                details={
+                    "analysis_id": str(analysis.id),
+                    "analysis_case_id": str(analysis.analysis_case_id),
+                    "manual_refresh": True,
+                    "previous_status": "missing",
+                    "model": analysis.model,
+                    "prompt_version": analysis.prompt_version,
+                },
+            )
+        )
+        return analysis, created
 
     if analysis.status in PENDING_AI_STATUSES:
         return analysis, False
@@ -251,6 +276,28 @@ async def _load_job_context(
     )
     answers = list(answers_result.scalars().all())
     return session, config, answers
+
+
+async def _was_ai_analysis_queued_manually(db: AsyncSession, analysis: SurveyAiAnalysis | None) -> bool:
+    """Проверяет, была ли задача AI-анализа запущена вручную из админ-панели."""
+    if analysis is None:
+        return False
+
+    result = await db.execute(
+        select(AuditLog.details).where(
+            AuditLog.session_id == analysis.session_id,
+            AuditLog.action == "ai_analysis_queued",
+        )
+    )
+    analysis_id = str(analysis.id)
+    for details in result.scalars().all():
+        if not isinstance(details, dict):
+            continue
+        if details.get("analysis_id") != analysis_id:
+            continue
+        if details.get("manual_refresh") or details.get("manual_retry"):
+            return True
+    return False
 
 
 async def process_ai_analysis_job(db: AsyncSession, analysis: SurveyAiAnalysis) -> None:
@@ -455,7 +502,15 @@ async def finalize_survey_report(
     answers: list[SurveyAnswer],
     ai_analysis: SurveyAiAnalysis | None,
 ) -> None:
-    """Generates snapshot, sends Bitrix report, invalidates token, and clears Redis progress."""
+    """Generates snapshot, sends the initial Bitrix report once, and clears progress."""
+    previous_snapshot = session.report_snapshot if isinstance(session.report_snapshot, dict) else None
+    manual_ai_refresh = await _was_ai_analysis_queued_manually(db, ai_analysis)
+    bitrix_upload_already_attempted = _has_bitrix_report_upload_attempt(previous_snapshot)
+    should_upload_to_bitrix = not manual_ai_refresh and not bitrix_upload_already_attempted
+    bitrix_skip_reason: str | None = None
+    if not should_upload_to_bitrix:
+        bitrix_skip_reason = "manual_report_refresh" if manual_ai_refresh else "report_already_finalized"
+
     answers_dict = {answer.node_id: answer.answer_data for answer in answers}
     ai_result = ai_analysis.response_json if ai_analysis and ai_analysis.status == "succeeded" else None
     ai_included = bool(ai_result)
@@ -472,7 +527,7 @@ async def finalize_survey_report(
         ai_analysis=ai_result,
     )
 
-    session.report_snapshot = {
+    report_snapshot = {
         "html": readable_html,
         "txt": report_text,
         "generated_at": _now().isoformat(),
@@ -480,7 +535,6 @@ async def finalize_survey_report(
         "regenerated": False,
         "ai_analysis": _ai_snapshot_metadata(ai_analysis, included=ai_included),
     }
-    db.add(session)
 
     db.add(
         AuditLog(
@@ -494,53 +548,68 @@ async def finalize_survey_report(
         )
     )
 
-    bitrix_client = Bitrix24Client()
     report_sent = False
     pdf_sent = False
 
-    try:
-        from weasyprint import HTML as WeasyHTML
+    if should_upload_to_bitrix:
+        bitrix_client = Bitrix24Client()
+        try:
+            from weasyprint import HTML as WeasyHTML
 
-        pdf_buffer = BytesIO()
-        WeasyHTML(string=readable_html).write_pdf(pdf_buffer)
-        pdf_bytes = pdf_buffer.getvalue()
+            pdf_buffer = BytesIO()
+            WeasyHTML(string=readable_html).write_pdf(pdf_buffer)
+            pdf_bytes = pdf_buffer.getvalue()
 
-        patient_safe = session.patient_name or "patient"
-        patient_safe = "".join(c for c in patient_safe if c.isalnum() or c in (" ", "_")).strip().replace(" ", "_")
-        date_str = _now().strftime("%d_%m_%Y")
-        pdf_filename = f"Anketa_{patient_safe}_{date_str}.pdf"
+            patient_safe = session.patient_name or "patient"
+            patient_safe = "".join(c for c in patient_safe if c.isalnum() or c in (" ", "_")).strip().replace(" ", "_")
+            date_str = _now().strftime("%d_%m_%Y")
+            pdf_filename = f"Anketa_{patient_safe}_{date_str}.pdf"
 
-        pdf_sent = await bitrix_client.upload_pdf_to_entity(
-            entity_id=session.lead_id,
-            entity_type=session.entity_type,
-            pdf_bytes=pdf_bytes,
-            filename=pdf_filename,
-        )
-        report_sent = pdf_sent
-    except ImportError:
-        logger.warning("[AI-WORKER] WeasyPrint не установлен, PDF-отчёт не будет отправлен")
-    except Exception as exc:
-        logger.error(f"[AI-WORKER] Ошибка генерации/отправки PDF: {exc}")
-
-    if not pdf_sent:
-        report_sent = await bitrix_client.send_comment(
-            entity_id=session.lead_id,
-            entity_type=session.entity_type,
-            comment=report_text,
-        )
-
-    try:
-        field_updated = await bitrix_client.update_entity_field(
-            entity_id=session.lead_id,
-            entity_type=session.entity_type,
-            fields={"UF_CRM_1771857760": "да"},
-        )
-        if field_updated:
-            logger.info(
-                f"[AI-WORKER] Поле UF_CRM_1771857760 обновлено: session_id={session.id}, entity_type={session.entity_type}"
+            pdf_sent = await bitrix_client.upload_pdf_to_entity(
+                entity_id=session.lead_id,
+                entity_type=session.entity_type,
+                pdf_bytes=pdf_bytes,
+                filename=pdf_filename,
             )
-    except Exception as exc:
-        logger.error(f"[AI-WORKER] Ошибка обновления поля CRM: {exc}")
+            report_sent = pdf_sent
+        except ImportError:
+            logger.warning("[AI-WORKER] WeasyPrint не установлен, PDF-отчёт не будет отправлен")
+        except Exception as exc:
+            logger.error(f"[AI-WORKER] Ошибка генерации/отправки PDF: {exc}")
+
+        if not pdf_sent:
+            report_sent = await bitrix_client.send_comment(
+                entity_id=session.lead_id,
+                entity_type=session.entity_type,
+                comment=report_text,
+            )
+
+        try:
+            field_updated = await bitrix_client.update_entity_field(
+                entity_id=session.lead_id,
+                entity_type=session.entity_type,
+                fields={"UF_CRM_1771857760": "да"},
+            )
+            if field_updated:
+                logger.info(
+                    f"[AI-WORKER] Поле UF_CRM_1771857760 обновлено: session_id={session.id}, entity_type={session.entity_type}"
+                )
+        except Exception as exc:
+            logger.error(f"[AI-WORKER] Ошибка обновления поля CRM: {exc}")
+    else:
+        logger.info(
+            f"[AI-WORKER] Отправка отчёта в Bitrix24 пропущена: "
+            f"session_id={session.id}, reason={bitrix_skip_reason}"
+        )
+
+    report_snapshot["bitrix_report"] = {
+        "upload_attempted": should_upload_to_bitrix,
+        "report_sent": report_sent,
+        "pdf_sent": pdf_sent,
+        "skipped_reason": bitrix_skip_reason,
+    }
+    session.report_snapshot = report_snapshot
+    db.add(session)
 
     db.add(
         AuditLog(
@@ -550,6 +619,8 @@ async def finalize_survey_report(
                 "answers_count": len(answers),
                 "report_sent": report_sent,
                 "pdf_sent": pdf_sent,
+                "bitrix_upload_attempted": should_upload_to_bitrix,
+                "bitrix_skip_reason": bitrix_skip_reason,
                 "ai_included": ai_included,
                 "ai_status": ai_analysis.status if ai_analysis else "missing",
             },

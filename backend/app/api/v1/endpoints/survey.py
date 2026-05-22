@@ -676,6 +676,22 @@ async def _process_survey_report(
             stmt_sess = select(SurveySession).where(SurveySession.id == session_id)
             result_sess = await db.execute(stmt_sess)
             survey_session_obj = result_sess.scalar_one_or_none()
+            previous_snapshot = (
+                survey_session_obj.report_snapshot
+                if survey_session_obj and isinstance(survey_session_obj.report_snapshot, dict)
+                else None
+            )
+            previous_bitrix_report = (
+                previous_snapshot.get("bitrix_report") if isinstance(previous_snapshot, dict) else None
+            )
+            if previous_snapshot is None:
+                bitrix_upload_already_attempted = False
+            elif isinstance(previous_bitrix_report, dict):
+                bitrix_upload_already_attempted = bool(previous_bitrix_report.get("upload_attempted"))
+            else:
+                bitrix_upload_already_attempted = True
+            should_upload_to_bitrix = not bitrix_upload_already_attempted
+            bitrix_skip_reason = None if should_upload_to_bitrix else "report_already_finalized"
             if survey_session_obj:
                 survey_session_obj.report_snapshot = {
                     "html": readable_html,
@@ -683,69 +699,90 @@ async def _process_survey_report(
                     "generated_at": datetime.now(timezone.utc).isoformat(),
                     "config_version": config.version if config else "unknown",
                     "regenerated": False,
+                    "bitrix_report": {
+                        "upload_attempted": should_upload_to_bitrix,
+                        "report_sent": False,
+                        "pdf_sent": False,
+                        "skipped_reason": bitrix_skip_reason,
+                    },
                 }
                 logger.info(f"[BG] Снимок отчёта сохранён: session_id={session_id}")
 
-            bitrix_client = Bitrix24Client()
             report_sent = False
             pdf_sent = False
 
-            # Генерация и отправка PDF-отчёта в карточку Битрикс24
-            try:
-                from weasyprint import HTML as WeasyHTML
-                from io import BytesIO
+            if should_upload_to_bitrix:
+                bitrix_client = Bitrix24Client()
 
-                pdf_buffer = BytesIO()
-                WeasyHTML(string=readable_html).write_pdf(pdf_buffer)
-                pdf_bytes = pdf_buffer.getvalue()
+                # Генерация и отправка PDF-отчёта в карточку Битрикс24
+                try:
+                    from weasyprint import HTML as WeasyHTML
+                    from io import BytesIO
 
-                patient_safe = patient_name or "patient"
-                patient_safe = "".join(
-                    c for c in patient_safe if c.isalnum() or c in (' ', '_')
-                ).strip().replace(" ", "_")
-                date_str = datetime.now(timezone.utc).strftime("%d_%m_%Y")
-                pdf_filename = f"Anketa_{patient_safe}_{date_str}.pdf"
+                    pdf_buffer = BytesIO()
+                    WeasyHTML(string=readable_html).write_pdf(pdf_buffer)
+                    pdf_bytes = pdf_buffer.getvalue()
 
-                pdf_sent = await bitrix_client.upload_pdf_to_entity(
-                    entity_id=lead_id,
-                    entity_type=entity_type,
-                    pdf_bytes=pdf_bytes,
-                    filename=pdf_filename,
-                )
+                    patient_safe = patient_name or "patient"
+                    patient_safe = "".join(
+                        c for c in patient_safe if c.isalnum() or c in (' ', '_')
+                    ).strip().replace(" ", "_")
+                    date_str = datetime.now(timezone.utc).strftime("%d_%m_%Y")
+                    pdf_filename = f"Anketa_{patient_safe}_{date_str}.pdf"
 
-                if pdf_sent:
-                    logger.info(f"[BG] PDF-отчёт отправлен в Битрикс24: lead_id={lead_id}")
-                    report_sent = True
-                else:
-                    logger.warning(f"[BG] Не удалось отправить PDF в Битрикс24: lead_id={lead_id}")
-
-            except ImportError:
-                logger.warning("[BG] WeasyPrint не установлен, PDF-отчёт не будет отправлен")
-            except Exception as e:
-                logger.error(f"[BG] Ошибка генерации/отправки PDF: {e}")
-
-            # Fallback: текстовый комментарий если PDF не отправлен
-            if not pdf_sent:
-                report_sent = await bitrix_client.send_comment(
-                    entity_id=lead_id,
-                    entity_type=entity_type,
-                    comment=report_text,
-                )
-
-            # Обновление пользовательского поля «Опрос пройден» в CRM
-            try:
-                field_updated = await bitrix_client.update_entity_field(
-                    entity_id=lead_id,
-                    entity_type=entity_type,
-                    fields={"UF_CRM_1771857760": "да"},
-                )
-                if field_updated:
-                    logger.info(
-                        f"[BG] Поле UF_CRM_1771857760 обновлено ('да'): "
-                        f"lead_id={lead_id}, entity_type={entity_type}"
+                    pdf_sent = await bitrix_client.upload_pdf_to_entity(
+                        entity_id=lead_id,
+                        entity_type=entity_type,
+                        pdf_bytes=pdf_bytes,
+                        filename=pdf_filename,
                     )
-            except Exception as e:
-                logger.error(f"[BG] Ошибка обновления поля CRM: {e}")
+
+                    if pdf_sent:
+                        logger.info(f"[BG] PDF-отчёт отправлен в Битрикс24: lead_id={lead_id}")
+                        report_sent = True
+                    else:
+                        logger.warning(f"[BG] Не удалось отправить PDF в Битрикс24: lead_id={lead_id}")
+
+                except ImportError:
+                    logger.warning("[BG] WeasyPrint не установлен, PDF-отчёт не будет отправлен")
+                except Exception as e:
+                    logger.error(f"[BG] Ошибка генерации/отправки PDF: {e}")
+
+                # Fallback: текстовый комментарий если PDF не отправлен
+                if not pdf_sent:
+                    report_sent = await bitrix_client.send_comment(
+                        entity_id=lead_id,
+                        entity_type=entity_type,
+                        comment=report_text,
+                    )
+
+                # Обновление пользовательского поля «Опрос пройден» в CRM
+                try:
+                    field_updated = await bitrix_client.update_entity_field(
+                        entity_id=lead_id,
+                        entity_type=entity_type,
+                        fields={"UF_CRM_1771857760": "да"},
+                    )
+                    if field_updated:
+                        logger.info(
+                            f"[BG] Поле UF_CRM_1771857760 обновлено ('да'): "
+                            f"lead_id={lead_id}, entity_type={entity_type}"
+                        )
+                except Exception as e:
+                    logger.error(f"[BG] Ошибка обновления поля CRM: {e}")
+            else:
+                logger.info(
+                    f"[BG] Отправка отчёта в Bitrix24 пропущена: "
+                    f"session_id={session_id}, reason={bitrix_skip_reason}"
+                )
+
+            if survey_session_obj and isinstance(survey_session_obj.report_snapshot, dict):
+                survey_session_obj.report_snapshot["bitrix_report"] = {
+                    "upload_attempted": should_upload_to_bitrix,
+                    "report_sent": report_sent,
+                    "pdf_sent": pdf_sent,
+                    "skipped_reason": bitrix_skip_reason,
+                }
 
             # Аудит-лог результата фоновой обработки
             audit_log = AuditLog(
@@ -755,6 +792,8 @@ async def _process_survey_report(
                     "answers_count": len(answers),
                     "report_sent": report_sent,
                     "pdf_sent": pdf_sent,
+                    "bitrix_upload_attempted": should_upload_to_bitrix,
+                    "bitrix_skip_reason": bitrix_skip_reason,
                 },
             )
             db.add(audit_log)
