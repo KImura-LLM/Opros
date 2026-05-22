@@ -14,6 +14,19 @@ from app.core.config import settings
 from app.core.redis import redis_client
 
 
+def _rate_limit_bucket(path: str) -> str:
+    """
+    Группирует лимиты достаточно крупно для защиты, но не смешивает
+    независимые админские разделы в один общий `/api` bucket.
+    """
+    parts = [part for part in path.split("/") if part]
+    if not parts:
+        return "root"
+    if parts[0] == "api" and len(parts) >= 3:
+        return ":".join(parts[:3])
+    return parts[0]
+
+
 class RateLimitMiddleware(BaseHTTPMiddleware):
     """
     Rate limiting на уровне приложения через Redis.
@@ -23,7 +36,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # Пропускаем healthcheck и статику
         path = request.url.path
-        if path in ("/health", "/", "/openapi.json") or path.startswith("/admin/statics"):
+        if (
+            request.method == "OPTIONS"
+            or path in ("/health", "/", "/openapi.json")
+            or path.startswith("/admin/statics")
+        ):
             return await call_next(request)
         
         # Определяем IP клиента
@@ -43,8 +60,19 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             limit = 20
             window = 60
         elif path.startswith("/admin"):
-            # Админ-панель — защита от brute-force
-            limit = 30
+            # Админ-панель делает несколько параллельных запросов на страницы,
+            # действия и служебные эндпоинты; brute-force защищает /api/v1/auth.
+            limit = 180
+            window = 60
+        elif path.startswith("/api/v1/reports"):
+            # Просмотр/экспорт отчёта из админки может быстро открыть preview,
+            # polling AI-статуса и несколько export endpoints.
+            limit = 180
+            window = 60
+        elif path.startswith(("/api/v1/editor", "/api/v1/routing")):
+            # Визуальный редактор и маршрутизатор грузят справочники, структуру,
+            # правила и CRM-поля серией запросов из админского UI.
+            limit = 180
             window = 60
         else:
             # Остальные API — стандартный лимит
@@ -53,7 +81,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         
         try:
             allowed, remaining = await redis_client.check_rate_limit(
-                identifier=f"{client_ip}:{path.split('/')[1]}",
+                identifier=f"{client_ip}:{_rate_limit_bucket(path)}",
                 limit=limit,
                 window=window,
             )
@@ -62,10 +90,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 logger.warning(
                     f"Rate limit превышен: IP={client_ip}, path={path}"
                 )
+                headers = {"Retry-After": str(window)}
+                origin = request.headers.get("Origin")
+                if origin in settings.CORS_ORIGINS:
+                    headers["Access-Control-Allow-Origin"] = origin
+                    headers["Access-Control-Allow-Credentials"] = "true"
                 return JSONResponse(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                     content={"detail": "Слишком много запросов. Попробуйте позже."},
-                    headers={"Retry-After": str(window)},
+                    headers=headers,
                 )
         except Exception as e:
             # Если Redis недоступен — пропускаем (не блокируем запросы)

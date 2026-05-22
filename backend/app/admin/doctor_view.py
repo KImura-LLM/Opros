@@ -110,7 +110,7 @@ class DoctorUserAdmin(ModelView, model=DoctorUser):
         DoctorUser.updated_at: "Обновлен",
     }
 
-    async def scaffold_form(self):
+    async def scaffold_form(self, rules=None):
         form = await get_model_form(
             model=self.model,
             session_maker=self.session_maker,
@@ -125,6 +125,8 @@ class DoctorUserAdmin(ModelView, model=DoctorUser):
             form_converter=self.form_converter,
         )
         form.password = PasswordField("Пароль")
+        if rules:
+            self._validate_form_class(rules, form)
         return form
 
     async def on_model_change(self, data, model, is_created, request):

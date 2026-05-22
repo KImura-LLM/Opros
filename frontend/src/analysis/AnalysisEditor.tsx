@@ -109,7 +109,7 @@ const AnalysisEditor = ({ surveyId }: AnalysisEditorProps) => {
 
   const handleBack = useCallback(() => {
     if (isDirty && !window.confirm('Есть несохранённые изменения. Уйти?')) return;
-    window.history.back();
+    window.location.href = '/admin/surveys';
   }, [isDirty]);
 
   // ── Загрузка ──

@@ -9,6 +9,7 @@ from sqlalchemy import update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.models import BitrixCrmField, BitrixCrmFieldOption
 from app.services.bitrix24 import Bitrix24Client
 
@@ -120,8 +121,25 @@ async def sync_bitrix_deal_fields(
     client: Bitrix24Client | None = None,
 ) -> dict[str, Any]:
     """Обновляет локальный кэш полей сделки Bitrix24."""
-    client = client or Bitrix24Client()
+    client = client or Bitrix24Client(
+        webhook_url=settings.BITRIX24_CRM_FIELDS_WEBHOOK_URL or settings.BITRIX24_WEBHOOK_URL
+    )
     synced_at = datetime.now(timezone.utc)
+
+    if not client.webhook_url:
+        message = (
+            "Webhook Bitrix24 не настроен; синхронизация CRM-полей невозможна. "
+            "Для локальной проверки задайте LOCAL_BITRIX24_WEBHOOK_URL."
+        )
+        logger.warning(message)
+        return {
+            "success": False,
+            "fields_updated": 0,
+            "options_updated": 0,
+            "synced_at": synced_at.isoformat(),
+            "message": message,
+        }
+
     fields = await client.get_deal_fields()
     user_fields = await client.get_deal_user_fields()
 

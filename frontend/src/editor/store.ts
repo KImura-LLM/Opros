@@ -3,6 +3,7 @@
 // ============================================
 
 import { create } from 'zustand';
+import { redirectToAdminLogin } from '@/api/adminUrl';
 import { 
   FlowNode, 
   FlowEdge, 
@@ -40,7 +41,7 @@ async function fetchWithAuth(url: string, options: RequestInit = {}): Promise<Re
   });
 
   if (response.status === 401) {
-    window.location.href = '/admin/login';
+    redirectToAdminLogin();
     throw new Error('Требуется аутентификация. Перенаправление на страницу входа...');
   }
   

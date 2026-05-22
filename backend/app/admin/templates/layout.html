@@ -736,15 +736,6 @@
                             </a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link {% if '/admin/audit-log' in request.url.path %}active{% endif %}" 
-                               href="{{ url_for('admin:list', identity='audit-log') }}">
-                                <span class="nav-link-icon d-md-none d-lg-inline-block">
-                                    <i class="fa-solid fa-shield-halved"></i>
-                                </span>
-                                <span class="nav-link-title">Логи аудита</span>
-                            </a>
-                        </li>
-                        <li class="nav-item">
                             <a class="nav-link {% if '/admin/doctor-user' in request.url.path %}active{% endif %}" 
                                href="{{ url_for('admin:list', identity='doctor-user') }}">
                                 <span class="nav-link-icon d-md-none d-lg-inline-block">
@@ -778,6 +769,15 @@
                                     <i class="fa-solid fa-file-lines"></i>
                                 </span>
                                 <span class="nav-link-title">Логи системы</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
+                            <a class="nav-link {% if '/admin/audit-log' in request.url.path %}active{% endif %}" 
+                               href="{{ url_for('admin:list', identity='audit-log') }}">
+                                <span class="nav-link-icon d-md-none d-lg-inline-block">
+                                    <i class="fa-solid fa-shield-halved"></i>
+                                </span>
+                                <span class="nav-link-title">Логи аудита</span>
                             </a>
                         </li>
                         

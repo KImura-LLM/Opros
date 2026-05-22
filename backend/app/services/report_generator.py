@@ -8,6 +8,7 @@
 
 from datetime import datetime
 from html import escape
+import re
 from typing import Any, Dict, List, Optional
 
 
@@ -447,6 +448,11 @@ class ReportGenerator:
     }
 
     AI_DISCLAIMER = "ИИ-анализ является вспомогательным инструментом и не заменяет клиническое решение врача."
+    AI_PRIORITY_LABELS = {
+        "green": "удовлетворительный",
+        "yellow": "Есть проблемы",
+        "red": "Серьезные проблемы",
+    }
 
     def _normalize_ai_analysis(self, ai_analysis: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """Возвращает валидированный AI result в виде dict или None."""
@@ -456,8 +462,29 @@ class ReportGenerator:
             return None
         return ai_analysis
 
+    def _ai_priority_key(self, priority: str | None) -> str:
+        key = str(priority or "yellow").lower()
+        return key if key in self.AI_PRIORITY_COLOR_MAP else "yellow"
+
+    def _ai_priority_label(self, priority: str | None) -> str:
+        return self.AI_PRIORITY_LABELS[self._ai_priority_key(priority)]
+
     def _ai_palette(self, priority: str | None) -> Dict[str, str]:
-        return self.AI_PRIORITY_COLOR_MAP.get(str(priority or "yellow"), self.AI_PRIORITY_COLOR_MAP["yellow"])
+        return self.AI_PRIORITY_COLOR_MAP[self._ai_priority_key(priority)]
+
+    def _clean_ai_text(self, value: Any) -> str:
+        """Очищает текст ИИ перед рендером, не пропуская генерационный мусор."""
+        text = " ".join(str(value or "").split())
+        if not text:
+            return ""
+        if len(text) >= 20:
+            meaningful_chars = sum(1 for char in text if char.isalnum())
+            bracket_chars = sum(1 for char in text if char in "{}[]()")
+            if meaningful_chars == 0 or (bracket_chars >= 20 and meaningful_chars / len(text) < 0.15):
+                return ""
+            if re.search(r"(?:[\]\}\)\[\{\(][,;:.\s]*){20,}", text):
+                return ""
+        return text
 
     def _format_ai_evidence_readable(self, evidence: Any) -> str:
         """HTML-список оснований ИИ-вывода; все строки экранируются."""
@@ -468,12 +495,12 @@ class ReportGenerator:
         for item in evidence[:10]:
             if not isinstance(item, dict):
                 continue
-            node_id = self._escape_html(item.get("node_id", ""))
-            question = self._escape_html(item.get("question", ""))
-            answer = self._escape_html(item.get("answer", ""))
+            question = self._escape_html(self._clean_ai_text(item.get("question", "")))
+            answer = self._escape_html(self._clean_ai_text(item.get("answer", "")))
+            if not question and not answer:
+                continue
             items.append(
                 '<li>'
-                f'<span style="color:#64748b">[{node_id}]</span> '
                 f'{question}: <strong>{answer}</strong>'
                 '</li>'
             )
@@ -490,10 +517,11 @@ class ReportGenerator:
         for item in evidence[:10]:
             if not isinstance(item, dict):
                 continue
-            node_id = self._escape_html(item.get("node_id", ""))
-            question = self._escape_html(item.get("question", ""))
-            answer = self._escape_html(item.get("answer", ""))
-            lines.append(f"      Основание [{node_id}]: {question} — {answer}")
+            question = self._escape_html(self._clean_ai_text(item.get("question", "")))
+            answer = self._escape_html(self._clean_ai_text(item.get("answer", "")))
+            if not question and not answer:
+                continue
+            lines.append(f"      Основание: {question} — {answer}")
         return lines
 
     def _format_ai_card_readable(
@@ -505,8 +533,10 @@ class ReportGenerator:
         evidence: Any = None,
     ) -> str:
         palette = self._ai_palette(priority)
-        title_html = self._escape_html(title)
-        description_html = self._escape_html(description)
+        title_html = self._escape_html(self._clean_ai_text(title))
+        description_html = self._escape_html(self._clean_ai_text(description))
+        if not title_html and not description_html:
+            return ""
         evidence_html = self._format_ai_evidence_readable(evidence)
         return (
             f'<div style="background:{palette["bg"]};border-left:4px solid {palette["border"]};'
@@ -524,8 +554,10 @@ class ReportGenerator:
 
         priority = str(analysis.get("overall_priority", "yellow"))
         palette = self._ai_palette(priority)
-        summary = self._escape_html(analysis.get("summary", ""))
-        limitations = self._escape_html(analysis.get("limitations", self.AI_DISCLAIMER))
+        priority_label = self._escape_html(self._ai_priority_label(priority))
+        summary = self._escape_html(self._clean_ai_text(analysis.get("summary", "")))
+        limitations_text = self._clean_ai_text(analysis.get("limitations", ""))
+        limitations = self._escape_html(limitations_text or self.AI_DISCLAIMER)
 
         parts: List[str] = [
             '<div class="block ai-analysis-block" '
@@ -534,8 +566,7 @@ class ReportGenerator:
             f'style="background:{palette["bg"]};border-bottom:1pt solid {palette["border"]};'
             f'color:{palette["text"]};font-size:9.5pt;">🤖 ИИ-анализ для врача</div>',
             '<div class="block-body">',
-            f'<p style="font-size:8pt;color:{palette["text"]};margin-bottom:5px;"><em>{self.AI_DISCLAIMER}</em></p>',
-            f'<p><strong>Общий приоритет:</strong> {palette["emoji"]} {self._escape_html(priority)}</p>',
+            f'<p><strong>Общий приоритет:</strong> {palette["emoji"]} {priority_label}</p>',
             f'<p><strong>Краткое резюме:</strong> {summary}</p>',
         ]
 
@@ -570,15 +601,30 @@ class ReportGenerator:
         recommendations = analysis.get("doctor_recommendations") or []
         if isinstance(recommendations, list) and recommendations:
             parts.append("<h2>Рекомендации врачу</h2>")
+            recommendation_texts = [
+                self._escape_html(self._clean_ai_text(item.get("text", "")))
+                for item in recommendations[:10]
+                if isinstance(item, dict) and self._clean_ai_text(item.get("text", ""))
+            ]
+            if recommendation_texts:
+                parts.append(
+                    "<p><strong>На что обратить внимание у пациента:</strong> "
+                    + "; ".join(recommendation_texts)
+                    + "</p>"
+                )
             for item in recommendations[:10]:
                 if not isinstance(item, dict):
                     continue
                 rec_palette = self._ai_palette(item.get("priority", "yellow"))
-                text_html = self._escape_html(item.get("text", ""))
+                rec_label = self._escape_html(self._ai_priority_label(item.get("priority", "yellow")))
+                text_html = self._escape_html(self._clean_ai_text(item.get("text", "")))
+                if not text_html:
+                    continue
                 parts.append(
                     f'<div style="background:#fff;border-left:4px solid {rec_palette["border"]};'
                     f'padding:6px 9px;margin-bottom:6px;border-radius:6px;color:{rec_palette["text"]};'
-                    f'font-size:8.5pt;line-height:1.5">{rec_palette["emoji"]} {text_html}</div>'
+                    f'font-size:8.5pt;line-height:1.5">{rec_palette["emoji"]} '
+                    f'<strong>{rec_label}:</strong> {text_html}</div>'
                 )
 
         parts.append(f'<p style="font-size:8pt;color:#64748b;"><em>{limitations}</em></p>')
@@ -593,9 +639,8 @@ class ReportGenerator:
 
         lines: List[str] = [
             "🤖 ИИ-АНАЛИЗ ДЛЯ ВРАЧА",
-            self.AI_DISCLAIMER,
-            f"Общий приоритет: {self._escape_html(analysis.get('overall_priority', 'yellow'))}",
-            f"Краткое резюме: {self._escape_html(analysis.get('summary', ''))}",
+            f"Общий приоритет: {self._ai_priority_label(analysis.get('overall_priority', 'yellow'))}",
+            f"Краткое резюме: {self._escape_html(self._clean_ai_text(analysis.get('summary', '')))}",
         ]
 
         red_flags = analysis.get("red_flags") or []
@@ -605,8 +650,8 @@ class ReportGenerator:
             for item in red_flags[:10]:
                 if isinstance(item, dict):
                     lines.append(
-                        f"  • {self._escape_html(item.get('title', 'Красный флаг'))}: "
-                        f"{self._escape_html(item.get('description', ''))}"
+                        f"  • {self._escape_html(self._clean_ai_text(item.get('title', 'Красный флаг')))}: "
+                        f"{self._escape_html(self._clean_ai_text(item.get('description', '')))}"
                     )
                     lines.extend(self._format_ai_evidence_text(item.get("evidence")))
 
@@ -617,9 +662,9 @@ class ReportGenerator:
             for item in key_findings[:10]:
                 if isinstance(item, dict):
                     lines.append(
-                        f"  • [{self._escape_html(item.get('priority', 'yellow'))}] "
-                        f"{self._escape_html(item.get('title', 'Наблюдение'))}: "
-                        f"{self._escape_html(item.get('description', ''))}"
+                        f"  • [{self._ai_priority_label(item.get('priority', 'yellow'))}] "
+                        f"{self._escape_html(self._clean_ai_text(item.get('title', 'Наблюдение')))}: "
+                        f"{self._escape_html(self._clean_ai_text(item.get('description', '')))}"
                     )
                     lines.extend(self._format_ai_evidence_text(item.get("evidence")))
 
@@ -627,14 +672,21 @@ class ReportGenerator:
         if isinstance(recommendations, list) and recommendations:
             lines.append("")
             lines.append("РЕКОМЕНДАЦИИ ВРАЧУ")
+            recommendation_texts = [
+                self._escape_html(self._clean_ai_text(item.get("text", "")))
+                for item in recommendations[:10]
+                if isinstance(item, dict) and self._clean_ai_text(item.get("text", ""))
+            ]
+            if recommendation_texts:
+                lines.append("На что обратить внимание у пациента: " + "; ".join(recommendation_texts))
             for item in recommendations[:10]:
                 if isinstance(item, dict):
                     lines.append(
-                        f"  • [{self._escape_html(item.get('priority', 'yellow'))}] "
-                        f"{self._escape_html(item.get('text', ''))}"
+                        f"  • [{self._ai_priority_label(item.get('priority', 'yellow'))}] "
+                        f"{self._escape_html(self._clean_ai_text(item.get('text', '')))}"
                     )
 
-        limitations = analysis.get("limitations")
+        limitations = self._clean_ai_text(analysis.get("limitations")) or self.AI_DISCLAIMER
         if limitations:
             lines.append("")
             lines.append(f"Ограничения: {self._escape_html(limitations)}")

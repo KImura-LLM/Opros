@@ -3,6 +3,7 @@
 // ============================================
 
 import { useEffect, useState } from 'react';
+import { getAdminBaseUrl, redirectToAdminLogin } from '@/api/adminUrl';
 
 interface AdminAuthResult {
   /** Авторизация подтверждена */
@@ -22,19 +23,17 @@ export function useAdminAuth(): AdminAuthResult {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        const response = await fetch('/admin/api/session', {
+        const response = await fetch(`${getAdminBaseUrl()}api/session`, {
           credentials: 'include',
         });
         if (response.ok) {
           setIsAuthenticated(true);
         } else {
           // Сохраняем URL возврата в cookie (форма SQLAdmin не передаёт query params)
-          document.cookie = `admin_redirect=${encodeURIComponent(window.location.pathname)}; path=/; SameSite=Lax; max-age=300`;
-          window.location.href = '/admin/login';
+          redirectToAdminLogin();
         }
       } catch {
-        document.cookie = `admin_redirect=${encodeURIComponent(window.location.pathname)}; path=/; SameSite=Lax; max-age=300`;
-        window.location.href = '/admin/login';
+        redirectToAdminLogin();
       } finally {
         setIsChecking(false);
       }

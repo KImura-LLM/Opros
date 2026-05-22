@@ -5,20 +5,19 @@
 
 services:
   # --------------------------------------------
-  # 🌐 Nginx (Reverse Proxy + SSL)
+  # 🌐 Nginx (Reverse Proxy, Dev HTTP)
   # --------------------------------------------
   nginx:
     image: nginx:alpine
     container_name: opros-nginx
+    profiles:
+      - edge
     restart: unless-stopped
     ports:
       - "80:80"
-      - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./certbot/conf:/etc/letsencrypt:ro
-      - ./certbot/www:/var/www/certbot:ro
+      - ./nginx/conf.d/local.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - backend
       - frontend
@@ -32,6 +31,8 @@ services:
   certbot:
     image: certbot/certbot
     container_name: opros-certbot
+    profiles:
+      - edge
     restart: unless-stopped
     volumes:
       - ./certbot/conf:/etc/letsencrypt
@@ -52,7 +53,12 @@ services:
     environment:
       - ENVIRONMENT=development
       - DEBUG=true
-      - BITRIX24_WEBHOOK_URL=
+      # В dev по умолчанию не ходим в внешний Bitrix24.
+      # Для локальной проверки CRM-синхронизации явно задайте LOCAL_BITRIX24_WEBHOOK_URL.
+      - BITRIX24_WEBHOOK_URL=${LOCAL_BITRIX24_WEBHOOK_URL:-}
+      - BITRIX24_CRM_FIELDS_WEBHOOK_URL=${BITRIX24_WEBHOOK_URL:-}
+      - FRONTEND_URL=http://localhost:5173
+      - CORS_ORIGINS_STR=http://localhost:3000,http://localhost:5173
     volumes:
       - ./backend:/app
     ports:
@@ -80,7 +86,9 @@ services:
     environment:
       - ENVIRONMENT=development
       - DEBUG=true
-      - BITRIX24_WEBHOOK_URL=
+      # В dev по умолчанию не ходим в внешний Bitrix24.
+      # Для локальной проверки CRM-синхронизации явно задайте LOCAL_BITRIX24_WEBHOOK_URL.
+      - BITRIX24_WEBHOOK_URL=${LOCAL_BITRIX24_WEBHOOK_URL:-}
     volumes:
       - ./backend:/app
     depends_on:
@@ -126,7 +134,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:15432:5432"
     networks:
       - opros-network
     healthcheck:
@@ -143,7 +151,7 @@ services:
     container_name: opros-redis
     restart: unless-stopped
     ports:
-      - "127.0.0.1:6379:6379"
+      - "127.0.0.1:16379:6379"
     volumes:
       - redis_data:/data
     networks:

@@ -1,265 +1,179 @@
 # AGENTS.md
 
-## Project Identity
+Краткие инструкции для AI-агентов в проекте **Opros**. Подробная архитектура и процессы описаны в `docs/PROJECT_WIKI.md`; деплойные команды и справка — в `DEPLOY.md`. Если инструкции расходятся, сначала следуй этому файлу, затем `docs/PROJECT_WIKI.md`, затем `DEPLOY.md`.
 
-This repository is a production medical survey platform called **Opros**.
-It is a PWA used for pre-visit patient intake, symptom collection, report generation, and Bitrix24 CRM integration.
+## 1. Главное правило
 
-The project handles medically sensitive and personally identifiable data.
-Treat all changes as potentially high impact.
+Opros — production PWA для медицинских опросов, отчётов, врачебного портала, Bitrix24 и AI-анализа. Проект работает с ПДн и медицински чувствительными данными.
 
-## Primary Goals
+- Отвечай пользователю на **русском**, если он явно не попросил другой язык.
+- По умолчанию работай **только локально**: файлы проекта, локальный Docker Compose, локальная БД.
+- Не используй SSH, production, удалённый deploy и production Bitrix24 без явной команды пользователя.
+- Перед нетривиальной правкой кратко обозначай план и критерии проверки.
+- Делай минимальные точечные изменения; не рефактори соседний код без необходимости.
+- Перед правками проверяй `git status`; не затирай чужие/уже существующие изменения.
+- Названия коммитов и описания к ним пиши на русском языке.
+- Не коммить, не печатай и не логируй секреты: `.env`, пароли, JWT, Bitrix/OpenRouter ключи, webhook URL, `token_hash`.
+- Не логируй ПДн: ФИО, контакты, Bitrix ID, session ID, IP/user-agent.
 
-- Keep production stable.
-- Preserve patient-data safety and privacy.
-- Keep survey logic JSON-driven.
-- Deploy changes only through Git-based workflow.
-- Verify the live system after each deployment.
-
-## Required Communication Rules
-
-- Use **Russian** in user-facing explanations unless the user explicitly asks for another language.
-- Keep code and infra decisions conservative.
-- Before any deployment, explain what will be changed and what will be verified.
-- After deployment, always report what was checked, what passed, and any remaining risks.
-
-## Repository Map
+## 2. Краткая карта проекта
 
 ### Backend
 
-- `backend/app/main.py`
-  Entry point for FastAPI, docs endpoints, middleware, session setup, health endpoint.
-- `backend/app/api/v1/endpoints/`
-  Main API endpoints:
-  - `auth.py`
-  - `survey.py`
-  - `survey_editor.py`
-  - `reports.py`
-  - `analytics.py`
-  - `bitrix_webhook.py`
-- `backend/app/services/`
-  Core business logic:
-  - `survey_engine.py` is the survey execution engine.
-  - `report_generator.py` builds HTML/TXT/PDF reports.
-  - `bitrix24.py` handles CRM integration.
-- `backend/app/core/`
-  Config, DB, Redis, middleware, shared infra code.
-- `backend/app/admin/`
-  SQLAdmin setup and admin templates.
-- `backend/data/`
-  JSON-based survey definitions such as `survey_structure.json` and `survey_structure_v2.json`.
-- `backend/alembic/`
-  Database migrations.
+- `backend/app/main.py` — FastAPI app, middleware, sessions, API routers, SQLAdmin, docs, health.
+- `backend/app/api/v1/endpoints/` — API endpoints:
+  - `auth.py` — JWT/session flow;
+  - `survey.py` — прохождение опроса;
+  - `survey_editor.py` — CRUD редактора;
+  - `survey_routing.py` — маршрутизация опросников;
+  - `reports.py` — HTML/TXT/PDF отчёты;
+  - `analytics.py` — аналитика;
+  - `bitrix_webhook.py` — Bitrix24 webhooks;
+  - `doctors.py` — врачебный портал.
+- `backend/app/services/` — бизнес-логика:
+  - `survey_engine.py`, `survey_routing.py`, `report_generator.py`, `bitrix24.py`, `bitrix_crm_fields.py`, `doctor_portal_routing.py`, `ai_analysis/`.
+- `backend/app/models/` — SQLAlchemy models.
+- `backend/app/admin/` — SQLAdmin views/templates.
+- `backend/data/` — JSON-опросники.
+- `backend/alembic/` — миграции.
+- `backend/scripts/` — seed/cleanup/session expiry/Bitrix sync/AI worker.
+- `backend/tests/` — backend tests.
 
 ### Frontend
 
-- `frontend/src/pages/`
-  Main application pages.
-- `frontend/src/components/`
-  Survey UI and layout building blocks.
-- `frontend/src/store/surveyStore.ts`
-  Critical Zustand store for survey state.
-- `frontend/src/api/surveyApi.ts`
-  Frontend API client.
-- `frontend/src/editor/`
-  Visual survey editor.
-- `frontend/vite.config.ts`
-  Important SPA routing and denylist behavior for `/api`, `/admin`, `/docs`, `/redoc`, `/health`.
+- `frontend/src/App.tsx` — routes: `/`, `/s/:code`, `/survey`, `/complete`, `/error`, `/doctors`, `/editor/:surveyId`, `/analysis-editor/:surveyId`, `/routing`.
+- `frontend/src/pages/` — страницы анкеты, редакторов, маршрутизации, врачебного портала.
+- `frontend/src/store/surveyStore.ts` — критичный Zustand store прохождения опроса.
+- `frontend/src/store/doctorStore.ts` — состояние врачебного портала.
+- `frontend/src/api/` — survey/doctor/routing API clients.
+- `frontend/src/editor/` — визуальный редактор опросника.
+- `frontend/src/analysis/` — rule-based analysis editor.
+- `frontend/vite.config.ts` — PWA и SPA fallback denylist.
 
-### Infrastructure
+### Infra/docs
 
-- `docker-compose.yml`
-  Development stack.
-- `docker-compose.prod.yml`
-  Production stack.
-- `nginx/conf.d/default.conf`
-  Reverse proxy, CSP, public routing, docs exposure.
-- `DEPLOY.md`
-  Human deployment reference.
+- `docker-compose.yml` — local stack.
+- `docker-compose.prod.yml` — production stack.
+- `nginx/conf.d/default.conf` — reverse proxy, CSP, `/api`, `/admin`, `/docs`, `/redoc`, `/health`.
+- `docs/PROJECT_WIKI.md` — подробная актуальная wiki.
+- `DEPLOY.md` — справка по ручному деплою; перед применением сверять с текущей deploy-policy ниже.
 
-## Architecture Summary
+## 3. Критичные доменные правила
 
-- Frontend: React 18 + Vite + TypeScript + Zustand + Tailwind.
-- Backend: FastAPI + async SQLAlchemy + Pydantic.
-- Database: PostgreSQL.
-- Session/cache: Redis.
-- Reverse proxy: Nginx.
-- Runtime: Docker Compose.
-- Production backend process: Gunicorn with Uvicorn workers.
+- Survey logic должна оставаться **JSON-driven**. Не хардкодь branching/medical logic в React.
+- Не сохраняй patient-sensitive данные в `localStorage`.
+- Не удаляй/не переименовывай `node_id` без анализа влияния на ответы, отчёты, analysis rules, routing и snapshots.
+- Не меняй смысл существующих answer values без compatibility/миграционного плана.
+- Не удаляй физически `SurveyConfig`, если есть ссылки из `survey_sessions`, routing rules или clinic defaults. Обычно нужно деактивировать опросник или переназначить/удалить тестовые связанные данные.
+- Завершённые отчёты должны оставаться воспроизводимыми через snapshot/исторический config.
+- AI/OpenRouter не должен получать ПДн: ФИО, контакты, Bitrix ID, session ID, JWT/token_hash, IP/user-agent.
+- AI-анализ не заменяет rule-based анализ и не должен блокировать завершение опроса пациентом.
+- Любое изменение моделей БД требует оценки Alembic migration и локальной проверки upgrade.
 
-## Critical Domain Rules
+## 4. Самые чувствительные зоны
 
-- Survey behavior must remain **JSON-driven**.
-- Do not hardcode survey branching rules in React components.
-- Do not store patient-sensitive data in `localStorage`.
-- Assume all API, report, auth, and Bitrix integration changes can affect production workflows.
+- **Survey flow:** `survey_engine.py`, `survey.py`, `backend/data/*.json`, `SurveyPage.tsx`, `surveyStore.ts`.
+- **Auth/session:** `auth.py`, `security.py`, Redis/session middleware, expiry scripts.
+- **Editor/routing:** `survey_editor.py`, `survey_routing.py`, `frontend/src/editor/`, `frontend/src/analysis/`, `SurveyRoutingPage.tsx`.
+- **Reports:** `report_generator.py`, `reports.py`; проверять HTML/TXT/PDF и snapshots.
+- **Bitrix24:** `bitrix_webhook.py`, `bitrix24.py`, `bitrix_crm_fields.py`; сохранять payload compatibility.
+- **AI:** `backend/app/services/ai_analysis/`, `ai_analysis_view.py`, `process_ai_analysis_jobs.py`; проверять anonymization/retry/fail path.
+- **Doctor portal:** `doctors.py`, `doctor_user.py`, `doctor_portal_routing.py`, `frontend/src/pages/doctors/`; не расширять доступ без требования.
+- **SQLAdmin:** destructive actions должны проверять связи и показывать понятные ошибки.
+- **Nginx/Vite routing/CSP:** после изменений проверять browser render и console, не только HTTP 200.
 
-## Most Sensitive Areas
+## 5. Локальная разработка и проверки
 
-### 1. Survey Engine
+Запуск:
 
-Files:
-- `backend/app/services/survey_engine.py`
-- `backend/app/api/v1/endpoints/survey.py`
-- `backend/data/*.json`
-
-Risk:
-- A small logic mistake can break questionnaire flow, skip branches, corrupt answers, or generate wrong reports.
-
-Rules:
-- Validate survey JSON before and after editing.
-- Prefer fixing logic in JSON or engine code, not in ad hoc frontend conditionals.
-- After changes, verify a real end-to-end survey path.
-
-### 2. Authentication and Session Lifecycle
-
-Files:
-- `backend/app/api/v1/endpoints/auth.py`
-- `backend/app/main.py`
-- `backend/app/core/*`
-
-Risk:
-- Broken token validation, session expiry, or consent flow can block patient access or weaken security.
-
-Rules:
-- Be careful with JWT, Redis, session TTL, cookie settings, proxy headers, and production flags.
-- Never relax security defaults without explicit reason.
-
-### 3. Bitrix24 Integration
-
-Files:
-- `backend/app/api/v1/endpoints/bitrix_webhook.py`
-- `backend/app/services/bitrix24.py`
-- parts of `backend/app/api/v1/endpoints/survey.py`
-
-Risk:
-- Errors here can break lead/deal enrichment, survey-link generation, timeline comments, PDF upload, or webhook processing.
-
-Rules:
-- Preserve existing payload formats and category filters.
-- Check logs after deployment for Bitrix webhook failures.
-
-### 4. Reports
-
-Files:
-- `backend/app/services/report_generator.py`
-- `backend/app/api/v1/endpoints/reports.py`
-
-Risk:
-- Wrong report content affects clinical workflows and CRM history.
-- PDF issues may come from WeasyPrint dependencies in production.
-
-Rules:
-- Verify HTML/TXT/PDF output paths when touching report code.
-
-### 5. Nginx, Docs, and Public Routing
-
-Files:
-- `nginx/conf.d/default.conf`
-- `backend/app/main.py`
-
-Risk:
-- Misrouting can break `/api`, `/admin`, `/docs`, `/redoc`, `/openapi.json`, or `/health`.
-- CSP changes can make pages render partially while still returning HTTP 200.
-
-Rules:
-- After docs or proxy changes, verify actual browser rendering and browser console state.
-- Do not assume a successful HTTP code means the page is healthy.
-
-## Known Infrastructure Pitfalls
-
-- Production API docs are controlled by backend flags, not only by Nginx.
-- `/docs`, `/redoc`, and `/openapi.json` must be tested together.
-- `vite.config.ts` contains SPA fallback denylist logic, so route conflicts can be subtle.
-- Public `/health` routing must be checked carefully because frontend fallback can mask backend health issues.
-- Changes to Nginx CSP can break Swagger/ReDoc or admin assets without obvious backend errors.
-
-## Server Information
-
-- Production domain: `https://opros-izdorov.ru`
-- Main host: `opros-izdorov.ru`
-- Server OS: Ubuntu 22.04
-- Project path on server: `/home/deploy/opros`
-- Production compose file: `/home/deploy/opros/docker-compose.prod.yml`
-
-## Access Rules
-
-- **Do not store server passwords, tokens, or raw secrets in this repository, in `AGENTS.md`, or in committed scripts.**
-- If non-interactive access is needed, use **SSH key authentication with ssh-agent**.
-- If credentials must be stored, use an OS password manager or secret store outside the repository.
-
-## Required Non-Interactive Server Access Method
-
-SSH key authentication is fully configured for `root@147.45.249.254`.
-**AI Agents must use single-line remote SSH commands** to perform server actions instead of starting interactive sessions.
-
-Example pattern for AI agents (called directly from the VS Code terminal):
 ```bash
-ssh root@147.45.249.254 "cd /home/deploy/opros && <your command>"
+docker compose up -d --build
 ```
 
-### Password Handling Policy
+Миграции:
 
-- **Zero Passwords:** SSH keys are used exclusively. Do not use, ask for, or store plaintext passwords in Git history, repository files, `AGENTS.md`, or deployment scripts.
+```bash
+docker compose exec backend sh -lc "PYTHONPATH=/app alembic -c alembic.ini upgrade head"
+```
 
-## Git-Only Deployment Policy
+Health/status:
 
-- Production deployment must go through **Git**, not by manually uploading modified source files.
-- Do not patch production code directly on the server unless the user explicitly requests an emergency hotfix.
-- If an emergency hotfix is ever applied directly, it must be synchronized back into Git immediately afterward.
+```bash
+docker compose ps
+curl http://localhost:8000/health
+```
 
-## Deployment Instructions (Non-Interactive AI-Agent flow)
+Локальные URL:
 
-Agents should deploy new versions by running this combined command from the local VS Code terminal:
+- frontend: `http://localhost:5173`
+- backend/docs: `http://localhost:8000/docs`
+- redoc: `http://localhost:8000/redoc`
+- admin: `http://localhost:8000/admin`
+- health: `http://localhost:8000/health`
+
+Проверки под задачу:
+
+- Backend syntax/import: `docker compose exec -T backend python -m py_compile <files>` и/или `docker compose exec -T backend python -c "from app.main import app; print('ok')"`.
+- Backend tests: `docker compose exec -T backend python -m pytest -q` или точечные tests из `backend/tests/`, если pytest доступен.
+- Frontend: `cd frontend && npm run type-check` или `npm run build`.
+- Survey/report changes: пройти локальный e2e путь анкеты, проверить report preview и exports.
+- Routing/doctor changes: проверить clinic bucket, правила маршрутизации и доступ врача.
+- AI changes: проверить queue status, retry/fail path и отсутствие ПДн в anonymized payload.
+- Nginx/Vite/CSP changes: проверить `/api`, `/admin`, `/docs`, `/redoc`, `/openapi.json`, `/health` в браузере.
+
+## 6. Production/deploy policy
+
+Production:
+
+- domain: `https://opros-izdorov.ru`
+- server path: `/home/deploy/opros`
+- compose: `/home/deploy/opros/docker-compose.prod.yml`
+- SSH pattern: `ssh root@147.45.249.254 "cd /home/deploy/opros && <command>"`
+
+Правила:
+
+- Production/SSH/deploy — только после явного подтверждения пользователя.
+- Деплой только через Git, не ручным копированием файлов.
+- Не деплоить из dirty working tree.
+- Текущая модель: отдельный deploy-коммит/ветка `deploy` с runtime-файлами; не деплоить напрямую из общего/чернового коммита.
+- Перед deploy назвать: deploy branch/commit hash, runtime changes, migrations, verification plan, rollback/stop plan.
+- После deploy сообщить: что проверено, что прошло, какие риски остались.
+
+Шаблон production deploy после подтверждения:
 
 ```bash
 ssh root@147.45.249.254 "cd /home/deploy/opros && \
-git pull origin main && \
-docker compose -f docker-compose.prod.yml up -d --build && \
-docker compose -f docker-compose.prod.yml exec -w /app backend sh -lc 'PYTHONPATH=/app alembic -c alembic.ini upgrade head'"
+  git fetch origin deploy && \
+  git checkout deploy && \
+  git pull --ff-only origin deploy && \
+  docker compose -f docker-compose.prod.yml up -d --build && \
+  docker compose -f docker-compose.prod.yml exec -w /app backend sh -lc 'PYTHONPATH=/app alembic -c alembic.ini upgrade head'"
 ```
 
-### Validating Deployments remotely
-Check logs or container status using remote non-interactive calls:
+Remote checks:
+
 ```bash
 ssh root@147.45.249.254 "cd /home/deploy/opros && docker compose -f docker-compose.prod.yml ps"
-```
-```bash
 ssh root@147.45.249.254 "cd /home/deploy/opros && docker compose -f docker-compose.prod.yml logs --tail=50 backend"
+ssh root@147.45.249.254 "cd /home/deploy/opros && docker compose -f docker-compose.prod.yml logs --tail=50 nginx"
 ```
 
-### App URLs
+Если менялись workers, проверять logs: `opros-session-cleanup`, `opros-bitrix-field-sync`, `opros-ai-analysis-worker`.
 
-- `https://opros-izdorov.ru`
-- `https://opros-izdorov.ru/admin`
-- `https://opros-izdorov.ru/docs`
-- `https://opros-izdorov.ru/redoc`
-
-### Emergency Stop
+Emergency stop только по явной команде:
 
 ```bash
-cd /home/deploy/opros
-docker compose -f docker-compose.prod.yml down
+ssh root@147.45.249.254 "cd /home/deploy/opros && docker compose -f docker-compose.prod.yml down"
 ```
 
-### Full Restart with Cleanup (danger: removes volumes)
+`down -v` удаляет volumes/data — использовать только при прямом явном указании.
 
-```bash
-cd /home/deploy/opros
-docker compose -f docker-compose.prod.yml down -v
-docker compose -f docker-compose.prod.yml up -d --build
-```
+## 7. Known pitfalls
 
-## Editing Rules
-
-- Prefer small, auditable changes.
-- Do not rewrite broad areas when a targeted fix is enough.
-- Respect existing architecture and naming.
-- Keep comments concise and only where they help.
-
-## Safety Rules
-
-- Never commit secrets.
-- Never relax patient-data protections for convenience.
-- Never assume a production issue is fixed until logs and live verification confirm it.
-- Never treat successful container startup as sufficient proof of success.
+- Production docs зависят от backend flags (`DEBUG`, `ENABLE_API_DOCS`) и Nginx/CSP.
+- `/docs`, `/redoc`, `/openapi.json` проверять вместе.
+- SPA fallback может замаскировать backend routes; особенно `/health`.
+- CSP может сломать Swagger/ReDoc/SQLAdmin assets при HTTP 200.
+- После `.env` changes пересоздавать backend и связанные workers.
+- Worker health не равен бизнес-успеху; при AI changes проверять failed/running jobs.
+- Локальный compose не должен отправлять данные в production Bitrix24 без явного намерения.

@@ -15,6 +15,7 @@ import {
 } from 'lucide-react'
 
 import {
+  getAdminBaseUrl,
   createRoutingRule,
   deleteRoutingRule,
   getCrmFieldOptions,
@@ -55,6 +56,7 @@ const OPERATOR_LABELS: Record<RoutingOperator, string> = {
 const OPERATORS = Object.keys(OPERATOR_LABELS) as RoutingOperator[]
 
 const CRM_FIELD_ID_PATTERN = /^UF_CRM_\d+$/i
+const ADMIN_URL = getAdminBaseUrl()
 
 function isTechnicalCrmFieldTitle(field: CrmFieldItem): boolean {
   return CRM_FIELD_ID_PATTERN.test(field.title.trim()) || field.title.trim() === field.field_id
@@ -111,6 +113,7 @@ export default function SurveyRoutingPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [warning, setWarning] = useState<string | null>(null)
   const [status, setStatus] = useState<string | null>(null)
   const [editingRuleId, setEditingRuleId] = useState<number | null>(null)
   const [ruleForm, setRuleForm] = useState<RoutingRulePayload>(emptyRuleForm())
@@ -161,6 +164,7 @@ export default function SurveyRoutingPage() {
     if (!isAuthenticated) return
     setIsLoading(true)
     setError(null)
+    setWarning(null)
 
     Promise.all([loadClinics(), getRoutingSurveys(), loadCrmFields()])
       .then(([, surveyItems]) => {
@@ -198,6 +202,7 @@ export default function SurveyRoutingPage() {
     if (!activeClinicKey || !activeClinic) return
     setIsSaving(true)
     setError(null)
+    setWarning(null)
     setStatus(null)
     try {
       await saveRoutingClinicSettings(activeClinicKey, {
@@ -290,6 +295,7 @@ export default function SurveyRoutingPage() {
     if (!activeClinicKey) return
     setIsSaving(true)
     setError(null)
+    setWarning(null)
     setStatus(null)
     try {
       const payload = buildRulePayload()
@@ -312,6 +318,7 @@ export default function SurveyRoutingPage() {
     if (!confirm('Удалить правило маршрутизации?')) return
     setIsSaving(true)
     setError(null)
+    setWarning(null)
     try {
       await deleteRoutingRule(ruleId)
       if (activeClinicKey) await loadClinic(activeClinicKey)
@@ -346,9 +353,14 @@ export default function SurveyRoutingPage() {
   const handleSyncFields = async () => {
     setIsSaving(true)
     setError(null)
+    setWarning(null)
     setStatus(null)
     try {
       const result = await syncCrmFields()
+      if (!result.success) {
+        setWarning(result.message || 'CRM-поля не были обновлены')
+        return
+      }
       await loadCrmFields(fieldSearch)
       setStatus(`CRM-поля обновлены: ${result.fields_updated}, варианты: ${result.options_updated}`)
     } catch (err) {
@@ -362,6 +374,7 @@ export default function SurveyRoutingPage() {
     if (!activeClinicKey || !dealId.trim()) return
     setIsTesting(true)
     setError(null)
+    setWarning(null)
     setTestResult(null)
     try {
       const result = await testDealRouting(activeClinicKey, Number(dealId))
@@ -420,7 +433,7 @@ export default function SurveyRoutingPage() {
             >
               <Sun className="h-5 w-5" />
             </button>
-            <a className="btn-secondary rounded-lg px-4 py-2" href="/admin/">
+            <a className="btn-secondary rounded-lg px-4 py-2" href={ADMIN_URL}>
               Админка
             </a>
           </div>
@@ -454,6 +467,11 @@ export default function SurveyRoutingPage() {
           {error ? (
             <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
               {error}
+            </div>
+          ) : null}
+          {warning ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              {warning}
             </div>
           ) : null}
           {status ? (

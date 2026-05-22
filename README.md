@@ -9,8 +9,8 @@
 ## 🚀 Быстрый старт
 
 ```bash
-# Клонировать репозиторий и создать .env (по образцу ниже)
-cp .env.example .env
+# Клонировать репозиторий и создать локальный .env
+# Значения берутся из внутренней Wiki / менеджера паролей.
 
 # Запустить в dev-режиме
 docker compose up -d
@@ -22,28 +22,33 @@ docker compose -f docker-compose.prod.yml up -d
 | Сервис | URL |
 |---|---|
 | Фронтенд (Vite dev) | http://localhost:5173 |
-| Backend API | http://localhost:8000/api/v1 |
-| Swagger / OpenAPI | http://localhost:8000/docs |
-| Админ-панель | http://localhost:8000/admin |
+| Backend API | http://localhost:8001/api/v1 |
+| Swagger / OpenAPI | http://localhost:8001/docs |
+| Админ-панель | http://localhost:8001/admin |
+
+Локальные порты backend/PostgreSQL/Redis вынесены на `8001/15432/16379`,
+чтобы не конфликтовать с другими локальными проектами.
 
 ---
 
 ## 🏗 Архитектура
 
 ```
-nginx (reverse proxy + SSL / Let's Encrypt)
-    ├── frontend  (React 18 + Vite, :5173)
-    └── backend   (FastAPI + Uvicorn, :8000)
-            ├── PostgreSQL 15  (основная БД)
-            └── Redis 7        (сессии / кэш)
+frontend  (React 18 + Vite, :5173)
+backend   (FastAPI + Uvicorn, :8001 -> :8000)
+    ├── PostgreSQL 15  (:15432 -> :5432)
+    └── Redis 7        (:16379 -> :6379)
+
+nginx/certbot доступны в dev-compose через профиль `edge`, но в обычный
+локальный запуск не входят.
 ```
 
 ### Сервисы Docker Compose
 
 | Контейнер | Образ | Dev | Prod | Назначение |
 |---|---|---|---|---|
-| `opros-nginx` | nginx:alpine | ✅ | ✅ | Реверс-прокси, SSL-терминация |
-| `opros-certbot` | certbot/certbot | — | ✅ | Автообновление TLS-сертификатов |
+| `opros-nginx` | nginx:alpine | профиль `edge` | ✅ | Реверс-прокси, SSL-терминация |
+| `opros-certbot` | certbot/certbot | профиль `edge` | ✅ | Автообновление TLS-сертификатов |
 | `opros-backend` | custom (Python) | ✅ | ✅ | FastAPI приложение |
 | `opros-frontend` | custom (Node) | ✅ | — | React / Vite (HMR) |
 | `opros-frontend-builder` | custom (Node) | — | ✅ | Сборка статических файлов |
@@ -351,4 +356,3 @@ cd backend
 | `test_session_expiry.py` | Проверить логику истечения сессий |
 
 ---
-

@@ -64,6 +64,7 @@ class Settings(BaseSettings):
     
     # Битрикс24
     BITRIX24_WEBHOOK_URL: str = ""  # Исходящий вебхук (для отправки данных В Битрикс24)
+    BITRIX24_CRM_FIELDS_WEBHOOK_URL: str = ""  # Только чтение metadata CRM-полей для локальной маршрутизации
     BITRIX24_INCOMING_TOKEN: str = ""  # Токен для проверки входящих запросов ОТ Битрикс24
     BITRIX24_ALLOWED_CATEGORIES: str = ""  # Разрешённые ID воронок через запятую (например "19,25"). Пусто = все воронки.
     BITRIX24_DEFAULT_RESPONSIBLE_ID: int = 0  # Дефолтный ответственный для дела, если не удалось получить из сделки (0 = не задавать)
@@ -73,9 +74,9 @@ class Settings(BaseSettings):
     AI_ANALYSIS_ENABLED: bool = False
     OPENROUTER_API_KEY: str = ""
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
-    OPENROUTER_MODEL: str = "nvidia/nemotron-3-super-120b-a12b:free"
+    OPENROUTER_MODEL: str = "openai/gpt-oss-120b:nitro"
     OPENROUTER_TIMEOUT_SECONDS: int = 90
-    AI_ANALYSIS_MAX_ATTEMPTS: int = 3
+    AI_ANALYSIS_MAX_ATTEMPTS: int = 5
     AI_ANALYSIS_PROMPT_VERSION: str = "v1"
     AI_ANALYSIS_ZDR_REQUIRED: bool = False
     
