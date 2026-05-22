@@ -38,8 +38,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Создание непривилегированного пользователя
-RUN groupadd -r appgroup && useradd -r -g appgroup appuser
+# Создание непривилегированного пользователя с доступным home-dir
+RUN groupadd -r appgroup && useradd -r -g appgroup -m -d /home/appuser appuser
 
 WORKDIR /app
 
