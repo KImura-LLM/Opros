@@ -60,6 +60,31 @@ class ReportGeneratorFormattingTests(unittest.TestCase):
         self.assertNotIn("<script>alert", report)
         self.assertNotIn("<img src=x", report)
 
+    def test_custom_survey_uses_compact_v2_report_style(self) -> None:
+        generator = ReportGenerator(
+            {
+                "version": "1.0",
+                "nodes": [
+                    {
+                        "id": "custom_question",
+                        "type": "single_choice",
+                        "question_text": "Новый вопрос (Один выбор)",
+                        "options": [{"value": "option_1", "text": "Вариант 1"}],
+                    }
+                ],
+            }
+        )
+
+        report = generator.generate_readable_html_report(
+            "Пациент",
+            {"custom_question": {"selected": "option_1"}},
+        )
+
+        self.assertIn('<div class="block-title">📋 Результаты опроса</div>', report)
+        self.assertIn('<li class="qa-row">', report)
+        self.assertIn('<span class="qa-answer">Вариант 1</span>', report)
+        self.assertNotIn("Дополнительные вопросы", report)
+
     def test_ai_block_is_above_system_analysis_and_escapes_html(self) -> None:
         generator = ReportGenerator(
             {

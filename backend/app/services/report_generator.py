@@ -864,7 +864,8 @@ class ReportGenerator:
     ) -> str:
         """
         Генерация читаемого HTML-отчёта для просмотра и экспорта.
-        Отформатирован с CSS стилями для удобного чтения.
+        Всегда использует единый compact/V2 стиль, в том числе для
+        новых кастомных опросников из редактора.
         
         Args:
             patient_name: Имя пациента
@@ -873,9 +874,7 @@ class ReportGenerator:
         Returns:
             Полный HTML-документ с встроенными стилями
         """
-        if self.survey_version == 2:
-            return self._generate_readable_html_report_v2(patient_name, answers, ai_analysis)
-        return self._generate_readable_html_report_v1(patient_name, answers, ai_analysis)
+        return self._generate_readable_html_report_v2(patient_name, answers, ai_analysis)
     
     def _generate_readable_html_report_v1(
         self,
@@ -1368,6 +1367,7 @@ class ReportGenerator:
     ) -> str:
         """
         Генерация текстового отчёта для экспорта в TXT.
+        Использует единый V2-порядок/группировку ответов.
         
         Args:
             patient_name: Имя пациента
@@ -1376,9 +1376,7 @@ class ReportGenerator:
         Returns:
             Текстовая строка отчёта
         """
-        if self.survey_version == 2:
-            return self._generate_text_report_v2(patient_name, answers, ai_analysis)
-        return self._generate_text_report_v1(patient_name, answers, ai_analysis)
+        return self._generate_text_report_v2(patient_name, answers, ai_analysis)
     
     def _generate_text_report_v1(
         self,
