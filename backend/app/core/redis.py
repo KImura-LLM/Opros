@@ -72,7 +72,7 @@ class RedisClient:
             ttl,
             json.dumps(progress_data, ensure_ascii=False),
         )
-        logger.debug(f"Сохранён прогресс сессии {session_id}")
+        logger.debug("Прогресс сессии сохранён")
     
     async def get_survey_progress(self, session_id: str) -> Optional[dict]:
         """
@@ -102,7 +102,7 @@ class RedisClient:
         await self.connect()
         key = f"survey:progress:{session_id}"
         await self.client.delete(key)
-        logger.debug(f"Удалён прогресс сессии {session_id}")
+        logger.debug("Прогресс сессии удалён")
     
     # ==========================================
     # Методы для Rate Limiting
@@ -158,7 +158,7 @@ class RedisClient:
         key = f"token:blacklist:{token_hash}"
         ttl = ttl or settings.SESSION_TTL
         await self.client.setex(key, ttl, "1")
-        logger.info(f"Токен {token_hash[:8]}... добавлен в blacklist")
+        logger.info("Токен добавлен в blacklist")
     
     async def is_token_blacklisted(self, token_hash: str) -> bool:
         """

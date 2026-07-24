@@ -532,7 +532,7 @@ async def process_ai_analysis_job(db: AsyncSession, analysis: SurveyAiAnalysis) 
             await db.commit()
 
     except Exception as exc:
-        logger.exception(f"[AI-WORKER] Непредвиденная ошибка обработки ИИ-задачи: analysis_id={analysis.id}")
+        logger.error("[AI-WORKER] Непредвиденная ошибка обработки ИИ-задачи")
         analysis.status = "failed"
         analysis.error_code = "unexpected_error"
         analysis.error_message = _safe_error_message(str(exc))
@@ -637,7 +637,7 @@ async def finalize_survey_report(
         except ImportError:
             logger.warning("[AI-WORKER] WeasyPrint не установлен, PDF-отчёт не будет отправлен")
         except Exception as exc:
-            logger.error(f"[AI-WORKER] Ошибка генерации/отправки PDF: {exc}")
+            logger.error(f"[AI-WORKER] Ошибка генерации/отправки PDF: {type(exc).__name__}")
 
         if not pdf_sent:
             report_sent = await bitrix_client.send_comment(
@@ -654,14 +654,14 @@ async def finalize_survey_report(
             )
             if field_updated:
                 logger.info(
-                    f"[AI-WORKER] Поле UF_CRM_1771857760 обновлено: session_id={session.id}, entity_type={session.entity_type}"
+                    f"[AI-WORKER] Настроенное поле CRM обновлено; entity_type={session.entity_type}"
                 )
         except Exception as exc:
-            logger.error(f"[AI-WORKER] Ошибка обновления поля CRM: {exc}")
+            logger.error(f"[AI-WORKER] Ошибка обновления поля CRM: {type(exc).__name__}")
     else:
         logger.info(
             f"[AI-WORKER] Отправка отчёта в Bitrix24 пропущена: "
-            f"session_id={session.id}, reason={bitrix_skip_reason}"
+            f"reason={bitrix_skip_reason}"
         )
 
     report_snapshot["bitrix_report"] = {
@@ -699,5 +699,5 @@ async def finalize_survey_report(
 
     await db.commit()
     logger.info(
-        f"[AI-WORKER] Отчёт обработан: session_id={session.id}, ai_included={ai_included}, report_sent={report_sent}"
+        f"[AI-WORKER] Отчёт обработан; ai_included={ai_included}, report_sent={report_sent}"
     )

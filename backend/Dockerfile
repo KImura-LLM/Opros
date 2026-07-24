@@ -21,11 +21,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Копирование зависимостей
-COPY requirements.txt .
+COPY requirements.txt requirements-dev.txt ./
 
 # Установка Python зависимостей
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r requirements-dev.txt
 
 # Копирование исходного кода
 COPY . .

@@ -83,9 +83,9 @@ async def backfill_clinic_buckets(batch_size: int = 100, only_missing: bool = Fa
 
                 except Exception as exc:
                     stats["errors"] += 1
-                    logger.exception(
+                    logger.error(
                         "Не удалось обработать сессию doctor portal: "
-                        f"session_id={session.id}, lead_id={session.lead_id}, error={exc}"
+                        f"{type(exc).__name__}"
                     )
 
             await db.commit()

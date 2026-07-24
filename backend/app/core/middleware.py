@@ -38,7 +38,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         if (
             request.method == "OPTIONS"
-            or path in ("/health", "/", "/openapi.json")
+            or path in ("/health", "/health/live", "/health/ready", "/", "/openapi.json")
             or path.startswith("/admin/statics")
         ):
             return await call_next(request)
@@ -87,9 +87,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
             )
             
             if not allowed:
-                logger.warning(
-                    f"Rate limit превышен: IP={client_ip}, path={path}"
-                )
+                logger.warning(f"Rate limit превышен для bucket={_rate_limit_bucket(path)}")
                 headers = {"Retry-After": str(window)}
                 origin = request.headers.get("Origin")
                 if origin in settings.CORS_ORIGINS:
@@ -102,7 +100,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 )
         except Exception as e:
             # Если Redis недоступен — пропускаем (не блокируем запросы)
-            logger.debug(f"Rate limit check failed (Redis): {e}")
+            logger.debug(f"Rate limit check failed (Redis): {type(e).__name__}")
         
         response = await call_next(request)
         return response

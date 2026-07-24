@@ -15,7 +15,6 @@ from loguru import logger
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import create_access_token, generate_short_code
-from app.core.log_utils import mask_name
 from app.core.redis import get_redis, RedisClient
 from app.models import AuditLog
 from app.services.bitrix24 import Bitrix24Client
@@ -106,7 +105,7 @@ async def bitrix_webhook(
             form = await request.form()
             raw_data = dict(form)
     except Exception as e:
-        logger.error(f"Ошибка парсинга данных вебхука: {e}")
+        logger.error(f"Ошибка парсинга данных вебхука: {type(e).__name__}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Невозможно прочитать данные запроса",
@@ -118,7 +117,7 @@ async def bitrix_webhook(
     if query_data:
         raw_data = {**query_data, **raw_data}
     
-    logger.info(f"Получен вебхук от Битрикс24: lead_id={raw_data.get('lead_id', raw_data.get('LEAD_ID', 'N/A'))}")
+    logger.info("Получен вебхук от Битрикс24")
     
     # Извлечение параметров (поддержка разных форматов имён полей)
     lead_id = _extract_int(raw_data, ["lead_id", "LEAD_ID", "deal_id", "DEAL_ID", "entity_id", "ENTITY_ID"])
@@ -129,7 +128,7 @@ async def bitrix_webhook(
     
     # Проверяем, передал ли Битрикс имя как нераскрытый шаблон ({{...}})
     if patient_name and ("{{" in patient_name or "%7B%7B" in patient_name.upper()):
-        logger.warning(f"Получено нераскрытое имя шаблона: {patient_name}. Будет загружено из CRM.")
+        logger.warning("Получено нераскрытое имя шаблона; значение будет загружено из CRM")
         patient_name = None
     
     # Валидация обязательных полей
@@ -147,7 +146,7 @@ async def bitrix_webhook(
             detail="Сервер не настроен для приёма вебхуков: BITRIX24_INCOMING_TOKEN не задан",
         )
     if auth_token != settings.BITRIX24_INCOMING_TOKEN:
-        logger.warning(f"Неверный auth_token в вебхуке от Битрикс24. IP: {request.client.host}")
+        logger.warning("Неверный auth_token во входящем вебхуке Битрикс24")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Неверный токен авторизации",
@@ -165,9 +164,9 @@ async def bitrix_webhook(
         try:
             deal_data = await bitrix_client.get_deal(lead_id)
             if deal_data:
-                logger.info(f"Данные сделки загружены из CRM для маршрутизации: deal_id={lead_id}")
+                logger.info("Данные сделки загружены из CRM для маршрутизации")
         except Exception as e:
-            logger.warning(f"Не удалось получить сделку из CRM для deal_id={lead_id}: {e}")
+            logger.warning(f"Не удалось получить сделку из CRM: {type(e).__name__}")
 
     # Проверка категории воронки (если настроена фильтрация)
     allowed_categories = settings.ALLOWED_CATEGORY_IDS
@@ -178,37 +177,25 @@ async def bitrix_webhook(
         if entity_type == "DEAL" and deal_data:
             try:
                 resolved_category_id = str(deal_data.get("CATEGORY_ID", "")).strip() or None
-                logger.info(
-                    f"CATEGORY_ID загружен из CRM: "
-                    f"deal_id={lead_id}, category_id={resolved_category_id}"
-                )
+                logger.info("CATEGORY_ID загружен из CRM")
             except Exception as e:
-                logger.warning(f"Не удалось получить CATEGORY_ID из CRM для сделки {lead_id}: {e}")
+                logger.warning(f"Не удалось получить CATEGORY_ID из CRM: {type(e).__name__}")
 
         # Если не удалось получить из CRM — используем значение из запроса как fallback
         if not resolved_category_id:
             resolved_category_id = category_id
             if resolved_category_id:
-                logger.warning(
-                    f"category_id взят из параметров запроса (не из CRM): "
-                    f"deal_id={lead_id}, category_id={resolved_category_id}"
-                )
+                logger.warning("CATEGORY_ID взят из параметров запроса, а не из CRM")
 
         if not resolved_category_id:
-            logger.warning(
-                f"Сделка {lead_id} не содержит category_id, но фильтрация включена. "
-                f"Разрешённые воронки: {allowed_categories}."
-            )
+            logger.warning("Сделка не содержит CATEGORY_ID, но фильтрация включена")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Не удалось определить категорию воронки сделки",
             )
 
         if resolved_category_id not in allowed_categories:
-            logger.info(
-                f"Сделка {lead_id} из воронки {resolved_category_id} пропущена. "
-                f"Разрешённые воронки: {allowed_categories}."
-            )
+            logger.info("Сделка из неразрешённой воронки пропущена")
             return BitrixWebhookResponse(
                 success=False,
                 survey_url="",
@@ -221,17 +208,17 @@ async def bitrix_webhook(
         if entity_type == "DEAL":
             patient_name = await bitrix_client.get_patient_name_from_deal(lead_id)
         if patient_name:
-            logger.info(f"Имя пациента загружено из CRM: {mask_name(patient_name)}")
+            logger.info("Имя пациента загружено из CRM")
         else:
-            logger.warning(f"Не удалось получить имя пациента из CRM для сделки {lead_id}")
+            logger.warning("Не удалось получить имя пациента из CRM")
 
     if entity_type == "DEAL" and bitrix_client:
         try:
             doctor_name = await bitrix_client.resolve_doctor_name_from_deal_data(deal_data)
             if doctor_name:
-                logger.info(f"Имя врача загружено из CRM для сделки {lead_id}")
+                logger.info("Имя врача загружено из CRM")
         except Exception as e:
-            logger.warning(f"Не удалось загрузить имя врача из CRM для сделки {lead_id}: {e}")
+            logger.warning(f"Не удалось загрузить имя врача из CRM: {type(e).__name__}")
 
     routing_decision = await resolve_survey_for_deal(
         db=db,
@@ -246,9 +233,7 @@ async def bitrix_webhook(
     )
     await db.commit()
     logger.info(
-        f"Маршрутизация опросника: deal_id={lead_id}, "
-        f"clinic={routing_decision.clinic_key}, survey_config_id={routing_decision.survey_config_id}, "
-        f"rule_id={routing_decision.selected_rule_id}, fallback={routing_decision.fallback_used}"
+        f"Маршрутизация опросника выполнена; fallback={routing_decision.fallback_used}"
     )
     
     # Генерация JWT токена (компактный — без patient_name для короткой ссылки)
@@ -265,11 +250,7 @@ async def bitrix_webhook(
     # Формирование URL для прохождения опроса (новый формат: /s/{code})
     survey_url = f"{settings.FRONTEND_URL}/s/{short_code}"
     
-    logger.info(
-        f"Сгенерирована ссылка для опроса: "
-        f"lead_id={lead_id}, patient={mask_name(patient_name)}, "
-        f"entity_type={entity_type}"
-    )
+    logger.info(f"Сгенерирована ссылка для опроса; entity_type={entity_type}")
     
     # Обновление данных сделки в Битрикс24
     if bitrix_client:
@@ -280,7 +261,7 @@ async def bitrix_webhook(
                 fields={settings.BITRIX24_SURVEY_LINK_FIELD: survey_url}
             )
             if updated:
-                logger.info(f"Ссылка записана в поле {settings.BITRIX24_SURVEY_LINK_FIELD} сделки {lead_id}")
+                logger.info("Ссылка на опрос записана в настроенное поле сделки")
             else:
                 logger.warning(
                     f"Не удалось записать ссылку в поле {settings.BITRIX24_SURVEY_LINK_FIELD}. "
@@ -325,7 +306,7 @@ async def generate_survey_link(
             detail="Сервер не настроен для приёма вебхуков: BITRIX24_INCOMING_TOKEN не задан",
         )
     if data.auth_token != settings.BITRIX24_INCOMING_TOKEN:
-        logger.warning(f"Неверный auth_token. IP: {request.client.host}")
+        logger.warning("Неверный auth_token во входящем запросе Битрикс24")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Неверный токен авторизации",
@@ -367,10 +348,7 @@ async def generate_survey_link(
     
     survey_url = f"{settings.FRONTEND_URL}/s/{short_code}"
     
-    logger.info(
-        f"Сгенерирована ссылка (generate-link): "
-        f"lead_id={data.lead_id}, patient={mask_name(data.patient_name)}"
-    )
+    logger.info("Сгенерирована ссылка через generate-link")
     
     return BitrixWebhookResponse(
         success=True,

@@ -17,7 +17,6 @@ from zoneinfo import ZoneInfo
 from loguru import logger
 
 from app.core.config import settings
-from app.core.log_utils import mask_name
 from app.services.doctor_portal_routing import extract_portal_routing_from_deal
 
 
@@ -128,13 +127,13 @@ class Bitrix24Client:
                 return False
                     
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP ошибка при отправке в Битрикс24: {e}")
+            logger.error(f"HTTP ошибка при отправке в Битрикс24: {type(e).__name__}")
             return False
         except httpx.RequestError as e:
-            logger.error(f"Ошибка соединения с Битрикс24: {e}")
+            logger.error(f"Ошибка соединения с Битрикс24: {type(e).__name__}")
             return False
         except Exception as e:
-            logger.error(f"Неожиданная ошибка при отправке в Битрикс24: {e}")
+            logger.error(f"Неожиданная ошибка при отправке в Битрикс24: {type(e).__name__}")
             return False
     
     async def update_deal_field(
@@ -174,7 +173,7 @@ class Bitrix24Client:
                 return result.get("result", False)
                 
         except Exception as e:
-            logger.error(f"Ошибка обновления сделки в Битрикс24: {e}")
+            logger.error(f"Ошибка обновления сделки в Битрикс24: {type(e).__name__}")
             return False
 
     async def update_lead_field(
@@ -214,7 +213,7 @@ class Bitrix24Client:
                 return bool(result.get("result", False))
 
         except Exception as e:
-            logger.error(f"Ошибка обновления лида в Битрикс24: {e}")
+            logger.error(f"Ошибка обновления лида в Битрикс24: {type(e).__name__}")
             return False
 
     async def update_entity_field(
@@ -270,7 +269,7 @@ class Bitrix24Client:
                 return result.get("result")
                 
         except Exception as e:
-            logger.error(f"Ошибка получения сделки из Битрикс24: {e}")
+            logger.error(f"Ошибка получения сделки из Битрикс24: {type(e).__name__}")
             return None
 
     async def get_contact(self, contact_id: int) -> Optional[dict]:
@@ -297,7 +296,7 @@ class Bitrix24Client:
                 response.raise_for_status()
                 return response.json().get("result")
         except Exception as e:
-            logger.error(f"Ошибка получения контакта из Битрикс24: {e}")
+            logger.error(f"Ошибка получения контакта из Битрикс24: {type(e).__name__}")
             return None
 
     async def get_user(self, user_id: int) -> Optional[dict]:
@@ -324,7 +323,7 @@ class Bitrix24Client:
                     return result
                 return None
         except Exception as e:
-            logger.error(f"Ошибка получения сотрудника из Битрикс24: {e}")
+            logger.error(f"Ошибка получения сотрудника из Битрикс24: {type(e).__name__}")
             return None
 
     async def get_deal_field_definition(self, field_name: str) -> Optional[dict]:
@@ -348,7 +347,7 @@ class Bitrix24Client:
                 result = response.json().get("result", {})
                 return result if isinstance(result, dict) else {}
         except Exception as e:
-            logger.error(f"Ошибка получения метаданных поля сделки из Битрикс24: {e}")
+            logger.error(f"Ошибка получения метаданных поля сделки из Битрикс24: {type(e).__name__}")
             return {}
 
     async def get_deal_user_fields(self) -> list[dict[str, Any]]:
@@ -386,7 +385,7 @@ class Bitrix24Client:
 
                 return items
         except Exception as e:
-            logger.error(f"Ошибка получения пользовательских полей сделки из Битрикс24: {e}")
+            logger.error(f"Ошибка получения пользовательских полей сделки из Битрикс24: {type(e).__name__}")
             return []
 
     @staticmethod
@@ -489,17 +488,17 @@ class Bitrix24Client:
         """
         deal = await self.get_deal(deal_id)
         if not deal:
-            logger.warning(f"Не удалось получить сделку {deal_id} для извлечения имени")
+            logger.warning("Не удалось получить сделку для извлечения имени")
             return None
         
         contact_id = deal.get("CONTACT_ID")
         if not contact_id:
-            logger.warning(f"В сделке {deal_id} не указан контакт (CONTACT_ID)")
+            logger.warning("В сделке не указан контакт (CONTACT_ID)")
             return None
         
         contact = await self.get_contact(int(contact_id))
         if not contact:
-            logger.warning(f"Не удалось получить контакт {contact_id}")
+            logger.warning("Не удалось получить контакт пациента")
             return None
         
         last_name = contact.get("LAST_NAME", "")
@@ -508,7 +507,7 @@ class Bitrix24Client:
         full_name = " ".join(part for part in [last_name, name, second_name] if part)
         
         if full_name:
-            logger.info(f"Имя пациента из Битрикс24: {mask_name(full_name)} (сделка {deal_id})")
+            logger.info("Имя пациента получено из Битрикс24")
         
         return full_name or None
 
@@ -566,8 +565,6 @@ class Bitrix24Client:
         if not field_names:
             return None
 
-        deal_label = deal_data.get("ID") or "unknown"
-
         for field_name in field_names:
             doctor_name = self._normalize_doctor_field_value(deal_data.get(field_name))
             if doctor_name is None:
@@ -577,9 +574,7 @@ class Bitrix24Client:
                 field_definition = await self.get_deal_field_definition(field_name)
                 resolved_enum_value = self._resolve_enumeration_item_value(field_definition, doctor_name)
                 if resolved_enum_value:
-                    logger.info(
-                        f"Имя врача из Битрикс24 получено из справочника поля для сделки {deal_label}"
-                    )
+                    logger.info("Имя врача из Битрикс24 получено из справочника поля")
                     return resolved_enum_value
 
                 user = await self.get_user(int(doctor_name))
@@ -590,12 +585,10 @@ class Bitrix24Client:
                         user.get("SECOND_NAME"),
                     )
                     if resolved_name:
-                        logger.info(
-                            f"Имя врача из Битрикс24 получено по ID сотрудника для сделки {deal_label}"
-                        )
+                        logger.info("Имя врача из Битрикс24 получено по ID сотрудника")
                         return resolved_name
 
-            logger.info(f"Имя врача из Битрикс24 получено для сделки {deal_label}")
+            logger.info("Имя врача из Битрикс24 получено")
             return doctor_name
 
         return None
@@ -619,13 +612,11 @@ class Bitrix24Client:
                     user.get("SECOND_NAME"),
                 )
                 if resolved_name:
-                    logger.info(
-                        f"Имя врача из Битрикс24 получено по ID сотрудника для сделки {deal_id}"
-                    )
+                    logger.info("Имя врача из Битрикс24 получено по ID сотрудника")
                     return resolved_name
 
         if doctor_name:
-            logger.info(f"Имя врача из Битрикс24 получено для сделки {deal_id}")
+            logger.info("Имя врача из Битрикс24 получено")
 
         return doctor_name
 
@@ -739,18 +730,17 @@ class Bitrix24Client:
                     )
                     return True
                 else:
-                    error = result.get("error_description", "Неизвестная ошибка")
-                    logger.error(f"Ошибка загрузки PDF через активность: {error}")
+                    logger.error("Bitrix24 отклонил загрузку PDF через активность")
                     return False
                     
         except httpx.HTTPStatusError as e:
-            logger.error(f"HTTP ошибка при загрузке PDF через активность: {e}")
+            logger.error(f"HTTP ошибка при загрузке PDF через активность: {type(e).__name__}")
             return False
         except httpx.RequestError as e:
-            logger.error(f"Ошибка соединения при загрузке PDF: {e}")
+            logger.error(f"Ошибка соединения при загрузке PDF: {type(e).__name__}")
             return False
         except Exception as e:
-            logger.error(f"Неожиданная ошибка при загрузке PDF через активность: {e}")
+            logger.error(f"Неожиданная ошибка при загрузке PDF через активность: {type(e).__name__}")
             return False
     
     async def _upload_via_comment_with_file(
@@ -801,12 +791,11 @@ class Bitrix24Client:
                     )
                     return True
                 else:
-                    error = result.get("error_description", "Неизвестная ошибка")
-                    logger.error(f"Ошибка загрузки PDF через комментарий: {error}")
+                    logger.error("Bitrix24 отклонил загрузку PDF через комментарий")
                     return False
                     
         except Exception as e:
-            logger.error(f"Ошибка загрузки PDF через комментарий: {e}")
+            logger.error(f"Ошибка загрузки PDF через комментарий: {type(e).__name__}")
             return False
     
     async def create_deal_activity(
@@ -856,7 +845,7 @@ class Bitrix24Client:
                         )
             except Exception as e:
                 logger.warning(
-                    f"Не удалось получить ответственного из сделки {entity_id}: {e}"
+                    f"Не удалось получить ответственного из сделки {entity_id}: {type(e).__name__}"
                 )
 
         # Fallback на дефолтного ответственного из настроек
@@ -920,16 +909,16 @@ class Bitrix24Client:
 
         except httpx.HTTPStatusError as e:
             logger.error(
-                f"HTTP ошибка при создании дела в Битрикс24: {e} (entity_id={entity_id})"
+                f"HTTP ошибка при создании дела в Битрикс24: {type(e).__name__} (entity_id={entity_id})"
             )
             return False
         except httpx.RequestError as e:
             logger.error(
-                f"Ошибка соединения при создании дела в Битрикс24: {e} (entity_id={entity_id})"
+                f"Ошибка соединения при создании дела в Битрикс24: {type(e).__name__} (entity_id={entity_id})"
             )
             return False
         except Exception as e:
             logger.error(
-                f"Неожиданная ошибка при создании дела в Битрикс24: {e} (entity_id={entity_id})"
+                f"Неожиданная ошибка при создании дела в Битрикс24: {type(e).__name__} (entity_id={entity_id})"
             )
             return False

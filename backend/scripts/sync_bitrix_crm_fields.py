@@ -40,7 +40,7 @@ async def run_periodic_sync() -> None:
         try:
             await sync_once()
         except Exception as exc:
-            logger.error(f"Ошибка синхронизации CRM-полей Bitrix24: {exc}")
+            logger.error(f"Ошибка синхронизации CRM-полей Bitrix24: {type(exc).__name__}")
 
 
 def main() -> None:

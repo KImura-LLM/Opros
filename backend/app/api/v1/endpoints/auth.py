@@ -16,7 +16,6 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.redis import get_redis, RedisClient
 from app.core.security import verify_token, create_access_token, generate_short_code
-from app.core.log_utils import mask_name, mask_token
 from app.models import SurveySession
 from app.schemas import TokenValidationResponse
 from app.services.bitrix24 import Bitrix24Client
@@ -54,30 +53,25 @@ async def validate_token(
     # Определяем: это короткий код или JWT?
     # JWT всегда содержит точки (header.payload.signature), короткий код — нет
     token_source = "short_code" if _SHORT_CODE_PATTERN.match(token) and "." not in token else "jwt"
-    token_hint = mask_token(token)
-
     if _SHORT_CODE_PATTERN.match(token) and '.' not in token:
         # Это короткий код — ищем JWT в Redis
         jwt_token = await redis.get_jwt_by_short_code(token)
         if jwt_token is None:
             logger.warning(
-                f"[ССЫЛКА НЕДЕЙСТВИТЕЛЬНА] Короткий код не найден или истёк. "
-                f"source={token_source}, token={token_hint}"
+                f"[ССЫЛКА НЕДЕЙСТВИТЕЛЬНА] Короткий код не найден или истёк; "
+                f"source={token_source}"
             )
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Ссылка недействительна или срок её действия истёк",
             )
-        logger.debug(f"Короткий код {token[:8]}... → JWT найден в Redis")
+        logger.debug("JWT найден по короткому коду")
     
     # Декодирование и валидация JWT токена
     token_data = verify_token(jwt_token)
     
     if token_data is None:
-        logger.warning(
-            f"[ССЫЛКА НЕДЕЙСТВИТЕЛЬНА] Невалидный JWT токен. "
-            f"source={token_source}, token={token_hint}"
-        )
+        logger.warning(f"[ССЫЛКА НЕДЕЙСТВИТЕЛЬНА] Невалидный JWT; source={token_source}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Ссылка недействительна или срок её действия истёк",
@@ -86,10 +80,7 @@ async def validate_token(
     # Проверка в blacklist
     is_blacklisted = await redis.is_token_blacklisted(token_data.token_hash)
     if is_blacklisted:
-        logger.warning(
-            f"[ССЫЛКА НЕДЕЙСТВИТЕЛЬНА] Токен в blacklist: lead_id={token_data.lead_id}. "
-            f"source={token_source}, token={token_hint}"
-        )
+        logger.warning(f"[ССЫЛКА НЕДЕЙСТВИТЕЛЬНА] Токен в blacklist; source={token_source}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Эта ссылка уже была использована",
@@ -104,20 +95,13 @@ async def validate_token(
     
     if existing_session:
         if existing_session.status == "completed":
-            logger.warning(
-                f"[ССЫЛКА НЕДЕЙСТВИТЕЛЬНА] Опрос уже завершён: lead_id={token_data.lead_id}. "
-                f"source={token_source}, token={token_hint}"
-            )
+            logger.warning(f"[ССЫЛКА НЕДЕЙСТВИТЕЛЬНА] Опрос уже завершён; source={token_source}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Опрос уже был завершён",
             )
         
-        logger.info(
-            f"[ССЫЛКА ДЕЙСТВИТЕЛЬНА] Сессия восстановлена: lead_id={token_data.lead_id}, "
-            f"patient={mask_name(existing_session.patient_name)}, "
-            f"source={token_source}, token={token_hint}"
-        )
+        logger.info(f"[ССЫЛКА ДЕЙСТВИТЕЛЬНА] Сессия восстановлена; source={token_source}")
         return TokenValidationResponse(
             valid=True,
             session_id=existing_session.id,
@@ -135,14 +119,11 @@ async def validate_token(
             if entity_type == "DEAL":
                 patient_name = await bitrix_client.get_patient_name_from_deal(token_data.lead_id)
             if patient_name:
-                logger.info(f"Имя пациента загружено из CRM: {mask_name(patient_name)}")
+                logger.info("Имя пациента загружено из CRM")
         except Exception as e:
-            logger.warning(f"Не удалось загрузить имя из CRM: {e}")
+            logger.warning(f"Не удалось загрузить имя из CRM: {type(e).__name__}")
     
-    logger.info(
-        f"[ССЫЛКА ДЕЙСТВИТЕЛЬНА] Токен валиден: lead_id={token_data.lead_id}, "
-        f"patient={mask_name(patient_name)}, source={token_source}, token={token_hint}"
-    )
+    logger.info(f"[ССЫЛКА ДЕЙСТВИТЕЛЬНА] Токен валиден; source={token_source}")
     
     return TokenValidationResponse(
         valid=True,

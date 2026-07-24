@@ -21,7 +21,10 @@ services:
       - ./certbot/www:/var/www/certbot:ro
       - frontend_build:/usr/share/nginx/html:ro
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+      frontend-builder:
+        condition: service_completed_successfully
     networks:
       - opros-network
     command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
@@ -56,13 +59,40 @@ services:
     expose:
       - "8000"
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     networks:
       - opros-network
-    command: gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000
+    command: >
+      sh -lc "python -m scripts.preflight &&
+      exec gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker -b 0.0.0.0:8000"
+
+  # --------------------------------------------
+  # Database migrations (one-shot)
+  # --------------------------------------------
+  migrate:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: opros-migrate
+    restart: "no"
+    env_file:
+      - .env
+    environment:
+      - ENVIRONMENT=production
+      - DEBUG=false
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - opros-network
+    command: >
+      sh -lc "python -m scripts.preflight &&
+      PYTHONPATH=/app alembic -c alembic.ini upgrade head"
 
   # --------------------------------------------
   # Session Cleanup Worker
@@ -79,6 +109,8 @@ services:
       - ENVIRONMENT=production
       - DEBUG=false
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
     networks:
@@ -105,6 +137,8 @@ services:
       - ENVIRONMENT=production
       - DEBUG=false
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
     networks:
@@ -131,6 +165,8 @@ services:
       - ENVIRONMENT=production
       - DEBUG=false
     depends_on:
+      migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -152,6 +188,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile.prod
     container_name: opros-frontend-builder
+    restart: "no"
     volumes:
       - frontend_build:/app/dist
     environment:

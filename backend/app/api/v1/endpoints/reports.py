@@ -126,15 +126,12 @@ async def preview_report(
     """
     try:
         session, html_content, _ = await _get_report_content(session_id, db)
-        logger.info(
-            f"Предпросмотр отчёта: session_id={session_id}, "
-            f"snapshot={'да' if session.report_snapshot else 'нет'}"
-        )
+        logger.info(f"Предпросмотр отчёта; snapshot={'да' if session.report_snapshot else 'нет'}")
         return Response(content=html_content, media_type="text/html; charset=utf-8")
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Ошибка предпросмотра отчёта: {e}")
+        logger.error(f"Ошибка предпросмотра отчёта: {type(e).__name__}")
         raise HTTPException(status_code=500, detail="Ошибка генерации отчёта")
 
 
@@ -150,7 +147,7 @@ async def export_html(
 
         session, html_content, _ = await _get_report_content(session_id, db)
         filename = _safe_filename(session.patient_name, session_id, "html")
-        logger.info(f"Экспорт HTML: session_id={session_id}")
+        logger.info("Экспорт HTML-отчёта")
 
         return Response(
             content=html_content,
@@ -160,7 +157,7 @@ async def export_html(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Ошибка экспорта HTML отчёта: {e}")
+        logger.error(f"Ошибка экспорта HTML отчёта: {type(e).__name__}")
         raise HTTPException(status_code=500, detail="Ошибка экспорта отчёта")
 
 
@@ -176,7 +173,7 @@ async def export_txt(
 
         session, _, txt_content = await _get_report_content(session_id, db)
         filename = _safe_filename(session.patient_name, session_id, "txt")
-        logger.info(f"Экспорт TXT: session_id={session_id}")
+        logger.info("Экспорт TXT-отчёта")
 
         return Response(
             content=txt_content.encode("utf-8"),
@@ -186,7 +183,7 @@ async def export_txt(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Ошибка экспорта TXT отчёта: {e}")
+        logger.error(f"Ошибка экспорта TXT отчёта: {type(e).__name__}")
         raise HTTPException(status_code=500, detail="Ошибка экспорта отчёта")
 
 
@@ -212,7 +209,7 @@ async def export_pdf(
         pdf_bytes = pdf_buffer.getvalue()
 
         filename = _safe_filename(session.patient_name, session_id, "pdf")
-        logger.info(f"Экспорт PDF: session_id={session_id}")
+        logger.info("Экспорт PDF-отчёта")
 
         return Response(
             content=pdf_bytes,
@@ -222,7 +219,7 @@ async def export_pdf(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Ошибка экспорта PDF отчёта: {e}")
+        logger.error(f"Ошибка экспорта PDF отчёта: {type(e).__name__}")
         raise HTTPException(status_code=500, detail="Ошибка экспорта отчёта")
 
 
@@ -290,8 +287,7 @@ async def regenerate_report(
         await db.commit()
 
         logger.info(
-            f"Отчёт принудительно обновлён администратором: "
-            f"session_id={session_id}, config_version={config.version}"
+            f"Отчёт принудительно обновлён администратором; config_version={config.version}"
         )
 
         return {
@@ -305,7 +301,7 @@ async def regenerate_report(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Ошибка принудительной перегенерации отчёта: {e}")
+        logger.error(f"Ошибка принудительной перегенерации отчёта: {type(e).__name__}")
         raise HTTPException(status_code=500, detail="Ошибка пересчёта отчёта")
 
 
@@ -328,8 +324,7 @@ async def regenerate_ai_analysis(
         await db.commit()
 
         logger.info(
-            f"AI-анализ обновляется администратором: "
-            f"session_id={session_id}, analysis_id={analysis.id}, queued={queued}, status={analysis.status}"
+            f"AI-анализ обновляется администратором; queued={queued}, status={analysis.status}"
         )
 
         return {
@@ -342,7 +337,7 @@ async def regenerate_ai_analysis(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Ошибка обновления AI-анализа: {e}")
+        logger.error(f"Ошибка обновления AI-анализа: {type(e).__name__}")
         raise HTTPException(status_code=500, detail="Ошибка обновления ИИ-анализа")
 
 

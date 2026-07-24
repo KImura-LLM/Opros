@@ -2,7 +2,7 @@
 # Backend Dockerfile (Production)
 # ============================================
 
-FROM python:3.11-slim as builder
+FROM python:3.11-slim AS builder
 
 # Установка системных зависимостей для сборки
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -62,7 +62,7 @@ EXPOSE 8000
 
 # Healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD curl -f http://localhost:8000/health/live || exit 1
 
 # Команда запуска (gunicorn с uvicorn workers)
 CMD ["gunicorn", "app.main:app", "-w", "4", "-k", "uvicorn.workers.UvicornWorker", "-b", "0.0.0.0:8000"]

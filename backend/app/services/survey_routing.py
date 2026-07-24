@@ -407,7 +407,7 @@ async def resolve_survey_for_deal(
             )
 
     except Exception as exc:
-        logger.exception(f"Ошибка оценки правил маршрутизации опросника: {exc}")
+        logger.error(f"Ошибка оценки правил маршрутизации опросника: {type(exc).__name__}")
         return await build_fallback_decision(
             db,
             effective_clinic_key,

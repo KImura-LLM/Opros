@@ -6,7 +6,7 @@ API для сбора и отдачи статистики по опросам.
 Используется в дашборде админ-панели.
 """
 
-from datetime import UTC, date, datetime, time, timedelta
+from datetime import UTC, datetime, time, timedelta
 from typing import Any, Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
