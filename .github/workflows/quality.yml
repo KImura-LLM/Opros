@@ -55,6 +55,8 @@ jobs:
       - run: pip install pip-audit && pip-audit -r backend/requirements.txt --ignore-vuln PYSEC-2026-1325
       - run: PYTHONPATH=. alembic -c alembic.ini upgrade head
         working-directory: backend
+      - run: python -m scripts.seed --v2
+        working-directory: backend
       - run: python -m pytest tests -q
         working-directory: backend
 
@@ -84,7 +86,8 @@ jobs:
         shell: bash
         run: |
           test -z "$(git ls-files '.env' '*.pem' '*.key')"
-          ! git grep -n --fixed-strings -- '-----BEGIN PRIVATE KEY-----'
+          private_key_marker='-----BEGIN PRIVATE'' KEY-----'
+          ! git grep -n --fixed-strings -- "$private_key_marker"
       - name: Проверить production compose
         run: |
           cp .env.example .env
