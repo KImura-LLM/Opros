@@ -17,8 +17,7 @@ async def process_once() -> bool:
         if not analysis:
             await db.commit()
             return False
-        analysis_id = analysis.id
-        logger.info(f"[AI-WORKER] Взята задача ИИ-анализа: analysis_id={analysis_id}")
+        logger.info("[AI-WORKER] Взята задача ИИ-анализа")
         await process_ai_analysis_job(db, analysis)
         return True
 
@@ -31,7 +30,7 @@ async def run_worker(poll_interval_seconds: float = 5.0) -> None:
             if not handled:
                 await asyncio.sleep(poll_interval_seconds)
         except Exception as exc:
-            logger.error(f"[AI-WORKER] Критическая ошибка worker-а: {exc}")
+            logger.error(f"[AI-WORKER] Критическая ошибка worker-а: {type(exc).__name__}")
             await asyncio.sleep(poll_interval_seconds)
 
 

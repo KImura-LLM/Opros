@@ -20,7 +20,6 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.redis import get_redis, RedisClient
 from app.core.security import verify_token, get_token_hash
-from app.core.log_utils import mask_name
 from app.models import SurveyConfig, SurveySession, SurveyAnswer, AuditLog
 from app.schemas import (
     SurveyStartRequest,
@@ -205,12 +204,12 @@ async def _complete_survey_session(
         details={"db_backed_processing": True},
     )
     db.add(audit_log)
-    analysis, created = await queue_ai_analysis_job(db, session)
+    _, created = await queue_ai_analysis_job(db, session)
     await db.commit()
 
     logger.info(
-        "Опрос завершён (быстрый ответ), задача обработки поставлена в очередь: "
-        f"session_id={session.id}, analysis_id={analysis.id}, created={created}"
+        "Опрос завершён (быстрый ответ), задача обработки поставлена в очередь; "
+        f"created={created}"
     )
 
 
@@ -240,11 +239,7 @@ async def verify_session_owner(
     # Проверяем, что хэш токена совпадает с хэшем, привязанным к сессии
     provided_hash = get_token_hash(session_token)
     if provided_hash != session.token_hash:
-        logger.warning(
-            f"Попытка доступа к чужой сессии {session.id}: "
-            f"ожидаемый hash={session.token_hash[:8]}..., "
-            f"предоставленный hash={provided_hash[:8]}..."
-        )
+        logger.warning("Попытка доступа с токеном, не принадлежащим сессии")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Доступ запрещён: токен не принадлежит данной сессии",
@@ -390,9 +385,9 @@ async def start_survey(
                 if not patient_name:
                     patient_name = await bitrix_client.get_patient_name_from_deal(token_data.lead_id)
             if patient_name:
-                logger.info(f"Имя пациента загружено из CRM при старте опроса: {mask_name(patient_name)}")
+                logger.info("Имя пациента загружено из CRM при старте опроса")
         except Exception as e:
-            logger.warning(f"Не удалось загрузить имя из CRM: {e}")
+            logger.warning(f"Не удалось загрузить имя из CRM: {type(e).__name__}")
     # Получаем реальный IP клиента (учитываем прокси nginx)
     client_ip = (
         request.headers.get("X-Real-IP")
@@ -442,7 +437,7 @@ async def start_survey(
         _build_initial_progress(start_node, session.started_at),
     )
     
-    logger.info(f"Создана сессия {session.id} для lead_id={token_data.lead_id}")
+    logger.info("Сессия опроса создана")
     
     return SurveyStartResponse(
         session_id=session.id,
@@ -495,7 +490,7 @@ async def submit_answer(
         session.status = "abandoned"
         await db.commit()
         
-        logger.warning(f"Сессия {session.id} автоматически завершена по истечении времени")
+        logger.warning("Сессия опроса автоматически завершена по истечении времени")
         
         raise HTTPException(
             status_code=status.HTTP_410_GONE,
@@ -706,7 +701,7 @@ async def _process_survey_report(
                         "skipped_reason": bitrix_skip_reason,
                     },
                 }
-                logger.info(f"[BG] Снимок отчёта сохранён: session_id={session_id}")
+                logger.info("[BG] Снимок отчёта сохранён")
 
             report_sent = False
             pdf_sent = False
@@ -738,15 +733,15 @@ async def _process_survey_report(
                     )
 
                     if pdf_sent:
-                        logger.info(f"[BG] PDF-отчёт отправлен в Битрикс24: lead_id={lead_id}")
+                        logger.info("[BG] PDF-отчёт отправлен в Битрикс24")
                         report_sent = True
                     else:
-                        logger.warning(f"[BG] Не удалось отправить PDF в Битрикс24: lead_id={lead_id}")
+                        logger.warning("[BG] Не удалось отправить PDF в Битрикс24")
 
                 except ImportError:
                     logger.warning("[BG] WeasyPrint не установлен, PDF-отчёт не будет отправлен")
                 except Exception as e:
-                    logger.error(f"[BG] Ошибка генерации/отправки PDF: {e}")
+                    logger.error(f"[BG] Ошибка генерации/отправки PDF: {type(e).__name__}")
 
                 # Fallback: текстовый комментарий если PDF не отправлен
                 if not pdf_sent:
@@ -765,15 +760,13 @@ async def _process_survey_report(
                     )
                     if field_updated:
                         logger.info(
-                            f"[BG] Поле UF_CRM_1771857760 обновлено ('да'): "
-                            f"lead_id={lead_id}, entity_type={entity_type}"
+                            f"[BG] Настроенное поле CRM обновлено; entity_type={entity_type}"
                         )
                 except Exception as e:
-                    logger.error(f"[BG] Ошибка обновления поля CRM: {e}")
+                    logger.error(f"[BG] Ошибка обновления поля CRM: {type(e).__name__}")
             else:
                 logger.info(
-                    f"[BG] Отправка отчёта в Bitrix24 пропущена: "
-                    f"session_id={session_id}, reason={bitrix_skip_reason}"
+                    f"[BG] Отправка отчёта в Bitrix24 пропущена; reason={bitrix_skip_reason}"
                 )
 
             if survey_session_obj and isinstance(survey_session_obj.report_snapshot, dict):
@@ -806,10 +799,10 @@ async def _process_survey_report(
 
             await db.commit()
 
-            logger.info(f"[BG] Фоновая обработка завершена: session_id={session_id}")
+            logger.info("[BG] Фоновая обработка завершена")
 
         except Exception as e:
-            logger.error(f"[BG] Критическая ошибка фоновой обработки session_id={session_id}: {e}")
+            logger.error(f"[BG] Критическая ошибка фоновой обработки: {type(e).__name__}")
         finally:
             await redis.disconnect()
 

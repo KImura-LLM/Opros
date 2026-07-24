@@ -790,14 +790,14 @@ def setup_admin(app):
             try:
                 analysis = await retry_failed_ai_analysis(db, parsed_id)
                 await db.commit()
-                logger.info(f"ИИ-анализ поставлен в очередь повторно администратором: analysis_id={analysis.id}")
+                logger.info("ИИ-анализ поставлен в очередь повторно администратором")
                 return JSONResponse({"success": True, "analysis_id": str(analysis.id), "status": analysis.status})
             except ValueError as exc:
                 await db.rollback()
                 return JSONResponse({"error": str(exc)}, status_code=400)
             except Exception as exc:
                 await db.rollback()
-                logger.error(f"Ошибка ручного retry ИИ-анализа: {exc}")
+                logger.error(f"Ошибка ручного retry ИИ-анализа: {type(exc).__name__}")
                 return JSONResponse({"error": "Ошибка постановки ИИ-анализа в очередь"}, status_code=500)
 
     # --- Инициализация SQLAdmin ---

@@ -3,7 +3,7 @@
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,8 +22,6 @@ from app.models import (
 from app.services.bitrix24 import Bitrix24Client
 from app.services.bitrix_crm_fields import crm_field_title, sync_bitrix_deal_fields
 from app.services.survey_routing import (
-    CONDITION_LOGICS,
-    ROUTING_OPERATORS,
     get_survey_routing_clinics,
     normalize_condition_logic,
     normalize_operator,

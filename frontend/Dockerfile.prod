@@ -2,7 +2,7 @@
 # Frontend Dockerfile (Production - Build)
 # ============================================
 
-FROM node:20-alpine as builder
+FROM node:20-alpine AS builder
 
 WORKDIR /app
 
@@ -26,6 +26,5 @@ FROM alpine:latest
 # Копирование собранных файлов в /dist-built (НЕ в /app/dist, чтобы volume не перекрыл их)
 COPY --from=builder /app/dist /dist-built
 
-# CMD: копируем файлы из образа в volume, смонтированный на /app/dist
-# Используем /dist-built, т.к. volume монтируется на /app/dist и перекрыл бы файлы там
-CMD ["sh", "-c", "cp -rf /dist-built/. /app/dist/ && echo 'Frontend files copied to volume' && tail -f /dev/null"]
+# Одноразово копируем проверенную сборку в общий volume и завершаемся.
+CMD ["sh", "-c", "rm -rf /app/dist/* && cp -rf /dist-built/. /app/dist/ && echo 'Frontend files copied to volume'"]

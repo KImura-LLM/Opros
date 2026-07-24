@@ -1,6 +1,5 @@
 DEPLOY.md
 AGENTS.md
-.github/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -164,8 +163,7 @@ INFO/
 # CI/CD шаблоны (не используются)
 opros-cicd/
 
-# CI/CD Pipelines
-.github/workflows/
+# Неиспользуемые альтернативные CI/CD pipelines
 .gitlab-ci.yml
 *.jenkinsfile
 

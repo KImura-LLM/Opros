@@ -105,7 +105,7 @@ def create_access_token(
         algorithm=settings.JWT_ALGORITHM,
     )
     
-    logger.info(f"Создан токен для lead_id={lead_id}, истекает {expire}")
+    logger.info(f"Токен доступа создан, истекает {expire}")
     return encoded_jwt
 
 
@@ -192,7 +192,7 @@ def verify_token(token: str) -> Optional[TokenData]:
         )
         
     except JWTError as e:
-        logger.warning(f"Ошибка валидации токена: {e}")
+        logger.warning(f"Ошибка валидации токена: {type(e).__name__}")
         return None
 
 
@@ -217,7 +217,7 @@ def verify_doctor_token(token: str) -> Optional[DoctorTokenData]:
             username=str(username),
         )
     except (JWTError, ValueError, TypeError) as e:
-        logger.warning(f"Ошибка валидации doctor token: {e}")
+        logger.warning(f"Ошибка валидации doctor token: {type(e).__name__}")
         return None
 
 
@@ -242,7 +242,7 @@ def verify_doctor_pdf_share_token(token: str) -> Optional[DoctorPdfShareTokenDat
             doctor_id=int(doctor_id),
         )
     except (JWTError, ValueError, TypeError) as e:
-        logger.warning(f"Ошибка валидации doctor PDF share token: {e}")
+        logger.warning(f"Ошибка валидации doctor PDF share token: {type(e).__name__}")
         return None
 
 

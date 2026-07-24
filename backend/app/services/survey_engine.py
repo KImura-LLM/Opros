@@ -172,7 +172,7 @@ class SurveyEngine:
                 return int(actual) <= int(expected) if actual is not None else False
 
         except Exception as e:
-            logger.error(f"Ошибка вычисления условия '{condition}': {e}")
+            logger.error(f"Ошибка вычисления условия: {type(e).__name__}")
             return False
     
     def _get_answer_value(self, field: str, answer: dict) -> Any:

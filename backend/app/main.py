@@ -7,7 +7,8 @@
 """
 
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, status
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_redoc_html
 from starlette.middleware.sessions import SessionMiddleware
@@ -134,6 +135,7 @@ async def custom_redoc():
 
 
 @app.get("/health", tags=["Health"])
+@app.get("/health/live", tags=["Health"])
 async def health_check():
     """
     Проверка работоспособности сервиса.
@@ -144,6 +146,36 @@ async def health_check():
         "service": "opros-backend",
         "version": "1.0.0",
     }
+
+
+@app.get("/health/ready", tags=["Health"])
+async def readiness_check():
+    """Проверяет доступность обязательных зависимостей без раскрытия деталей ошибок."""
+    dependencies = {"postgres": "unavailable", "redis": "unavailable"}
+
+    try:
+        async with engine.connect() as connection:
+            await connection.exec_driver_sql("SELECT 1")
+        dependencies["postgres"] = "ok"
+    except Exception:
+        logger.warning("Readiness check: PostgreSQL недоступен")
+
+    try:
+        await redis_client.connect()
+        await redis_client.client.ping()
+        dependencies["redis"] = "ok"
+    except Exception:
+        logger.warning("Readiness check: Redis недоступен")
+
+    ready = all(value == "ok" for value in dependencies.values())
+    payload = {
+        "status": "ready" if ready else "not_ready",
+        "service": "opros-backend",
+        "dependencies": dependencies,
+    }
+    if ready:
+        return payload
+    return JSONResponse(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, content=payload)
 
 
 @app.get("/", tags=["Root"])

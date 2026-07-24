@@ -1,0 +1,94 @@
+name: Проверки качества
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: opros_user
+          POSTGRES_PASSWORD: test-postgres-password
+          POSTGRES_DB: opros_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U opros_user -d opros_db"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      ENVIRONMENT: development
+      DEBUG: "true"
+      SECRET_KEY: test-secret-key
+      JWT_SECRET_KEY: test-jwt-secret-key
+      ADMIN_USERNAME: test-admin
+      ADMIN_PASSWORD: test-admin-password
+      POSTGRES_HOST: localhost
+      POSTGRES_PASSWORD: test-postgres-password
+      REDIS_HOST: localhost
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+      - run: sudo apt-get update && sudo apt-get install -y libpango-1.0-0 libpangoft2-1.0-0 libcairo2
+      - run: pip install -r backend/requirements-dev.txt
+      # python-jose устанавливает ecdsa, но Opros принудительно использует только HS256.
+      - run: pip install pip-audit && pip-audit -r backend/requirements.txt --ignore-vuln PYSEC-2026-1325
+      - run: PYTHONPATH=. alembic -c alembic.ini upgrade head
+        working-directory: backend
+      - run: python -m scripts.seed --v2
+        working-directory: backend
+      - run: python -m pytest tests -q
+        working-directory: backend
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run type-check
+      - run: npm run lint
+      - run: npm run build
+      - run: npm audit --omit=dev --audit-level=high
+
+  packaging:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Проверить отсутствие секретных файлов
+        shell: bash
+        run: |
+          test -z "$(git ls-files '.env' '*.pem' '*.key')"
+          private_key_marker='-----BEGIN PRIVATE'' KEY-----'
+          ! git grep -n --fixed-strings -- "$private_key_marker"
+      - name: Проверить production compose
+        run: |
+          cp .env.example .env
+          docker compose --env-file .env -f docker-compose.prod.yml config -q

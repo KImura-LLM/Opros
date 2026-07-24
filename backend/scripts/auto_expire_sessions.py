@@ -63,7 +63,7 @@ async def cleanup_expired_sessions() -> int:
             return count
             
         except Exception as e:
-            logger.error(f"Ошибка при очистке истёкших сессий: {e}")
+            logger.error(f"Ошибка при очистке истёкших сессий: {type(e).__name__}")
             await db.rollback()
             return 0
 
@@ -81,7 +81,7 @@ async def run_periodic_cleanup(interval_minutes: int = 15):
         try:
             await cleanup_expired_sessions()
         except Exception as e:
-            logger.error(f"Критическая ошибка в процессе очистки: {e}")
+            logger.error(f"Критическая ошибка в процессе очистки: {type(e).__name__}")
         
         # Ждём до следующей проверки
         await asyncio.sleep(interval_minutes * 60)
